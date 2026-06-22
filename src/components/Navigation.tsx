@@ -47,6 +47,7 @@ export default function Navigation() {
             {navLink('/order-list', 'Order List')}
             {navLink('/dashboard', 'Dashboard')}
             {navLink('/par-settings', 'Par Levels')}
+            {navLink('/manage-items', 'Manage Items')}
             {navLink('/history', 'History')}
           </>
         )}

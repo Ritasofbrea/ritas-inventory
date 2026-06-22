@@ -13,15 +13,46 @@ export async function GET() {
   return NextResponse.json(data)
 }
 
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+  const { name, category, unit } = body
+
+  if (!name || !category || !unit)
+    return NextResponse.json({ error: 'Missing name, category, or unit' }, { status: 400 })
+
+  const db = getServerSupabase()
+
+  const { data: existing } = await db
+    .from('items')
+    .select('sort_order')
+    .eq('category', category)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .single()
+
+  const sort_order = existing ? existing.sort_order + 10 : 10
+
+  const { data, error } = await db
+    .from('items')
+    .insert({ name, category, unit, sort_order, par_level: 0, current_count: 0 })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
-  const { id, current_count, par_level } = body
+  const { id, current_count, par_level, name, unit } = body
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const updates: Record<string, number> = {}
+  const updates: Record<string, number | string> = {}
   if (current_count !== undefined) updates.current_count = current_count
   if (par_level !== undefined) updates.par_level = par_level
+  if (name !== undefined) updates.name = name
+  if (unit !== undefined) updates.unit = unit
 
   const db = getServerSupabase()
   const { data, error } = await db
@@ -33,4 +64,15 @@ export async function PATCH(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
+}
+
+export async function DELETE(request: NextRequest) {
+  const { id } = await request.json()
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+
+  const db = getServerSupabase()
+  const { error } = await db.from('items').delete().eq('id', id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
 }
