@@ -44,7 +44,8 @@ export default function Navigation() {
 
         {role === 'owner' && (
           <>
-            {navLink('/dashboard', 'Order Dashboard')}
+            {navLink('/order-list', 'Order List')}
+            {navLink('/dashboard', 'Dashboard')}
             {navLink('/par-settings', 'Par Levels')}
             {navLink('/history', 'History')}
           </>

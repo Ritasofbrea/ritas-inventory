@@ -4,6 +4,20 @@ export type Category =
   | 'Spoons & Straws'
   | 'Topping Containers'
   | 'Toppings - Dry'
+  | 'Toppings - Wet'
+  | 'Syrups'
+  | 'Ice Mix'
+  | 'Custard'
+  | 'Things to Make Ice'
+  | 'Cones'
+  | 'Cookies'
+  | 'Drink Items'
+  | 'Bags & Carriers'
+  | 'Napkins & Paper'
+  | 'Cleaning Supplies'
+  | 'Bathroom Supplies'
+  | 'Trash Bags'
+  | 'Stickers & Receipts'
 
 export type Role = 'shift_lead' | 'owner'
 
@@ -44,4 +58,18 @@ export const CATEGORIES: Category[] = [
   'Spoons & Straws',
   'Topping Containers',
   'Toppings - Dry',
+  'Toppings - Wet',
+  'Syrups',
+  'Ice Mix',
+  'Custard',
+  'Things to Make Ice',
+  'Cones',
+  'Cookies',
+  'Drink Items',
+  'Bags & Carriers',
+  'Napkins & Paper',
+  'Cleaning Supplies',
+  'Bathroom Supplies',
+  'Trash Bags',
+  'Stickers & Receipts',
 ]
