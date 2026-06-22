@@ -83,47 +83,51 @@ export default function OrderListPage() {
               </p>
             </div>
 
-            {/* Grouped by category */}
-            {CATEGORIES.map((cat) => {
-              const catItems = needsOrder.filter((i) => i.category === cat)
-              if (catItems.length === 0) return null
+            {/* Sorted by supplier order, unmapped items at bottom */}
+            {(() => {
+              const sorted = [...needsOrder].sort((a, b) => {
+                if (a.supplier_order == null && b.supplier_order == null) return 0
+                if (a.supplier_order == null) return 1
+                if (b.supplier_order == null) return -1
+                return a.supplier_order - b.supplier_order
+              })
               return (
-                <section key={cat} className="mb-5">
-                  <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">
-                    {cat}
-                  </h2>
-                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    {catItems.map((item, idx) => {
-                      const status = getStockStatus(item)
-                      return (
-                        <div
-                          key={item.id}
-                          className={`flex items-center gap-4 px-5 py-4 ${
-                            idx < catItems.length - 1 ? 'border-b border-gray-100' : ''
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  {sorted.map((item, idx) => {
+                    const status = getStockStatus(item)
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex items-center gap-4 px-5 py-4 ${
+                          idx < sorted.length - 1 ? 'border-b border-gray-100' : ''
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900">{item.name}</p>
+                          <p className="text-sm text-gray-400">{item.category}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0 mr-3">
+                          <p className="text-sm text-gray-500">
+                            <span className="font-bold text-gray-900">{item.current_count}</span>
+                            {' / '}
+                            <span className="text-gray-400">{item.par_level} {item.unit}</span>
+                          </p>
+                        </div>
+                        <span
+                          className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${
+                            status === 'out'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
                           }`}
                         >
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900">{item.name}</p>
-                            <p className="text-sm text-gray-400">
-                              {item.current_count} / {item.par_level} {item.unit}
-                            </p>
-                          </div>
-                          <span
-                            className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${
-                              status === 'out'
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            {status === 'out' ? 'OUT' : 'LOW'}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
+                          {status === 'out' ? 'OUT' : 'LOW'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
               )
-            })}
+            })()}
           </>
         )}
       </main>

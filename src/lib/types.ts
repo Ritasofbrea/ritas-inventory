@@ -29,6 +29,7 @@ export interface Item {
   current_count: number
   par_level: number
   sort_order: number
+  supplier_order: number | null
   created_at: string
   updated_at: string
 }
