@@ -194,12 +194,11 @@ export default function CountPage() {
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <input
                           ref={idx === 0 && category === CATEGORIES[0] ? firstInputRef : undefined}
-                          type="number"
+                          type="text"
                           inputMode="decimal"
                           className="count-input w-20 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
                           value={counts[item.id] ?? ''}
                           onChange={(e) => handleChange(item.id, e.target.value)}
-                          min="0"
                           placeholder="0"
                         />
                         {item.secondary_unit && (
@@ -207,12 +206,11 @@ export default function CountPage() {
                             <span className="text-gray-300 text-lg font-light">+</span>
                             <div className="flex flex-col items-center gap-0.5">
                               <input
-                                type="number"
+                                type="text"
                                 inputMode="decimal"
                                 className="w-16 text-center text-lg font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
                                 value={secondaryCounts[item.id] ?? ''}
                                 onChange={(e) => handleSecondaryChange(item.id, e.target.value)}
-                                min="0"
                                 placeholder="0"
                               />
                               <span className="text-xs text-purple-400 font-medium">{item.secondary_unit}</span>
