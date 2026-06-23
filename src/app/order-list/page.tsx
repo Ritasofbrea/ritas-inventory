@@ -4,11 +4,29 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import { getRole } from '@/lib/auth'
-import { Item, getStockStatus, CATEGORIES } from '@/lib/types'
+import { Item, getStockStatus } from '@/lib/types'
+
+type DistributorItem = Item & { distributor?: string; item_number?: string; distributor_item_name?: string }
+
+const DISTRIBUTOR_ORDER = ['bunzl', 'balford', 'other', 'seasonal', 'discontinued']
+const DISTRIBUTOR_LABELS: Record<string, string> = {
+  bunzl: 'Bunzl',
+  balford: 'Balford',
+  other: 'Other',
+  seasonal: 'Seasonal',
+  discontinued: 'Discontinued',
+}
+const DISTRIBUTOR_COLORS: Record<string, string> = {
+  bunzl: 'text-blue-600',
+  balford: 'text-purple-600',
+  other: 'text-gray-500',
+  seasonal: 'text-green-600',
+  discontinued: 'text-gray-400',
+}
 
 export default function OrderListPage() {
   const router = useRouter()
-  const [items, setItems] = useState<Item[]>([])
+  const [items, setItems] = useState<DistributorItem[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
@@ -41,6 +59,21 @@ export default function OrderListPage() {
   const needsOrder = items.filter((i) => getStockStatus(i) !== 'ok')
   const outItems = needsOrder.filter((i) => getStockStatus(i) === 'out')
   const lowItems = needsOrder.filter((i) => getStockStatus(i) === 'low')
+
+  const sorted = [...needsOrder].sort((a, b) => {
+    if (a.supplier_order == null && b.supplier_order == null) return 0
+    if (a.supplier_order == null) return 1
+    if (b.supplier_order == null) return -1
+    return a.supplier_order - b.supplier_order
+  })
+
+  const byDistributor = DISTRIBUTOR_ORDER.reduce<Record<string, DistributorItem[]>>((acc, d) => {
+    acc[d] = sorted.filter((i) => (i.distributor ?? 'other') === d)
+    return acc
+  }, {})
+
+  // Items with no distributor set yet
+  const unmapped = sorted.filter((i) => !i.distributor)
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -83,41 +116,78 @@ export default function OrderListPage() {
               </p>
             </div>
 
-            {/* Sorted by supplier order, unmapped items at bottom */}
-            {(() => {
-              const sorted = [...needsOrder].sort((a, b) => {
-                if (a.supplier_order == null && b.supplier_order == null) return 0
-                if (a.supplier_order == null) return 1
-                if (b.supplier_order == null) return -1
-                return a.supplier_order - b.supplier_order
-              })
+            {/* Grouped by distributor, sorted by supplier order within each */}
+            {DISTRIBUTOR_ORDER.map((dist) => {
+              const distItems = byDistributor[dist]
+              if (!distItems || distItems.length === 0) return null
               return (
+                <section key={dist} className="mb-6">
+                  <h2 className={`text-xs font-bold uppercase tracking-widest mb-2 ${DISTRIBUTOR_COLORS[dist]}`}>
+                    {DISTRIBUTOR_LABELS[dist]}
+                  </h2>
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    {distItems.map((item, idx) => {
+                      const status = getStockStatus(item)
+                      return (
+                        <div
+                          key={item.id}
+                          className={`flex items-center gap-3 px-5 py-4 ${
+                            idx < distItems.length - 1 ? 'border-b border-gray-100' : ''
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900">{item.name}</p>
+                            <p className="text-sm text-gray-400">
+                              {item.item_number && (
+                                <span className="font-mono text-gray-500 mr-2">#{item.item_number}</span>
+                              )}
+                              {item.distributor_item_name ?? item.category}
+                            </p>
+                          </div>
+                          <div className="text-right flex-shrink-0 mr-2">
+                            <p className="text-sm text-gray-500">
+                              <span className="font-bold text-gray-900">{item.current_count}</span>
+                              {' / '}
+                              <span className="text-gray-400">{item.par_level} {item.unit}</span>
+                            </p>
+                          </div>
+                          <span
+                            className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${
+                              status === 'out'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            {status === 'out' ? 'OUT' : 'LOW'}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              )
+            })}
+
+            {unmapped.length > 0 && (
+              <section className="mb-6">
+                <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Other</h2>
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  {sorted.map((item, idx) => {
+                  {unmapped.map((item, idx) => {
                     const status = getStockStatus(item)
                     return (
                       <div
                         key={item.id}
-                        className={`flex items-center gap-4 px-5 py-4 ${
-                          idx < sorted.length - 1 ? 'border-b border-gray-100' : ''
+                        className={`flex items-center gap-3 px-5 py-4 ${
+                          idx < unmapped.length - 1 ? 'border-b border-gray-100' : ''
                         }`}
                       >
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900">{item.name}</p>
                           <p className="text-sm text-gray-400">{item.category}</p>
                         </div>
-                        <div className="text-right flex-shrink-0 mr-3">
-                          <p className="text-sm text-gray-500">
-                            <span className="font-bold text-gray-900">{item.current_count}</span>
-                            {' / '}
-                            <span className="text-gray-400">{item.par_level} {item.unit}</span>
-                          </p>
-                        </div>
                         <span
                           className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${
-                            status === 'out'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-amber-100 text-amber-700'
+                            status === 'out' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
                           }`}
                         >
                           {status === 'out' ? 'OUT' : 'LOW'}
@@ -126,8 +196,8 @@ export default function OrderListPage() {
                     )
                   })}
                 </div>
-              )
-            })()}
+              </section>
+            )}
           </>
         )}
       </main>
