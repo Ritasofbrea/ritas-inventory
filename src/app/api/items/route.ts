@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
-  const { id, current_count, par_level, name, unit } = body
+  const { id, current_count, par_level, name, unit, secondary_count, secondary_unit } = body
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -53,6 +53,8 @@ export async function PATCH(request: NextRequest) {
   if (par_level !== undefined) updates.par_level = par_level
   if (name !== undefined) updates.name = name
   if (unit !== undefined) updates.unit = unit
+  if (secondary_count !== undefined) updates.secondary_count = secondary_count
+  if (secondary_unit !== undefined) updates.secondary_unit = secondary_unit
 
   const db = getServerSupabase()
   const { data, error } = await db

@@ -22,6 +22,7 @@ export default function ManageItemsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editUnit, setEditUnit] = useState('')
+  const [editSecondaryUnit, setEditSecondaryUnit] = useState('')
   const [saving, setSaving] = useState(false)
 
   // Delete confirm state
@@ -72,6 +73,7 @@ export default function ManageItemsPage() {
     setEditingId(item.id)
     setEditName(item.name)
     setEditUnit(item.unit)
+    setEditSecondaryUnit(item.secondary_unit || '')
     setConfirmDeleteId(null)
   }
 
@@ -82,7 +84,7 @@ export default function ManageItemsPage() {
       const res = await fetch('/api/items', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, name: editName.trim(), unit: editUnit.trim() }),
+        body: JSON.stringify({ id: item.id, name: editName.trim(), unit: editUnit.trim(), secondary_unit: editSecondaryUnit.trim() }),
       })
       if (!res.ok) throw new Error()
       const updated = await res.json()
@@ -219,6 +221,16 @@ export default function ManageItemsPage() {
                                 placeholder="unit"
                               />
                             </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-400 flex-shrink-0">Sub-unit (optional):</span>
+                              <input
+                                type="text"
+                                className="flex-1 border border-purple-200 rounded-xl px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-purple-400"
+                                value={editSecondaryUnit}
+                                onChange={(e) => setEditSecondaryUnit(e.target.value)}
+                                placeholder="e.g. sleeves, container"
+                              />
+                            </div>
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleSaveEdit(item)}
@@ -258,7 +270,12 @@ export default function ManageItemsPage() {
                           <div className="flex items-center gap-3">
                             <div className="flex-1 min-w-0">
                               <p className="font-semibold text-gray-900">{item.name}</p>
-                              <p className="text-sm text-gray-400">{item.unit}</p>
+                              <p className="text-sm text-gray-400">
+                                {item.unit}
+                                {item.secondary_unit && (
+                                  <span className="text-purple-400"> + {item.secondary_unit}</span>
+                                )}
+                              </p>
                             </div>
                             <button
                               onClick={() => startEdit(item)}

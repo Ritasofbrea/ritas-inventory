@@ -30,6 +30,8 @@ export interface Item {
   par_level: number
   sort_order: number
   supplier_order: number | null
+  secondary_count: number
+  secondary_unit: string
   created_at: string
   updated_at: string
 }
