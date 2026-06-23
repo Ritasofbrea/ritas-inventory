@@ -26,7 +26,8 @@ export async function GET(request: NextRequest) {
   // For each item, find the last record on/before start date and last record on/before end date
   const byItem: Record<string, { name: string; category: string; unit: string; records: { count: number; ts: number }[] }> = {}
 
-  for (const row of data as Array<{ item_id: string; count: number; created_at: string; items: { name: string; category: string; unit: string } | null }>) {
+  type CountRow = { item_id: string; count: number; created_at: string; items: { name: string; category: string; unit: string } | null }
+  for (const row of (data as unknown) as CountRow[]) {
     if (!row.items) continue
     if (!byItem[row.item_id]) {
       byItem[row.item_id] = {
