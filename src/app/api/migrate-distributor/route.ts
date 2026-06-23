@@ -17,7 +17,7 @@ const updates: { name: string; category?: string; distributor: string; item_numb
   { name: 'Pints', distributor: 'bunzl', item_number: '1971', distributor_item_name: 'DART CUSTARD PINT (500)' },
   { name: 'Small Milkshake Cups', distributor: 'bunzl', item_number: '1956', distributor_item_name: '12 OZ CLEAR CUP' },
   { name: 'Large Milkshake Cups', distributor: 'bunzl', item_number: '1957', distributor_item_name: '20 OZ CLEAR CUP' },
-  { name: 'Individual Hinged Cookie Containers', distributor: 'bunzl', item_number: '1602', distributor_item_name: 'INDIVIDUAL HINGED COOKIE CONTAINER' },
+  { name: 'Individual Hinged Cookie Containers', distributor: 'bunzl', item_number: '1602', distributor_item_name: '6 PK COOKIE PACKAGE' },
   { name: '6-Pack Cookie Containers', distributor: 'bunzl', item_number: '1602', distributor_item_name: '6 PK COOKIE PACKAGE' },
   { name: 'Food Boats (Small)', distributor: 'other' },
   // Lids
@@ -30,7 +30,8 @@ const updates: { name: string; category?: string; distributor: string; item_numb
   { name: 'Small/Large Custard Cup Lids', distributor: 'bunzl', item_number: '1996', distributor_item_name: 'NEW PARFAIT LID 7OZ/16OZ' },
   { name: 'Large Sundae Bowl Lids', distributor: 'bunzl', item_number: '0416', distributor_item_name: '16 OZ SUNDAE DOME LID' },
   { name: 'Pint Lids', distributor: 'bunzl', item_number: '1972', distributor_item_name: 'DART CUSTARD PINT LIDS (500)' },
-  { name: 'Milkshake Cup Lids', distributor: 'bunzl', item_number: '1958', distributor_item_name: '12/20 LID WIDE HOLE DOME' },
+  { name: 'Small Hole Milkshake Lids', distributor: 'bunzl', item_number: '1958', distributor_item_name: '12/20 LID WIDE HOLE DOME' },
+  { name: 'Large Hole Milkshake Lids', distributor: 'bunzl', item_number: '1960', distributor_item_name: '12/20 FLAT LID' },
   { name: 'Topping Cup Lids', distributor: 'bunzl', item_number: '0322', distributor_item_name: '2 OZ SOUFFLE LID (2500)' },
   // Spoons & Straws
   { name: 'Regular Spoons', distributor: 'bunzl', item_number: '0307', distributor_item_name: 'WATER ICE SPOONS (1000)' },
@@ -67,12 +68,13 @@ const updates: { name: string; category?: string; distributor: string; item_numb
   { name: 'Tajin', distributor: 'bunzl', item_number: '2786', distributor_item_name: 'TAJIN SEASONING 5-OZ' },
   { name: 'Tamarind Candy', distributor: 'other' },
   { name: 'Brownies (for sundaes)', distributor: 'discontinued' },
+  { name: 'Sour Dust', distributor: 'other' },
   // Toppings - Wet
   { name: 'Peanut Butter Topping', distributor: 'balford', item_number: '7078', distributor_item_name: 'PB SAUCE 6/4.5#/CS' },
   { name: 'Crushed Cherries', distributor: 'bunzl', item_number: '0201', distributor_item_name: 'CRUSHED CHERRIES (6-1/2 GAL)' },
   { name: 'Diced Black Cherries', distributor: 'bunzl', item_number: '2783', distributor_item_name: 'DICED CHERRIES' },
   { name: 'Apple Topping', distributor: 'bunzl', item_number: '2726', distributor_item_name: 'APPLE PIE TOPPING' },
-  { name: 'Strawberry Topping', distributor: 'bunzl', item_number: '0253', distributor_item_name: 'STRAWBERRY TOPPING' },
+  { name: 'Strawberry Topping', distributor: 'bunzl', item_number: '0253', distributor_item_name: 'STRAWBERRY TOPPING (3-1/2GAL)' },
   { name: 'Pumpkin Cream Topping', distributor: 'bunzl', item_number: '2745', distributor_item_name: 'PUMPKIN CREME' },
   { name: 'Whole Cherries', distributor: 'bunzl', item_number: '2782', distributor_item_name: 'WHOLE MARASCHINO CHERRIES' },
   { name: 'Pineapple Topping', distributor: 'bunzl', item_number: '2727', distributor_item_name: 'CRUSHED PINEAPPLES' },
@@ -81,6 +83,7 @@ const updates: { name: string; category?: string; distributor: string; item_numb
   { name: 'Whipped Cream', distributor: 'balford', item_number: '2086', distributor_item_name: 'WHIP CREAM (1 CASE)' },
   { name: 'Nacho Cheese', distributor: 'other' },
   { name: 'Chamoy', distributor: 'other' },
+  { name: 'Butter', distributor: 'other' },
   // Syrups
   { name: 'Banana', category: 'Syrups', distributor: 'bunzl', item_number: '1732', distributor_item_name: 'BANANA CUSTARD FLAVOR' },
   { name: 'Black Raspberry', distributor: 'bunzl', item_number: '1733', distributor_item_name: 'BLACK RASP FLAVOR' },
@@ -89,33 +92,33 @@ const updates: { name: string; category?: string; distributor: string; item_numb
   { name: "Campfire S'mores", distributor: 'bunzl', item_number: '2768', distributor_item_name: 'CAMPFIRE SMORE CUSTARD FLAVOR' },
   { name: 'Cheesecake', category: 'Syrups', distributor: 'bunzl', item_number: '1736', distributor_item_name: 'CHEESECAKE FLAVOR' },
   { name: 'Coffee', distributor: 'bunzl', item_number: '1737', distributor_item_name: 'COFFEE FLAVOR' },
-  { name: 'Cotton Candy', category: 'Syrups', distributor: 'bunzl', item_number: '2102', distributor_item_name: 'COTTON CANDY FLAVOR' },
+  { name: 'Cotton Candy', category: 'Syrups', distributor: 'bunzl', item_number: '2102', distributor_item_name: 'COTTON CANDY MIX (4/1 GAL)' },
   { name: 'Mint', distributor: 'bunzl', item_number: '1739', distributor_item_name: 'MINT FLAVOR' },
-  { name: 'Peach', distributor: 'discontinued' },
+  { name: 'Peach', category: 'Syrups', distributor: 'discontinued' },
   { name: 'Pistachio', distributor: 'discontinued' },
   { name: 'Pumpkin', category: 'Syrups', distributor: 'bunzl', item_number: '0164', distributor_item_name: 'PUMPKIN MIX (4/1GAL)' },
   { name: 'Strawberry', category: 'Syrups', distributor: 'bunzl', item_number: '0118', distributor_item_name: 'STRAWBERRY MIX (4/1GAL)' },
   // Ice Mix
-  { name: 'Banana / Banana Split', distributor: 'bunzl', item_number: '0128', distributor_item_name: 'BANANA/BANANA SPLIT CREAM MIX' },
-  { name: 'Birthday Cake', distributor: 'bunzl', item_number: '0159', distributor_item_name: 'BIRTHDAY CAKE MIX' },
+  { name: 'Banana / Banana Split', distributor: 'bunzl', item_number: '0128', distributor_item_name: 'BANANA/BANANA SPLIT CREAM MIX (4/1GAL)' },
+  { name: 'Birthday Cake', distributor: 'bunzl', item_number: '0159', distributor_item_name: 'BIRTHDAY CAKE MIX (4/1 GAL)' },
   { name: 'Blue Raspberry', distributor: 'bunzl', item_number: '0119', distributor_item_name: 'BLUEBERRY/BLUE RASP (4/1GAL)' },
   { name: 'Cheesecake', category: 'Ice Mix', distributor: 'bunzl', item_number: '1736', distributor_item_name: 'CHEESECAKE FLAVOR' },
   { name: 'Cherry', distributor: 'bunzl', item_number: '0102', distributor_item_name: 'CHERRY MIX (4/1GAL)' },
   { name: 'Clementine', distributor: 'bunzl', item_number: '2143', distributor_item_name: 'CLEMENTINE JUG' },
   { name: 'Cola', distributor: 'seasonal' },
   { name: 'Coconut Cream', distributor: 'bunzl', item_number: '0125', distributor_item_name: 'COCONUT CREAM MIX (4/1GAL)' },
-  { name: 'Cookies N Cream', distributor: 'bunzl', item_number: '0131', distributor_item_name: 'COOKIES N CREAM MIX' },
-  { name: 'Cotton Candy', category: 'Ice Mix', distributor: 'bunzl', item_number: '2102', distributor_item_name: 'COTTON CANDY MIX' },
+  { name: 'Cookies N Cream', distributor: 'bunzl', item_number: '0131', distributor_item_name: "COOKIES N' CREAM MIX (4/1GAL)" },
+  { name: 'Cotton Candy', category: 'Ice Mix', distributor: 'bunzl', item_number: '2102', distributor_item_name: 'COTTON CANDY MIX (4/1 GAL)' },
   { name: 'Georgia Peach', distributor: 'bunzl', item_number: '2131', distributor_item_name: 'GEORGIA PEACH MIX' },
   { name: 'Green Apple', distributor: 'bunzl', item_number: '0120', distributor_item_name: 'GREEN APPLE MIX (4/1 GAL)' },
   { name: 'Gummy Bear', distributor: 'bunzl', item_number: '2136', distributor_item_name: 'GUMMY BEAR WATER ICE MIX' },
-  { name: 'Island Fusion', distributor: 'bunzl', item_number: '0156', distributor_item_name: 'ISLAND FUSION MIX' },
+  { name: 'Island Fusion', distributor: 'bunzl', item_number: '0156', distributor_item_name: 'ISLAND FUSION MIX (4/1GAL)' },
   { name: 'Key Lime', distributor: 'bunzl', item_number: '0161', distributor_item_name: 'KEY LIME MIX (4/1GAL)' },
   { name: 'Koolaid Sharkleberry', distributor: 'bunzl', item_number: '2142', distributor_item_name: 'KOOLAID SHARKLEBERRY ICE' },
   { name: 'Koolaid Tropical Punch', distributor: 'bunzl', item_number: '2139', distributor_item_name: 'KOOL-AID TROPICAL PUNCH' },
   { name: 'Lemon', distributor: 'bunzl', item_number: '0101', distributor_item_name: 'LEMON BASE (4/1GAL)' },
   { name: 'Mango', distributor: 'bunzl', item_number: '0117', distributor_item_name: 'MANGO MIX (4/1GAL)' },
-  { name: 'Mint Chip', distributor: 'bunzl', item_number: '0127', distributor_item_name: 'MINT CHOC CHIP CRM MIX' },
+  { name: 'Mint Chip', distributor: 'bunzl', item_number: '0127', distributor_item_name: 'MINT CHOC CHIP CRM MIX (4/1GAL)' },
   { name: 'Passionfruit Paloma', distributor: 'bunzl', item_number: '2144', distributor_item_name: 'PASSIONFRUIT PALOMA JUG' },
   { name: 'Pina Colada', distributor: 'bunzl', item_number: '0105', distributor_item_name: 'PINA COLADA MIX (4/1GAL)' },
   { name: 'Pineapple', category: 'Ice Mix', distributor: 'bunzl', item_number: '1119', distributor_item_name: 'PINEAPPLE ICE MIX' },
@@ -126,18 +129,29 @@ const updates: { name: string; category?: string; distributor: string; item_numb
   { name: 'Skittles', category: 'Ice Mix', distributor: 'discontinued' },
   { name: "S'mores", distributor: 'bunzl', item_number: '0166', distributor_item_name: "S'MORES MIX (4/1GAL)" },
   { name: 'Sour Patch Watermelon', distributor: 'bunzl', item_number: '2137', distributor_item_name: 'SOUR PATCH KIDS WATERMELON MIX' },
-  { name: 'Swedish Fish', distributor: 'bunzl', item_number: '2103', distributor_item_name: 'SWEDISH FISH MIX' },
+  { name: 'Swedish Fish', distributor: 'bunzl', item_number: '2103', distributor_item_name: 'SWEDISH FISH MIX (4/1 GAL)' },
   { name: 'Strawberry', category: 'Ice Mix', distributor: 'bunzl', item_number: '0118', distributor_item_name: 'STRAWBERRY MIX (4/1GAL)' },
-  { name: 'Vanilla', distributor: 'bunzl', item_number: '0121', distributor_item_name: 'VANILLA MIX (4/1GAL)' },
+  { name: 'Vanilla', category: 'Ice Mix', distributor: 'bunzl', item_number: '0121', distributor_item_name: 'VANILLA MIX (4/1GAL)' },
   { name: 'Watermelon', distributor: 'bunzl', item_number: '0124', distributor_item_name: 'WATERMELON MIX (4/1GAL)' },
-  { name: 'Wild Cherry', distributor: 'bunzl', item_number: '0140', distributor_item_name: 'WILD BLACK CHERRY MIX' },
-  { name: 'Peeps', distributor: 'bunzl', item_number: '2145', distributor_item_name: 'MYSTERY PEEPS' },
+  { name: 'Wild Cherry', distributor: 'bunzl', item_number: '0140', distributor_item_name: 'WILD BLACK CHERRY MIX (4/1GAL)' },
+  { name: 'Peeps', category: 'Ice Mix', distributor: 'bunzl', item_number: '2145', distributor_item_name: 'MYSTERY PEEPS' },
   { name: 'Chocolate', category: 'Ice Mix', distributor: 'bunzl', item_number: '0103', distributor_item_name: 'CHOCOLATE MIX (4/1GAL)' },
+  { name: 'Blackberry', distributor: 'bunzl', item_number: '2150', distributor_item_name: 'BLACKBERRY MIX' },
+  { name: 'Sour Patch Kids Red', distributor: 'bunzl', item_number: '0111', distributor_item_name: 'SOUR PATCH KIDS RED MIX (4/1GAL)' },
+  { name: 'Kiwi Melon', distributor: 'bunzl', item_number: '2146', distributor_item_name: 'KIWI MELON' },
+  { name: 'Juicy Pear', distributor: 'bunzl', item_number: '0163', distributor_item_name: 'JUICY PEAR MIX (4/1GAL)' },
+  { name: 'Sour Blue Pucker', distributor: 'seasonal' },
+  { name: 'Sugar Free Dragon Fruit', distributor: 'bunzl', item_number: '2108', distributor_item_name: 'SUGAR-FREE DRAGONFRUIT (6-1/2 GAL)' },
+  { name: 'Sugar Free Mango Peach', distributor: 'bunzl', item_number: '0181', distributor_item_name: 'SUGAR-FREE MANGO PEACH MIX (6-1/2 GAL)' },
+  { name: 'Sugar Free Cherry', distributor: 'bunzl', item_number: '0177', distributor_item_name: 'SUGAR-FREE CHERRY MIX (6-1/2 GAL)' },
+  { name: 'Sugar Free Pink Lemonade', distributor: 'bunzl', item_number: '0179', distributor_item_name: 'SUGAR FREE PINK LEMONADE MIX (6-1/2 GAL)' },
+  { name: 'Mermaid', distributor: 'bunzl', item_number: '2147', distributor_item_name: 'MERMAID' },
+  { name: 'Blue Hawaii', distributor: 'bunzl', item_number: '2149', distributor_item_name: 'BLUE HAWAII' },
   // Custard
   { name: 'Vanilla Custard Bags', distributor: 'balford', item_number: '2446', distributor_item_name: 'RITAS CUST VAN 5GAL' },
   { name: 'Chocolate Custard Bags', distributor: 'balford', item_number: '2447', distributor_item_name: 'RITAS CUST CHOC 5GAL' },
   // Things to Make Ice
-  { name: 'Sugar', distributor: 'bunzl', item_number: '1071', distributor_item_name: 'SUGAR BUNDLE (1/25# BAG)' },
+  { name: 'Sugar', category: 'Things to Make Ice', distributor: 'bunzl', item_number: '1071', distributor_item_name: 'SUGAR BUNDLE (1/25# BAG)' },
   { name: 'Cream Ice Powder', distributor: 'bunzl', item_number: '1084', distributor_item_name: 'CREAM ICE POWDER (10LBS)' },
   { name: 'Chocolate Base', distributor: 'bunzl', item_number: '2723', distributor_item_name: 'CHOCOLATE BASE (2/.5GAL)' },
   { name: 'Lemon Concentrate', distributor: 'balford', item_number: '7401', distributor_item_name: 'FRZ LEMON MIX' },
@@ -147,8 +161,21 @@ const updates: { name: string; category?: string; distributor: string; item_numb
   { name: 'Waffle Cones', distributor: 'bunzl', item_number: '0242', distributor_item_name: 'JOY JACKETED WAFFLE CONES (216)' },
   { name: 'Cake Cones', distributor: 'bunzl', item_number: '0243', distributor_item_name: 'JACKETED CAKE CONES (600)' },
   { name: 'Waffle Bowls', distributor: 'bunzl', item_number: '0257', distributor_item_name: 'WAFFLE BOWLS (60)' },
+  // Cookies
+  { name: 'Cookie Bags', distributor: 'bunzl', item_number: '1043', distributor_item_name: 'INDIVIDUAL COOKIE SANDWICH BAG (1000CT)' },
+  { name: 'Chocolate Chip Cookies', distributor: 'other' },
+  { name: 'Peanut Butter Cookies', distributor: 'other' },
+  { name: 'Sugar Cookies', distributor: 'other' },
+  { name: 'Red Velvet Cookies', distributor: 'other' },
+  { name: 'Macadamia Nut Cookies', distributor: 'other' },
+  { name: 'Oreo Wafers (for sandwiches)', distributor: 'other' },
+  { name: 'Chocolate Chip Cookie Sandwiches', distributor: 'balford', item_number: '7089', distributor_item_name: '3in BAKED CC COOKIE FROZ' },
+  // Drink Items
+  { name: 'Cold Brew Concentrate', distributor: 'balford', item_number: '7260', distributor_item_name: 'COLD BREW COFFEE CONCENTRATE' },
+  { name: 'Matcha Syrup', distributor: 'balford', item_number: '7289', distributor_item_name: 'MATCHA GREEN TEA CON 4/1L' },
+  { name: 'Milk', distributor: 'other' },
+  { name: 'Water Bottles', distributor: 'other' },
   // Bags & Carriers
-  { name: 'Cookie Bags', distributor: 'other' },
   { name: 'Plastic Bags', distributor: 'bunzl', item_number: '1209', distributor_item_name: 'LOGOED T-SAC BAG' },
   { name: "Small Rita's Paper Bags", distributor: 'bunzl', item_number: '1220', distributor_item_name: "RITA'S SMALL PAPER BAG" },
   { name: "Large Rita's Paper Bags", distributor: 'bunzl', item_number: '1221', distributor_item_name: "RITA'S LARGE PAPER BAG" },
@@ -156,15 +183,34 @@ const updates: { name: string; category?: string; distributor: string; item_numb
   // Napkins & Paper
   { name: 'White Napkins', distributor: 'bunzl', item_number: '0577', distributor_item_name: 'TORK XPRESS NAPKIN' },
   { name: 'Paper Towels', distributor: 'bunzl', item_number: '0805', distributor_item_name: 'PAPER TOWEL (30/RLS)' },
+  { name: 'Brown Small Napkins', distributor: 'bunzl', item_number: '0577', distributor_item_name: 'TORK XPRESS NAPKIN' },
+  { name: 'Pink Rags', distributor: 'bunzl', item_number: '0806', distributor_item_name: 'CHIX WIPES (200/PK)' },
   // Cleaning Supplies
   { name: 'Hand Soap', distributor: 'bunzl', item_number: '0824', distributor_item_name: 'HANDS-FREE FOAM SOAP' },
   { name: 'Sanitizer', distributor: 'bunzl', item_number: '0831', distributor_item_name: 'HANDS FREE SANITIZER REFILLS' },
   { name: 'Dish Soap', distributor: 'bunzl', item_number: '0898', distributor_item_name: 'PALMOLIVE HAND DISHWASH 1 GAL' },
+  { name: 'Glass Cleaner', distributor: 'other' },
+  { name: 'Ajax', distributor: 'other' },
+  { name: 'Clorox Surface Cleaner', distributor: 'other' },
+  { name: 'Stainless Steel Cleaner', distributor: 'other' },
+  { name: 'Scour Pads', distributor: 'other' },
+  { name: 'Pine-Sol', distributor: 'other' },
+  { name: 'Neutral Cleaner', distributor: 'other' },
+  { name: 'Bleach', distributor: 'other' },
+  // Bathroom Supplies
+  { name: 'Toilet Paper', distributor: 'other' },
+  { name: 'Toilet Seat Covers', distributor: 'other' },
   // Trash Bags
+  { name: 'White Trash Bags', distributor: 'other' },
   { name: 'Black Trash Bags', distributor: 'bunzl', item_number: '0803', distributor_item_name: 'LARGE TRASH LINER (200/PK)' },
-  // Drink Items
-  { name: 'Cold Brew Concentrate', distributor: 'balford', item_number: '7260', distributor_item_name: 'COLD BREW COFFEE CONCENTRATE' },
-  { name: 'Matcha Syrup', distributor: 'balford', item_number: '7289', distributor_item_name: 'MATCHA GREEN TEA CON 4/1L' },
+  { name: 'M Gloves', distributor: 'bunzl', item_number: '0834', distributor_item_name: 'VINYL POWDER FREE GLOVES MEDIUM' },
+  { name: 'L Gloves', distributor: 'bunzl', item_number: '0835', distributor_item_name: 'VINYL POWDER FREE GLOVES LARGE' },
+  // Stickers & Receipts
+  { name: 'DoorDash Stickers', distributor: 'bunzl', item_number: '1223', distributor_item_name: 'THIRD PARTY DELIVERY LABELS (500)' },
+  { name: "Small Rita's Red Stickers", distributor: 'other' },
+  { name: 'Cookie Sandwich Stickers', distributor: 'other' },
+  { name: 'Cookie Sandwich Ingredient Stickers', distributor: 'other' },
+  { name: 'Receipt Paper', distributor: 'other' },
 ]
 
 export async function POST() {
@@ -173,13 +219,13 @@ export async function POST() {
   let updated = 0
 
   for (const u of updates) {
-    const query = db.from('items').update({
+    let query = db.from('items').update({
       distributor: u.distributor,
       item_number: u.item_number ?? null,
       distributor_item_name: u.distributor_item_name ?? null,
     }).eq('name', u.name)
 
-    if (u.category) query.eq('category', u.category)
+    if (u.category) query = query.eq('category', u.category)
 
     const { error } = await query
     if (error) errors.push(`${u.name}: ${error.message}`)
