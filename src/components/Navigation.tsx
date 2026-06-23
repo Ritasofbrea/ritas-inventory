@@ -49,6 +49,7 @@ export default function Navigation() {
             {navLink('/par-settings', 'Par Levels')}
             {navLink('/manage-items', 'Manage Items')}
             {navLink('/history', 'History')}
+            {navLink('/reports', 'Reports')}
           </>
         )}
 
