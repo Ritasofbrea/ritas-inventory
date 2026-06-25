@@ -18,7 +18,8 @@ export default function HistoryPage() {
   const router = useRouter()
   const [history, setHistory] = useState<InventoryCount[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'recent' | 'top10'>('recent')
+  const [view, setView] = useState<'recent' | 'top10'>('top10')
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
 
   const [top10, setTop10] = useState<VelocityRow[]>([])
   const [top10Loading, setTop10Loading] = useState(false)
@@ -29,6 +30,7 @@ export default function HistoryPage() {
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
     fetchHistory()
+    fetchTop10()
   }, [router])
 
   const fetchHistory = async () => {
@@ -61,6 +63,14 @@ export default function HistoryPage() {
   const handleViewChange = (v: 'recent' | 'top10') => {
     setView(v)
     if (v === 'top10') fetchTop10()
+  }
+
+  const toggleDay = (day: string) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev)
+      next.has(day) ? next.delete(day) : next.add(day)
+      return next
+    })
   }
 
   if (loading) {
@@ -142,42 +152,52 @@ export default function HistoryPage() {
             </p>
           </div>
         ) : view === 'recent' ? (
-          <div className="flex flex-col gap-6">
-            {Object.entries(grouped).map(([day, entries]) => (
-              <section key={day}>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-                  {day}
-                </h2>
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  {entries.map((entry, idx) => (
-                    <div
-                      key={entry.id}
-                      className={`flex items-center gap-4 px-5 py-3.5 ${
-                        idx < entries.length - 1 ? 'border-b border-gray-100' : ''
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900">
-                          {entry.items?.name ?? '—'}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {entry.items?.category} · {formatDate(entry.created_at)}
-                          {entry.entered_by && entry.entered_by !== 'shift_lead' && (
-                            <span className="text-blue-400"> · {entry.entered_by}</span>
-                          )}
-                        </p>
-                      </div>
-                      <span className="font-bold text-lg text-gray-900">
-                        {entry.count}
-                        <span className="text-sm font-normal text-gray-400 ml-1">
-                          {entry.items?.unit}
-                        </span>
-                      </span>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {Object.entries(grouped).map(([day, entries], dayIdx, arr) => {
+              const isExpanded = expandedDays.has(day)
+              // Get unique people who counted that day
+              const counters = [...new Set(entries.map((e) => e.entered_by).filter((n) => n && n !== 'shift_lead'))]
+              return (
+                <div key={day} className={dayIdx < arr.length - 1 ? 'border-b border-gray-100' : ''}>
+                  <button
+                    onClick={() => toggleDay(day)}
+                    className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+                  >
+                    <div>
+                      <p className="font-semibold text-gray-900">{day}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {entries.length} items counted
+                        {counters.length > 0 && ` · ${counters.join(', ')}`}
+                      </p>
                     </div>
-                  ))}
+                    <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t border-gray-100">
+                      {entries.map((entry, idx) => (
+                        <div
+                          key={entry.id}
+                          className={`flex items-center gap-4 px-5 py-3 bg-gray-50 ${
+                            idx < entries.length - 1 ? 'border-b border-gray-100' : ''
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 text-sm">{entry.items?.name ?? '—'}</p>
+                            <p className="text-xs text-gray-400">{entry.items?.category}</p>
+                          </div>
+                          <span className="font-bold text-gray-900">
+                            {entry.count}
+                            <span className="text-xs font-normal text-gray-400 ml-1">{entry.items?.unit}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </section>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <div>
