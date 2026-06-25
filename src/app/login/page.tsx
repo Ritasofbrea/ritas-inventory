@@ -35,37 +35,37 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-blue-50 flex flex-col items-center justify-center px-6">
+    <div className="min-h-screen bg-[#1a7a3c] flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm">
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="flex justify-center mb-4">
-            <Image src="/Ritas_Logo.png" alt="Rita's Italian Ice" width={180} height={180} priority />
+          <div className="flex justify-center mb-4 drop-shadow-xl">
+            <Image src="/Ritas_Logo.png" alt="Rita's Italian Ice" width={200} height={200} priority />
           </div>
-          <p className="text-blue-600 mt-1 font-medium">Brea Location – Inventory</p>
+          <p className="text-green-200 mt-1 font-medium tracking-wide">Brea Location – Inventory</p>
         </div>
 
         {!showPinEntry ? (
           <div className="flex flex-col gap-4">
-            <p className="text-center text-gray-600 font-medium mb-2">Who are you?</p>
+            <p className="text-center text-green-100 font-medium mb-2">Who are you?</p>
 
             <button
               onClick={handleShiftLead}
-              className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xl font-semibold py-5 rounded-2xl shadow-md transition-colors"
+              className="w-full bg-[#c8102e] hover:bg-[#a50d26] active:bg-[#8a0b1f] text-white text-xl font-semibold py-5 rounded-2xl shadow-lg transition-colors"
             >
               I&apos;m a Shift Lead
             </button>
 
             <button
               onClick={handleOwnerClick}
-              className="w-full bg-white hover:bg-gray-50 active:bg-gray-100 text-blue-700 text-xl font-semibold py-5 rounded-2xl shadow-md border-2 border-blue-200 transition-colors"
+              className="w-full bg-white hover:bg-green-50 active:bg-green-100 text-[#1a7a3c] text-xl font-semibold py-5 rounded-2xl shadow-lg border-2 border-white transition-colors"
             >
               I&apos;m an Owner
             </button>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Owner PIN</h2>
+          <div className="bg-white rounded-2xl shadow-xl p-6">
+            <h2 className="text-xl font-bold text-[#1a7a3c] mb-4">Owner PIN</h2>
             <form onSubmit={handleOwnerSubmit} className="flex flex-col gap-4">
               <input
                 type="password"
@@ -75,21 +75,21 @@ export default function LoginPage() {
                 onChange={(e) => setPin(e.target.value)}
                 placeholder="Enter PIN"
                 autoFocus
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-2xl text-center tracking-widest focus:outline-none focus:border-blue-400"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-2xl text-center tracking-widest focus:outline-none focus:border-[#1a7a3c]"
               />
               {error && (
-                <p className="text-red-500 text-center font-medium">{error}</p>
+                <p className="text-[#c8102e] text-center font-medium">{error}</p>
               )}
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold py-4 rounded-xl"
+                className="w-full bg-[#c8102e] hover:bg-[#a50d26] text-white text-lg font-semibold py-4 rounded-xl"
               >
                 Sign In
               </button>
               <button
                 type="button"
                 onClick={() => setShowPinEntry(false)}
-                className="text-gray-500 hover:text-gray-700 text-sm"
+                className="text-gray-400 hover:text-gray-600 text-sm"
               >
                 ← Back
               </button>
