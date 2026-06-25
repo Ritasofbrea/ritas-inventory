@@ -19,7 +19,9 @@ export default function Navigation() {
   const router = useRouter()
   const [role, setRole] = useState<Role | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [morePos, setMorePos] = useState({ top: 80, left: 0 })
   const moreRef = useRef<HTMLDivElement>(null)
+  const moreButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     setRole(getRole())
@@ -92,7 +94,14 @@ export default function Navigation() {
 
               <div className="relative flex-shrink-0" ref={moreRef}>
                 <button
-                  onClick={() => setMoreOpen((o) => !o)}
+                  ref={moreButtonRef}
+                  onClick={() => {
+                    if (moreButtonRef.current) {
+                      const rect = moreButtonRef.current.getBoundingClientRect()
+                      setMorePos({ top: rect.bottom + 4, left: rect.left })
+                    }
+                    setMoreOpen((o) => !o)
+                  }}
                   className={`flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
                     moreActive
                       ? 'bg-[#c8102e] text-white'
@@ -106,7 +115,7 @@ export default function Navigation() {
                 </button>
 
                 {moreOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[160px] z-50">
+                  <div className="fixed bg-white rounded-xl border border-gray-300 py-1 min-w-[180px] z-[9999]" style={{ top: morePos.top, left: morePos.left, boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)' }}>
                     {MORE_LINKS.map((l) => (
                       <Link
                         key={l.href}
