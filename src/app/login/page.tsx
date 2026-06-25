@@ -40,7 +40,7 @@ export default function LoginPage() {
         {/* Header */}
         <div className="text-center mb-10">
           <div className="flex justify-center mb-4">
-            <div className="rounded-full p-1" style={{ boxShadow: '0 0 40px 12px rgba(0,0,0,0.35)' }}>
+            <div className="rounded-full p-1" style={{ boxShadow: '0 0 20px 8px rgba(0,0,0,0.5)' }}>
               <Image src="/Ritas_Logo_4c.png" alt="Rita's Italian Ice" width={200} height={200} priority />
             </div>
           </div>
