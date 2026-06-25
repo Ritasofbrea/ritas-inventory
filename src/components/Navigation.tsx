@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { clearRole, getRole } from '@/lib/auth'
 import { useEffect, useState } from 'react'
@@ -36,6 +37,7 @@ export default function Navigation() {
   return (
     <nav className="bg-[#1a7a3c] border-b border-[#155f2f] sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-2 flex-wrap">
+        <Image src="/Ritas_Logo_4c.png" alt="Rita's" width={36} height={36} className="rounded-full" />
         <span className="font-bold text-white text-lg mr-2 tracking-wide">
           Brea&apos;s Inventory
         </span>
