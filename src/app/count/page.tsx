@@ -76,6 +76,10 @@ export default function CountPage() {
   }
 
   const handleSubmit = async () => {
+    if (!countedBy.trim()) {
+      setError('Please enter your name before saving.')
+      return
+    }
     setSaving(true)
     setError('')
     try {
@@ -164,7 +168,7 @@ export default function CountPage() {
           </div>
           <button
             onClick={() => { setShowAddModal(true); setAddError('') }}
-            className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors"
+            className="flex-shrink-0 bg-[#c8102e] hover:bg-[#a50d26] text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors"
           >
             + Add Item
           </button>
