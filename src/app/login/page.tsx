@@ -44,7 +44,7 @@ export default function LoginPage() {
               <Image src="/Ritas_Logo_4c.png" alt="Rita's Italian Ice" width={200} height={200} priority />
             </div>
           </div>
-          <p className="text-green-200 mt-1 font-medium tracking-wide">Brea Location – Inventory</p>
+          <p className="text-[#c8102e] mt-1 font-bold tracking-wide">Brea Location – Inventory</p>
         </div>
 
         {!showPinEntry ? (
