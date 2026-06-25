@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { setRole } from '@/lib/auth'
 
 export default function LoginPage() {
@@ -38,9 +39,10 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="text-5xl mb-3">🍧</div>
-          <h1 className="text-3xl font-bold text-blue-800">Rita&apos;s Italian Ice</h1>
-          <p className="text-blue-600 mt-1">Brea Location – Inventory</p>
+          <div className="flex justify-center mb-4">
+            <Image src="/Ritas_Logo.png" alt="Rita's Italian Ice" width={180} height={180} priority />
+          </div>
+          <p className="text-blue-600 mt-1 font-medium">Brea Location – Inventory</p>
         </div>
 
         {!showPinEntry ? (
