@@ -39,7 +39,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="flex justify-center mb-4 drop-shadow-2xl">
+          <div className="flex justify-center mb-4">
             <Image src="/Ritas_Logo_4c.png" alt="Rita's Italian Ice" width={200} height={200} priority />
           </div>
           <p className="text-green-200 mt-1 font-medium tracking-wide">Brea Location – Inventory</p>
