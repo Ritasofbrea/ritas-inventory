@@ -25,8 +25,8 @@ export default function Navigation() {
       href={href}
       className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
         pathname === href
-          ? 'bg-blue-600 text-white'
-          : 'text-gray-700 hover:bg-gray-100'
+          ? 'bg-[#c8102e] text-white'
+          : 'text-green-100 hover:bg-[#155f2f]'
       }`}
     >
       {label}
@@ -34,10 +34,10 @@ export default function Navigation() {
   )
 
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <nav className="bg-[#1a7a3c] border-b border-[#155f2f] sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-2 flex-wrap">
-        <span className="font-bold text-blue-700 text-lg mr-2">
-          Rita&apos;s Inventory
+        <span className="font-bold text-white text-lg mr-2 tracking-wide">
+          Brea&apos;s Inventory
         </span>
 
         {navLink('/count', 'Count Entry')}
@@ -54,12 +54,12 @@ export default function Navigation() {
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-gray-500 capitalize">
+          <span className="text-xs text-green-200 capitalize">
             {role === 'owner' ? 'Owner' : 'Shift Lead'}
           </span>
           <button
             onClick={handleLogout}
-            className="text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded border border-gray-200 hover:border-red-300"
+            className="text-xs text-green-200 hover:text-white px-2 py-1 rounded border border-green-700 hover:border-white"
           >
             Switch
           </button>
