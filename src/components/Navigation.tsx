@@ -8,9 +8,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Role } from '@/lib/types'
 
 const MORE_LINKS = [
-  { href: '/order-list', label: 'Order List' },
+  { href: '/count', label: 'Count Entry' },
+  { href: '/par-settings', label: 'Par Levels' },
   { href: '/manage-items', label: 'Manage Items' },
-  { href: '/history', label: 'History' },
   { href: '/reports', label: 'Reports' },
 ]
 
@@ -63,12 +63,13 @@ export default function Navigation() {
           Brea&apos;s Inventory
         </span>
 
-        {navLink('/count', 'Count Entry')}
+        {role === 'shift_lead' && navLink('/count', 'Count Entry')}
 
         {role === 'owner' && (
           <>
             {navLink('/dashboard', 'Dashboard')}
-            {navLink('/par-settings', 'Par Levels')}
+            {navLink('/order-list', 'Order List')}
+            {navLink('/history', 'History')}
 
             {/* More dropdown */}
             <div className="relative" ref={moreRef}>
