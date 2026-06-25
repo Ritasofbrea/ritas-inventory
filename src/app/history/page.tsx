@@ -162,6 +162,9 @@ export default function HistoryPage() {
                         </p>
                         <p className="text-xs text-gray-400">
                           {entry.items?.category} · {formatDate(entry.created_at)}
+                          {entry.entered_by && entry.entered_by !== 'shift_lead' && (
+                            <span className="text-blue-400"> · {entry.entered_by}</span>
+                          )}
                         </p>
                       </div>
                       <span className="font-bold text-lg text-gray-900">

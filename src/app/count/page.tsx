@@ -19,6 +19,7 @@ export default function CountPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [countedBy, setCountedBy] = useState('')
   const firstInputRef = useRef<HTMLInputElement>(null)
 
   // Add item modal state
@@ -32,8 +33,15 @@ export default function CountPage() {
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
+    const saved = localStorage.getItem('countedBy')
+    if (saved) setCountedBy(saved)
     fetchItems()
   }, [router])
+
+  const handleCountedByChange = (val: string) => {
+    setCountedBy(val)
+    localStorage.setItem('countedBy', val)
+  }
 
   const fetchItems = async () => {
     try {
@@ -78,7 +86,7 @@ export default function CountPage() {
       const res = await fetch('/api/counts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ counts: payload, entered_by: 'shift_lead' }),
+        body: JSON.stringify({ counts: payload, entered_by: countedBy.trim() || 'shift_lead' }),
       })
       if (!res.ok) throw new Error('Save failed')
 
@@ -160,6 +168,18 @@ export default function CountPage() {
           >
             + Add Item
           </button>
+        </div>
+
+        {/* Who's counting */}
+        <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 flex items-center gap-3">
+          <label className="text-sm font-semibold text-gray-600 flex-shrink-0">Who&apos;s counting?</label>
+          <input
+            type="text"
+            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:border-blue-400 text-sm"
+            placeholder="Enter your name"
+            value={countedBy}
+            onChange={(e) => handleCountedByChange(e.target.value)}
+          />
         </div>
 
         {error && (
