@@ -436,7 +436,7 @@ export default function ReceiveOrderPage() {
       {showScrollBtn && step === 'enter' && (
         <button
           onClick={scrollToSave}
-          className="fixed bottom-6 right-5 z-40 bg-[#1a7a3c] hover:bg-[#155f2f] active:bg-[#0f4a25] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-colors"
+          className="fixed bottom-6 right-5 z-40 bg-[#c8102e] hover:bg-[#a00d24] active:bg-[#7a0a1b] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-colors"
           aria-label="Scroll to save"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

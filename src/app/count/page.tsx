@@ -292,7 +292,7 @@ export default function CountPage() {
       {showScrollBtn && (
         <button
           onClick={scrollToSave}
-          className="fixed bottom-6 right-5 z-40 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-colors"
+          className="fixed bottom-6 right-5 z-40 bg-[#c8102e] hover:bg-[#a00d24] active:bg-[#7a0a1b] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-colors"
           aria-label="Scroll to save"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
