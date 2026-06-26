@@ -15,3 +15,10 @@ export async function POST(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
+
+export async function DELETE() {
+  const db = getServerSupabase()
+  const { error } = await db.from('push_subscriptions').delete().neq('endpoint', '')
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

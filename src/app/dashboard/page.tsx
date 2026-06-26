@@ -151,12 +151,20 @@ export default function DashboardPage() {
                     const r = await fetch('/api/send-push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Test', body: 'Push is working!' }) })
                     const d = await r.json()
                     setTestResult(d.failures?.length ? `Error: ${d.failures[0]}` : `Sent ${d.sent}/${d.total}`)
-                    setTimeout(() => setTestResult(null), 6000)
+                    setTimeout(() => setTestResult(null), 8000)
                   }}
                   className="text-sm border border-gray-200 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-lg text-gray-600"
                 >
                   Test
                 </button>
+                <a
+                  href="/api/push-debug"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm border border-gray-200 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-lg text-gray-400"
+                >
+                  Debug
+                </a>
               </div>
             )}
             {notifStatus === 'denied' && (
