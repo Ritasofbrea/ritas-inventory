@@ -1,0 +1,24 @@
+{
+  "name": "Brea's Inventory – Rita's Italian Ice",
+  "short_name": "Brea's Inventory",
+  "description": "Inventory management for Rita's Italian Ice, Brea location",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a7a3c",
+  "theme_color": "#1a7a3c",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
