@@ -40,12 +40,20 @@ export default function DashboardPage() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
     setNotifStatus('requesting')
     try {
+      // Force service worker to update to latest version
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(registrations.map((r) => r.update()))
+
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') { setNotifStatus('denied'); return }
 
       const reg = await navigator.serviceWorker.ready
+
+      // Always unsubscribe and re-subscribe to ensure fresh subscription with current VAPID key
       const existing = await reg.pushManager.getSubscription()
-      const sub = existing ?? await reg.pushManager.subscribe({
+      if (existing) await existing.unsubscribe()
+
+      const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
       })
@@ -56,7 +64,8 @@ export default function DashboardPage() {
         body: JSON.stringify(sub.toJSON()),
       })
       setNotifStatus('granted')
-    } catch {
+    } catch (e) {
+      console.error('enable notifications error:', e)
       setNotifStatus('idle')
     }
   }
@@ -129,7 +138,7 @@ export default function DashboardPage() {
               </button>
             )}
             {notifStatus === 'granted' && (
-              <span className="text-sm text-green-700 border border-green-200 bg-green-50 px-3 py-1.5 rounded-lg">🔔 Notifications on</span>
+              <button onClick={enableNotifications} className="text-sm text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg">🔔 Notifications on</button>
             )}
             {notifStatus === 'denied' && (
               <span className="text-sm text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">Notifications blocked</span>
