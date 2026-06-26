@@ -67,10 +67,6 @@ export default function CountPage() {
       setItems(data)
       const initial: CountDraft = {}
       const initialSecondary: CountDraft = {}
-      data.forEach((item: Item) => {
-        initial[item.id] = String(item.current_count)
-        initialSecondary[item.id] = item.secondary_count > 0 ? String(item.secondary_count) : ''
-      })
       setCounts(initial)
       setSecondaryCounts(initialSecondary)
     } catch {
@@ -136,7 +132,7 @@ export default function CountPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'New Count Submitted', body: `${name} submitted a count at ${time}` }),
-      }).catch(() => {})
+      }).then((r) => r.json()).then((d) => console.log('push result:', d)).catch((e) => console.error('push error:', e))
     } catch {
       setError('Could not save. Try again.')
     } finally {

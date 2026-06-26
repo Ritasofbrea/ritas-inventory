@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         payload
       ).catch(async (err) => {
-        // Remove expired/invalid subscriptions (410 Gone)
+        console.error('push send error:', err.statusCode, err.body)
         if (err.statusCode === 410) {
           await db.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
         }
@@ -34,6 +34,8 @@ export async function POST(request: NextRequest) {
     )
   )
 
+  const failures = results.filter((r) => r.status === 'rejected').map((r) => (r as PromiseRejectedResult).reason?.message)
   const sent = results.filter((r) => r.status === 'fulfilled').length
-  return NextResponse.json({ sent, total: subs.length })
+  console.log(`push: ${sent}/${subs.length} sent`, failures.length ? failures : '')
+  return NextResponse.json({ sent, total: subs.length, failures })
 }
