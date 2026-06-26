@@ -22,6 +22,7 @@ export default function DashboardPage() {
   const [shorts, setShorts] = useState<ShortRecord[]>([])
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
+  const [testResult, setTestResult] = useState<string | null>(null)
 
   useEffect(() => {
     const role = getRole()
@@ -138,7 +139,21 @@ export default function DashboardPage() {
               </button>
             )}
             {notifStatus === 'granted' && (
-              <button onClick={enableNotifications} className="text-sm text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg">🔔 Notifications on</button>
+              <div className="flex gap-2">
+                <button onClick={enableNotifications} className="text-sm text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg">🔔 Notifications on</button>
+                <button
+                  onClick={async () => {
+                    setTestResult('Sending…')
+                    const r = await fetch('/api/send-push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Test', body: 'Push is working!' }) })
+                    const d = await r.json()
+                    setTestResult(d.failures?.length ? `Error: ${d.failures[0]}` : `Sent ${d.sent}/${d.total}`)
+                    setTimeout(() => setTestResult(null), 6000)
+                  }}
+                  className="text-sm border border-gray-200 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-lg text-gray-600"
+                >
+                  Test
+                </button>
+              </div>
             )}
             {notifStatus === 'denied' && (
               <span className="text-sm text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">Notifications blocked</span>
@@ -151,6 +166,12 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+
+        {testResult && (
+          <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${testResult.startsWith('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+            {testResult}
+          </div>
+        )}
 
         {/* Short shipment alerts */}
         {shorts.length > 0 && (
