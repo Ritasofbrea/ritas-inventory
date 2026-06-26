@@ -130,6 +130,13 @@ export default function CountPage() {
       setSecondaryCounts({})
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
+      const name = countedBy.trim() || 'Someone'
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Count Submitted', body: `${name} submitted a count at ${time}` }),
+      }).catch(() => {})
     } catch {
       setError('Could not save. Try again.')
     } finally {

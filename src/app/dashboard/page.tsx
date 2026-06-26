@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [shorts, setShorts] = useState<ShortRecord[]>([])
   const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
 
   useEffect(() => {
     const role = getRole()
@@ -28,7 +29,37 @@ export default function DashboardPage() {
     if (role !== 'owner') { router.replace('/count'); return }
     fetchItems()
     fetchShorts()
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      setNotifStatus('granted')
+    } else if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+      setNotifStatus('denied')
+    }
   }, [router])
+
+  const enableNotifications = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    setNotifStatus('requesting')
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') { setNotifStatus('denied'); return }
+
+      const reg = await navigator.serviceWorker.ready
+      const existing = await reg.pushManager.getSubscription()
+      const sub = existing ?? await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      })
+
+      await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sub.toJSON()),
+      })
+      setNotifStatus('granted')
+    } catch {
+      setNotifStatus('idle')
+    }
+  }
 
   const fetchItems = async () => {
     try {
@@ -87,12 +118,29 @@ export default function DashboardPage() {
               </p>
             )}
           </div>
-          <button
-            onClick={() => { fetchItems(); fetchShorts() }}
-            className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
-          >
-            Refresh
-          </button>
+          <div className="flex gap-2">
+            {notifStatus !== 'granted' && notifStatus !== 'denied' && (
+              <button
+                onClick={enableNotifications}
+                disabled={notifStatus === 'requesting'}
+                className="text-sm bg-[#c8102e] hover:bg-[#a00d24] text-white font-semibold px-3 py-1.5 rounded-lg disabled:opacity-60"
+              >
+                {notifStatus === 'requesting' ? 'Enabling…' : '🔔 Enable Notifications'}
+              </button>
+            )}
+            {notifStatus === 'granted' && (
+              <span className="text-sm text-green-700 border border-green-200 bg-green-50 px-3 py-1.5 rounded-lg">🔔 Notifications on</span>
+            )}
+            {notifStatus === 'denied' && (
+              <span className="text-sm text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">Notifications blocked</span>
+            )}
+            <button
+              onClick={() => { fetchItems(); fetchShorts() }}
+              className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Short shipment alerts */}

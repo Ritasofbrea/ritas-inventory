@@ -165,6 +165,12 @@ export default function ReceiveOrderPage() {
       }
 
       setStep('done')
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Order Received', body: `An order was marked received at ${time}` }),
+      }).catch(() => {})
       setTimeout(() => router.push(shortItems.length > 0 ? '/dashboard' : '/order-list'), 1800)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save. Try again.')
