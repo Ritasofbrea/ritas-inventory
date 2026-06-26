@@ -85,7 +85,12 @@ export default function Navigation() {
 
         {/* Bottom row: nav tabs — scrollable on mobile */}
         <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-hide">
-          {role === 'shift_lead' && navLink('/count', 'Count Entry')}
+          {role === 'shift_lead' && (
+            <>
+              {navLink('/count', 'Count Entry')}
+              {navLink('/receive-order', 'Receive Order')}
+            </>
+          )}
 
           {role === 'owner' && (
             <>

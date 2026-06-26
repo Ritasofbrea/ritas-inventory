@@ -6,17 +6,28 @@ import Navigation from '@/components/Navigation'
 import { getRole } from '@/lib/auth'
 import { Item, getStockStatus, CATEGORIES } from '@/lib/types'
 
+interface ShortRecord {
+  id: string
+  created_at: string
+  notes: string
+  resolved: boolean
+  order_history_items: { item_name: string; quantity: number; unit: string }[]
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [shorts, setShorts] = useState<ShortRecord[]>([])
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
 
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
     fetchItems()
+    fetchShorts()
   }, [router])
 
   const fetchItems = async () => {
@@ -28,6 +39,18 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const fetchShorts = async () => {
+    const res = await fetch('/api/order-history?type=short&unresolved=true')
+    if (res.ok) setShorts(await res.json())
+  }
+
+  const resolveShort = async (id: string) => {
+    setResolvingId(id)
+    await fetch('/api/order-history', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, resolved: true }) })
+    setShorts((prev) => prev.filter((s) => s.id !== id))
+    setResolvingId(null)
   }
 
   if (loading) {
@@ -66,6 +89,39 @@ export default function DashboardPage() {
             Refresh
           </button>
         </div>
+
+        {/* Short shipment alerts */}
+        {shorts.length > 0 && (
+          <div className="mb-6 flex flex-col gap-3">
+            {shorts.map((short) => (
+              <div key={short.id} className="bg-red-600 text-white rounded-2xl px-5 py-4 shadow-md">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-lg flex items-center gap-2">
+                      ⚠️ Short Shipment
+                    </p>
+                    <p className="text-red-100 text-sm mt-0.5">{new Date(short.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                    <ul className="mt-2 space-y-1">
+                      {short.order_history_items.map((item, i) => (
+                        <li key={i} className="text-sm font-semibold">
+                          {item.item_name} — <span className="font-bold">{item.quantity} {item.unit} still outstanding</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {short.notes && <p className="text-red-200 text-xs mt-2 italic">{short.notes}</p>}
+                  </div>
+                  <button
+                    onClick={() => resolveShort(short.id)}
+                    disabled={resolvingId === short.id}
+                    className="flex-shrink-0 bg-white text-red-700 hover:bg-red-50 font-bold text-sm px-4 py-2 rounded-xl transition-colors disabled:opacity-60"
+                  >
+                    {resolvingId === short.id ? '…' : 'Resolved ✓'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Summary banner */}
         {needsAttention === 0 ? (
