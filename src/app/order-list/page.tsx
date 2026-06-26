@@ -33,6 +33,7 @@ export default function OrderListPage() {
   // Mark as ordered
   const [marking, setMarking] = useState(false)
   const [marked, setMarked] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   // Order history
   const [orderHistory, setOrderHistory] = useState<OrderRecord[]>([])
@@ -49,8 +50,11 @@ export default function OrderListPage() {
   const fetchItems = async () => {
     try {
       const res = await fetch('/api/items')
-      setItems(await res.json())
+      const data: DistributorItem[] = await res.json()
+      setItems(data)
       setLastUpdated(new Date())
+      const needs = data.filter((i) => getStockStatus(i) !== 'ok')
+      setSelectedIds(new Set(needs.map((i) => i.id)))
     } finally {
       setLoading(false)
     }
@@ -72,22 +76,33 @@ export default function OrderListPage() {
     if (v === 'history') fetchHistory()
   }
 
+  const toggleItem = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
   const handleMarkOrdered = async () => {
+    if (selectedIds.size === 0) return
     setMarking(true)
     try {
-      const orderItems = needsOrder.map((item) => ({
-        item_id: item.id,
-        item_name: item.name,
-        quantity: Math.max(0, item.par_level - item.current_count),
-        unit: item.unit,
-      }))
+      const orderItems = needsOrder
+        .filter((item) => selectedIds.has(item.id))
+        .map((item) => ({
+          item_id: item.id,
+          item_name: item.name,
+          quantity: Math.max(0, item.par_level - item.current_count),
+          unit: item.unit,
+        }))
       await fetch('/api/order-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'ordered', items: orderItems }),
       })
       setMarked(true)
-      setOrderHistory([]) // reset so history reloads fresh
+      setOrderHistory([])
       setTimeout(() => setMarked(false), 3000)
     } finally {
       setMarking(false)
@@ -183,16 +198,21 @@ export default function OrderListPage() {
                 <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 mb-6 flex items-center justify-between gap-4">
                   <div>
                     <p className="text-red-800 font-bold text-lg">{needsOrder.length} item{needsOrder.length !== 1 ? 's' : ''} to order</p>
-                    <p className="text-red-600 text-sm mt-0.5">{outItems.length} out of stock · {lowItems.length} running low</p>
+                    <p className="text-red-600 text-sm mt-0.5">
+                      {outItems.length} out of stock · {lowItems.length} running low
+                      {selectedIds.size < needsOrder.length && (
+                        <span className="ml-1 font-semibold">· {selectedIds.size} selected</span>
+                      )}
+                    </p>
                   </div>
                   <button
                     onClick={handleMarkOrdered}
-                    disabled={marking || marked}
+                    disabled={marking || marked || selectedIds.size === 0}
                     className={`flex-shrink-0 font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors ${
-                      marked ? 'bg-green-500 text-white' : marking ? 'bg-gray-200 text-gray-400' : 'bg-[#1a7a3c] hover:bg-[#155f2f] text-white'
+                      marked ? 'bg-green-500 text-white' : marking || selectedIds.size === 0 ? 'bg-gray-200 text-gray-400' : 'bg-[#1a7a3c] hover:bg-[#155f2f] text-white'
                     }`}
                   >
-                    {marked ? '✓ Order Saved' : marking ? 'Saving…' : 'Mark as Ordered'}
+                    {marked ? '✓ Order Saved' : marking ? 'Saving…' : selectedIds.size < needsOrder.length && selectedIds.size > 0 ? `Order ${selectedIds.size} Item${selectedIds.size !== 1 ? 's' : ''}` : 'Mark as Ordered'}
                   </button>
                 </div>
 
@@ -205,8 +225,20 @@ export default function OrderListPage() {
                       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         {distItems.map((item, idx) => {
                           const status = getStockStatus(item)
+                          const checked = selectedIds.has(item.id)
                           return (
-                            <div key={item.id} className={`flex items-center gap-3 px-5 py-4 ${idx < distItems.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                            <div
+                              key={item.id}
+                              onClick={() => toggleItem(item.id)}
+                              className={`flex items-center gap-3 px-5 py-4 cursor-pointer transition-colors ${idx < distItems.length - 1 ? 'border-b border-gray-100' : ''} ${checked ? '' : 'opacity-50 bg-gray-50'}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleItem(item.id)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-5 h-5 flex-shrink-0 accent-[#1a7a3c] cursor-pointer"
+                              />
                               <div className="flex-1 min-w-0">
                                 <p className="font-semibold text-gray-900">{item.name}</p>
                                 <p className="text-sm text-gray-400">
@@ -238,8 +270,20 @@ export default function OrderListPage() {
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                       {unmapped.map((item, idx) => {
                         const status = getStockStatus(item)
+                        const checked = selectedIds.has(item.id)
                         return (
-                          <div key={item.id} className={`flex items-center gap-3 px-5 py-4 ${idx < unmapped.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                          <div
+                            key={item.id}
+                            onClick={() => toggleItem(item.id)}
+                            className={`flex items-center gap-3 px-5 py-4 cursor-pointer transition-colors ${idx < unmapped.length - 1 ? 'border-b border-gray-100' : ''} ${checked ? '' : 'opacity-50 bg-gray-50'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleItem(item.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-5 h-5 flex-shrink-0 accent-[#1a7a3c] cursor-pointer"
+                            />
                             <div className="flex-1 min-w-0">
                               <p className="font-semibold text-gray-900">{item.name}</p>
                               <p className="text-sm text-gray-400">{item.category}</p>
