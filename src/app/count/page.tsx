@@ -20,6 +20,7 @@ export default function CountPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [countedBy, setCountedBy] = useState('')
+  const [role, setRole] = useState<string | null>(null)
   const firstInputRef = useRef<HTMLInputElement>(null)
 
   // Add item modal state
@@ -27,12 +28,14 @@ export default function CountPage() {
   const [newName, setNewName] = useState('')
   const [newCategory, setNewCategory] = useState<Category>(CATEGORIES[0])
   const [newUnit, setNewUnit] = useState('boxes')
+  const [newSecondaryUnit, setNewSecondaryUnit] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
 
   useEffect(() => {
-    const role = getRole()
-    if (!role) { router.replace('/login'); return }
+    const r = getRole()
+    if (!r) { router.replace('/login'); return }
+    setRole(r)
     const saved = localStorage.getItem('countedBy')
     if (saved) setCountedBy(saved)
     fetchItems()
@@ -76,7 +79,7 @@ export default function CountPage() {
   }
 
   const handleSubmit = async () => {
-    if (!countedBy.trim()) {
+    if (role !== 'owner' && !countedBy.trim()) {
       setError('Please enter your name before saving.')
       return
     }
@@ -126,7 +129,7 @@ export default function CountPage() {
       const res = await fetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), category: newCategory, unit: newUnit.trim() || 'boxes' }),
+        body: JSON.stringify({ name: newName.trim(), category: newCategory, unit: newUnit.trim() || 'boxes', secondary_unit: newSecondaryUnit.trim() }),
       })
       if (!res.ok) throw new Error()
       const created: Item = await res.json()
@@ -135,6 +138,7 @@ export default function CountPage() {
       setSecondaryCounts((prev) => ({ ...prev, [created.id]: '' }))
       setNewName('')
       setNewUnit('boxes')
+      setNewSecondaryUnit('')
       setShowAddModal(false)
     } catch {
       setAddError('Could not add item. Try again.')
@@ -174,17 +178,19 @@ export default function CountPage() {
           </button>
         </div>
 
-        {/* Who's counting */}
-        <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 flex items-center gap-3">
-          <label className="text-sm font-semibold text-gray-600 flex-shrink-0">Who&apos;s counting?</label>
-          <input
-            type="text"
-            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:border-blue-400 text-sm"
-            placeholder="Enter your name"
-            value={countedBy}
-            onChange={(e) => handleCountedByChange(e.target.value)}
-          />
-        </div>
+        {/* Who's counting — shift lead only */}
+        {role !== 'owner' && (
+          <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 flex items-center gap-3">
+            <label className="text-sm font-semibold text-gray-600 flex-shrink-0">Who&apos;s counting?</label>
+            <input
+              type="text"
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:border-blue-400 text-sm"
+              placeholder="Enter your name"
+              value={countedBy}
+              onChange={(e) => handleCountedByChange(e.target.value)}
+            />
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
@@ -322,6 +328,17 @@ export default function CountPage() {
                   onChange={(e) => setNewUnit(e.target.value)}
                 />
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Sub-unit <span className="text-gray-400 font-normal">(optional — e.g. sleeves, container)</span></label>
+              <input
+                type="text"
+                className="border border-purple-200 rounded-xl px-3 py-2.5 text-gray-900 focus:outline-none focus:border-purple-400"
+                placeholder="e.g. sleeves"
+                value={newSecondaryUnit}
+                onChange={(e) => setNewSecondaryUnit(e.target.value)}
+              />
             </div>
 
             <div className="flex gap-3 mt-2">
