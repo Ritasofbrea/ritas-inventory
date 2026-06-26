@@ -56,8 +56,17 @@ export default function OrderListPage() {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
-    Promise.all([fetchItems(), fetchPendingOrders()])
+    loadAll()
   }, [router])
+
+  const loadAll = async () => {
+    const [data, { onOrderIds }] = await Promise.all([fetchItems(), fetchPendingOrders()])
+    if (data) {
+      const needsOrder = data.filter((i) => getStockStatus(i) !== 'ok')
+      const toOrderIds = needsOrder.filter((i) => !onOrderIds.has(i.id)).map((i) => i.id)
+      setSelectedIds(new Set(toOrderIds))
+    }
+  }
 
   const fetchItems = async () => {
     try {
@@ -73,10 +82,9 @@ export default function OrderListPage() {
 
   const fetchPendingOrders = async () => {
     const res = await fetch('/api/order-history')
-    if (!res.ok) return
+    if (!res.ok) return { onOrderIds: new Set<string>() }
     const all: OrderRecord[] = await res.json()
 
-    // IDs of ordered records that have already been received/will_call'd
     const fulfilledOrderIds = new Set(
       all
         .filter((r) => r.type === 'received' || r.type === 'will_call')
@@ -99,6 +107,7 @@ export default function OrderListPage() {
 
     setOnOrderItemIds(itemIds)
     setOnOrderDetails(details)
+    return { onOrderIds: itemIds }
   }
 
   const fetchHistory = async () => {
@@ -145,7 +154,7 @@ export default function OrderListPage() {
       if (res.ok) {
         setMarked(true)
         setOrderHistory([])
-        await fetchPendingOrders()
+        await loadAll()
         setTimeout(() => setMarked(false), 3000)
       }
     } finally {
@@ -218,7 +227,7 @@ export default function OrderListPage() {
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={() => Promise.all([fetchItems(), fetchPendingOrders()])} className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg">
+            <button onClick={loadAll} className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg">
               Refresh
             </button>
             <button
