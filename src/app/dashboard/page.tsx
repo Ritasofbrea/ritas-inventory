@@ -88,7 +88,7 @@ export default function DashboardPage() {
             )}
           </div>
           <button
-            onClick={fetchItems}
+            onClick={() => { fetchItems(); fetchShorts() }}
             className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
           >
             Refresh
