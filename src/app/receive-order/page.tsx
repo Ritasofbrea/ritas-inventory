@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import { getRole } from '@/lib/auth'
@@ -36,6 +36,21 @@ export default function ReceiveOrderPage() {
   const [shorts, setShorts] = useState<ShortItem[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const submitRef = useRef<HTMLDivElement>(null)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+
+  useEffect(() => {
+    const el = submitRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([e]) => setShowScrollBtn(!e.isIntersecting), { threshold: 0.1 })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [step])
+
+  const scrollToSave = useCallback(() => {
+    submitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [])
 
   useEffect(() => {
     const role = getRole()
@@ -407,7 +422,7 @@ export default function ReceiveOrderPage() {
           })}
         </div>
 
-        <div className="mt-8 pb-8">
+        <div ref={submitRef} className="mt-8 pb-8">
           <button
             onClick={handleContinue}
             disabled={saving}
@@ -417,6 +432,18 @@ export default function ReceiveOrderPage() {
           </button>
         </div>
       </main>
+
+      {showScrollBtn && step === 'enter' && (
+        <button
+          onClick={scrollToSave}
+          className="fixed bottom-6 right-5 z-40 bg-[#1a7a3c] hover:bg-[#155f2f] active:bg-[#0f4a25] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-colors"
+          aria-label="Scroll to save"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }

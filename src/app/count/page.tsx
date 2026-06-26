@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import { getRole } from '@/lib/auth'
@@ -22,6 +22,20 @@ export default function CountPage() {
   const [countedBy, setCountedBy] = useState('')
   const [role, setRole] = useState<string | null>(null)
   const firstInputRef = useRef<HTMLInputElement>(null)
+  const submitRef = useRef<HTMLDivElement>(null)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+
+  useEffect(() => {
+    const el = submitRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([e]) => setShowScrollBtn(!e.isIntersecting), { threshold: 0.1 })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  const scrollToSave = useCallback(() => {
+    submitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [])
 
   // Add item modal state
   const [showAddModal, setShowAddModal] = useState(false)
@@ -257,7 +271,7 @@ export default function CountPage() {
         </div>
 
         {/* Submit button */}
-        <div className="mt-8 pb-8">
+        <div ref={submitRef} className="mt-8 pb-8">
           <button
             onClick={handleSubmit}
             disabled={saving}
@@ -273,6 +287,19 @@ export default function CountPage() {
           </button>
         </div>
       </main>
+
+      {/* Scroll to save button */}
+      {showScrollBtn && (
+        <button
+          onClick={scrollToSave}
+          className="fixed bottom-6 right-5 z-40 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-colors"
+          aria-label="Scroll to save"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
 
       {/* Add Item Modal */}
       {showAddModal && (
