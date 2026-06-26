@@ -41,7 +41,6 @@ export default function DashboardPage() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
     setNotifStatus('requesting')
     try {
-      // Force service worker to update to latest version
       const registrations = await navigator.serviceWorker.getRegistrations()
       await Promise.all(registrations.map((r) => r.update()))
 
@@ -50,13 +49,18 @@ export default function DashboardPage() {
 
       const reg = await navigator.serviceWorker.ready
 
-      // Always unsubscribe and re-subscribe to ensure fresh subscription with current VAPID key
       const existing = await reg.pushManager.getSubscription()
       if (existing) await existing.unsubscribe()
 
+      // Convert base64url VAPID key to Uint8Array — required by Apple/W3C spec
+      const rawKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+      const padding = '='.repeat((4 - (rawKey.length % 4)) % 4)
+      const base64 = (rawKey + padding).replace(/-/g, '+').replace(/_/g, '/')
+      const applicationServerKey = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+        applicationServerKey,
       })
 
       await fetch('/api/subscribe', {
