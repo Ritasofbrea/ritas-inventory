@@ -4,7 +4,7 @@ import { getServerSupabase } from '@/lib/supabase'
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
 const PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!
-const SUBJECT = process.env.VAPID_EMAIL!
+const SUBJECT = (process.env.VAPID_EMAIL ?? '').trim()
 
 webPush.setVapidDetails(
   SUBJECT.startsWith('mailto:') ? SUBJECT : `mailto:${SUBJECT}`,

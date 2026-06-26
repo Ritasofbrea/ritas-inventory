@@ -3,7 +3,7 @@ import { generateVAPIDKeys } from 'web-push'
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
 const PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? ''
-const SUBJECT = process.env.VAPID_EMAIL ?? ''
+const SUBJECT = (process.env.VAPID_EMAIL ?? '').trim()
 
 export async function GET() {
   const pubBytes = PUBLIC_KEY ? Buffer.from(PUBLIC_KEY, 'base64url') : null
