@@ -23,10 +23,44 @@ export default function Navigation() {
   const [morePos, setMorePos] = useState({ top: 80, left: 0 })
   const moreRef = useRef<HTMLDivElement>(null)
   const moreButtonRef = useRef<HTMLButtonElement>(null)
+  const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
 
   useEffect(() => {
     setRole(getRole())
+    if (typeof Notification !== 'undefined') {
+      if (Notification.permission === 'granted') setNotifStatus('granted')
+      else if (Notification.permission === 'denied') setNotifStatus('denied')
+    }
   }, [])
+
+  const enableNotifications = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    setNotifStatus('requesting')
+    setMoreOpen(false)
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(registrations.map((r) => r.update()))
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') { setNotifStatus('denied'); return }
+      const reg = await navigator.serviceWorker.ready
+      const existing = await reg.pushManager.getSubscription()
+      if (existing) await existing.unsubscribe()
+      const rawKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+      const padding = '='.repeat((4 - (rawKey.length % 4)) % 4)
+      const base64 = (rawKey + padding).replace(/-/g, '+').replace(/_/g, '/')
+      const applicationServerKey = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })
+      await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sub.toJSON()),
+      })
+      setNotifStatus('granted')
+    } catch (e) {
+      console.error('enable notifications error:', e)
+      setNotifStatus('idle')
+    }
+  }
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -136,6 +170,21 @@ export default function Navigation() {
                         {l.label}
                       </Link>
                     ))}
+                    <div className="border-t border-gray-100 mt-1 pt-1">
+                      {notifStatus === 'granted' ? (
+                        <span className="block px-4 py-2.5 text-sm text-green-600 font-medium">🔔 Notifications on</span>
+                      ) : notifStatus === 'denied' ? (
+                        <span className="block px-4 py-2.5 text-sm text-gray-400">Notifications blocked</span>
+                      ) : (
+                        <button
+                          onClick={enableNotifications}
+                          disabled={notifStatus === 'requesting'}
+                          className="block w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {notifStatus === 'requesting' ? 'Enabling…' : '🔔 Enable Notifications'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

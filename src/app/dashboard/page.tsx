@@ -21,59 +21,13 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [shorts, setShorts] = useState<ShortRecord[]>([])
   const [resolvingId, setResolvingId] = useState<string | null>(null)
-  const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
-  const [testResult, setTestResult] = useState<string | null>(null)
-
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
     fetchItems()
     fetchShorts()
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      setNotifStatus('granted')
-    } else if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
-      setNotifStatus('denied')
-    }
   }, [router])
-
-  const enableNotifications = async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
-    setNotifStatus('requesting')
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(registrations.map((r) => r.update()))
-
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') { setNotifStatus('denied'); return }
-
-      const reg = await navigator.serviceWorker.ready
-
-      const existing = await reg.pushManager.getSubscription()
-      if (existing) await existing.unsubscribe()
-
-      // Convert base64url VAPID key to Uint8Array — required by Apple/W3C spec
-      const rawKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-      const padding = '='.repeat((4 - (rawKey.length % 4)) % 4)
-      const base64 = (rawKey + padding).replace(/-/g, '+').replace(/_/g, '/')
-      const applicationServerKey = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      })
-
-      await fetch('/api/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sub.toJSON()),
-      })
-      setNotifStatus('granted')
-    } catch (e) {
-      console.error('enable notifications error:', e)
-      setNotifStatus('idle')
-    }
-  }
 
   const fetchItems = async () => {
     try {
@@ -132,58 +86,13 @@ export default function DashboardPage() {
               </p>
             )}
           </div>
-          <div className="flex gap-2">
-            {notifStatus !== 'granted' && notifStatus !== 'denied' && (
-              <button
-                onClick={enableNotifications}
-                disabled={notifStatus === 'requesting'}
-                className="text-sm bg-[#c8102e] hover:bg-[#a00d24] text-white font-semibold px-3 py-1.5 rounded-lg disabled:opacity-60"
-              >
-                {notifStatus === 'requesting' ? 'Enabling…' : '🔔 Enable Notifications'}
-              </button>
-            )}
-            {notifStatus === 'granted' && (
-              <div className="flex gap-2">
-                <button onClick={enableNotifications} className="text-sm text-green-700 border border-green-200 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg">🔔 Notifications on</button>
-                <button
-                  onClick={async () => {
-                    setTestResult('Sending…')
-                    const r = await fetch('/api/send-push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Test', body: 'Push is working!' }) })
-                    const d = await r.json()
-                    setTestResult(d.failures?.length ? `Error: ${d.failures[0]}` : `Sent ${d.sent}/${d.total}`)
-                    setTimeout(() => setTestResult(null), 8000)
-                  }}
-                  className="text-sm border border-gray-200 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-lg text-gray-600"
-                >
-                  Test
-                </button>
-                <a
-                  href="/api/push-debug"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm border border-gray-200 bg-white hover:bg-gray-50 px-3 py-1.5 rounded-lg text-gray-400"
-                >
-                  Debug
-                </a>
-              </div>
-            )}
-            {notifStatus === 'denied' && (
-              <span className="text-sm text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg">Notifications blocked</span>
-            )}
-            <button
-              onClick={() => { fetchItems(); fetchShorts() }}
-              className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
-            >
-              Refresh
-            </button>
-          </div>
+          <button
+            onClick={() => { fetchItems(); fetchShorts() }}
+            className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
+          >
+            Refresh
+          </button>
         </div>
-
-        {testResult && (
-          <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${testResult.startsWith('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
-            {testResult}
-          </div>
-        )}
 
         {/* Short shipment alerts */}
         {shorts.length > 0 && (
