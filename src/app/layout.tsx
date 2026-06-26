@@ -32,7 +32,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full">
-      <body className="min-h-full flex flex-col" style={{ background: '#d4edda' }}>
+      <body className="min-h-full flex flex-col" style={{ background: '#1a7a3c' }}>
         <ServiceWorkerRegistration />
         {children}
       </body>
