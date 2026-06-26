@@ -43,7 +43,12 @@ export default function DashboardPage() {
 
   const fetchShorts = async () => {
     const res = await fetch('/api/order-history?type=short&unresolved=true')
-    if (res.ok) setShorts(await res.json())
+    if (res.ok) {
+      const data = await res.json()
+      setShorts(Array.isArray(data) ? data : [])
+    } else {
+      console.error('fetchShorts failed', res.status, await res.text().catch(() => ''))
+    }
   }
 
   const resolveShort = async (id: string) => {

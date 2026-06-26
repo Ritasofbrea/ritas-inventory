@@ -127,7 +127,7 @@ export default function ReceiveOrderPage() {
 
       // Save short shipment record if there are shorts
       if (shortItems.length > 0) {
-        await fetch('/api/order-history', {
+        const shortRes = await fetch('/api/order-history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -143,6 +143,10 @@ export default function ReceiveOrderPage() {
             resolved: false,
           }),
         })
+        if (!shortRes.ok) {
+          const errData = await shortRes.json().catch(() => ({}))
+          throw new Error(errData.error || 'Failed to save short record')
+        }
       }
 
       setStep('done')
