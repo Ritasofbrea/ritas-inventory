@@ -26,11 +26,11 @@ export async function POST(request: NextRequest) {
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         payload
       ).catch(async (err) => {
-        console.error('push send error:', err.statusCode, err.body)
+        console.error('push send error:', err.statusCode, err.body, err.message)
         if (err.statusCode === 410) {
           await db.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
         }
-        throw err
+        throw new Error(`HTTP ${err.statusCode ?? '?'}: ${err.body ?? err.message}`)
       })
     )
   )
