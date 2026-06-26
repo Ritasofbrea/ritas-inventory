@@ -31,7 +31,7 @@ export default function CountPage() {
     const obs = new IntersectionObserver(([e]) => setShowScrollBtn(!e.isIntersecting), { threshold: 0.1 })
     obs.observe(el)
     return () => obs.disconnect()
-  }, [])
+  }, [loading])
 
   const scrollToSave = useCallback(() => {
     submitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
