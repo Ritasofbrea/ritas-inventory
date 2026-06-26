@@ -9,6 +9,7 @@ import { Role } from '@/lib/types'
 
 const MORE_LINKS = [
   { href: '/count', label: 'Count Entry' },
+  { href: '/receive-order', label: 'Receive Order' },
   { href: '/par-settings', label: 'Par Levels' },
   { href: '/manage-items', label: 'Manage Items' },
   { href: '/reports', label: 'Reports' },
