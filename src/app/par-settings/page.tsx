@@ -10,6 +10,12 @@ interface ParDraft {
   [itemId: string]: string
 }
 
+interface Suggestion {
+  suggested_par: number
+  weekly_avg: number
+  unit: string
+}
+
 export default function ParSettingsPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
@@ -18,12 +24,14 @@ export default function ParSettingsPage() {
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
+  const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({})
 
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
     fetchItems()
+    fetch('/api/par-suggestions').then((r) => r.json()).then((d) => { if (!d.error) setSuggestions(d) })
   }, [router])
 
   const fetchItems = async () => {
@@ -113,7 +121,10 @@ export default function ParSettingsPage() {
                   {category}
                 </h2>
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  {catItems.map((item, idx) => (
+                  {catItems.map((item, idx) => {
+                    const suggestion = suggestions[item.id]
+                    const showSuggestion = suggestion && suggestion.suggested_par !== item.par_level
+                    return (
                     <div
                       key={item.id}
                       className={`flex items-center gap-3 px-5 py-4 ${
@@ -123,6 +134,14 @@ export default function ParSettingsPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-gray-900">{item.name}</p>
                         <p className="text-sm text-gray-400">{item.unit}</p>
+                        {showSuggestion && (
+                          <button
+                            onClick={() => setPars((prev) => ({ ...prev, [item.id]: String(suggestion.suggested_par) }))}
+                            className="mt-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            Suggested: {suggestion.suggested_par} · ~{suggestion.weekly_avg}/wk — Use ↑
+                          </button>
+                        )}
                       </div>
                       <input
                         type="number"
@@ -150,7 +169,8 @@ export default function ParSettingsPage() {
                         {saved.has(item.id) ? '✓' : saving === item.id ? '…' : 'Save'}
                       </button>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </section>
             )
