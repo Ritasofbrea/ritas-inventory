@@ -151,8 +151,8 @@ export default function ReceiveOrderPage() {
 
       setStep('done')
       setTimeout(() => router.push(shortItems.length > 0 ? '/dashboard' : '/order-list'), 1800)
-    } catch {
-      setError('Could not save. Try again.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save. Try again.')
     } finally {
       setSaving(false)
     }
