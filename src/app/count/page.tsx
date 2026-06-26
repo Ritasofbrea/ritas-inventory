@@ -126,6 +126,8 @@ export default function CountPage() {
         )
       )
 
+      setCounts({})
+      setSecondaryCounts({})
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch {
