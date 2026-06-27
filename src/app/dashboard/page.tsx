@@ -6,6 +6,12 @@ import Navigation from '@/components/Navigation'
 import { getRole } from '@/lib/auth'
 import { Item, getStockStatus } from '@/lib/types'
 
+type LastCount = { item_id: string; created_at: string; entered_by: string }
+
+function daysSince(iso: string) {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+}
+
 interface ShortRecord {
   id: string
   created_at: string
@@ -31,6 +37,7 @@ function formatDateTime(iso: string) {
 export default function DashboardPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
+  const [lastCounts, setLastCounts] = useState<Record<string, LastCount>>({})
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [shorts, setShorts] = useState<ShortRecord[]>([])
@@ -45,7 +52,7 @@ export default function DashboardPage() {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
-    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary()])
+    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary(), fetchLastCounts()])
   }, [router])
 
   const fetchItems = async () => {
@@ -84,6 +91,15 @@ export default function DashboardPage() {
     if (res.ok) setSummary(await res.json())
   }
 
+  const fetchLastCounts = async () => {
+    const res = await fetch('/api/counts/last-per-item')
+    if (!res.ok) return
+    const counts: LastCount[] = await res.json()
+    const map: Record<string, LastCount> = {}
+    for (const c of counts) map[c.item_id] = c
+    setLastCounts(map)
+  }
+
   const resolveShort = async (id: string, name: string) => {
     setResolvingId(id)
     setPendingResolveId(null)
@@ -105,6 +121,11 @@ export default function DashboardPage() {
   const lowItems = items.filter((i) => getStockStatus(i) === 'low')
   const needsAttention = outItems.length + lowItems.length
 
+  const staleItems = items.filter((i) => {
+    const lc = lastCounts[i.id]
+    return !lc || daysSince(lc.created_at) > 7
+  })
+
   const countFmt = summary.lastCount ? formatDateTime(summary.lastCount.created_at) : null
   const recvFmt = summary.lastReceived ? formatDateTime(summary.lastReceived.created_at) : null
 
@@ -117,7 +138,7 @@ export default function DashboardPage() {
         <div className="mb-5 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <button
-            onClick={() => { fetchItems(); fetchOrderHistory(); fetchSummary() }}
+            onClick={() => { fetchItems(); fetchOrderHistory(); fetchSummary(); fetchLastCounts() }}
             className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
           >
             Refresh
@@ -272,6 +293,30 @@ export default function DashboardPage() {
               </section>
             )}
           </>
+        )}
+
+        {/* Stale items */}
+        {staleItems.length > 0 && (
+          <section className="mt-5">
+            <div className="bg-orange-50 border border-orange-200 rounded-2xl px-5 py-3 mb-3">
+              <p className="text-orange-800 font-bold">
+                {staleItems.length} item{staleItems.length !== 1 ? 's' : ''} not counted in 7+ days
+              </p>
+              <p className="text-orange-600 text-sm">Stock data may be outdated</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {staleItems.map((item) => {
+                const lc = lastCounts[item.id]
+                const label = lc ? `${daysSince(lc.created_at)}d ago` : 'never'
+                return (
+                  <span key={item.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-orange-100 text-orange-800 border border-orange-200">
+                    {item.name}
+                    <span className="text-xs font-normal text-orange-500">{label}</span>
+                  </span>
+                )
+              })}
+            </div>
+          </section>
         )}
 
         {lastUpdated && (
