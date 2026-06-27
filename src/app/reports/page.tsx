@@ -36,6 +36,7 @@ export default function ReportsPage() {
   const [error, setError] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<Category | 'All'>('All')
   const [hideZero, setHideZero] = useState(true)
+  const [shareLabel, setShareLabel] = useState('Share')
 
   useEffect(() => {
     const role = getRole()
@@ -65,6 +66,20 @@ export default function ReportsPage() {
   })
 
   const maxConsumed = filtered.length > 0 ? Math.max(...filtered.map((r) => r.consumed)) : 1
+
+  const handleShare = async () => {
+    const fmt = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    const header = `Item Velocity — ${fmt(startDate)} to ${fmt(endDate)}`
+    const lines = filtered.map((r) => `${r.name}: ${r.consumed > 0 ? `${r.consumed} used` : 'no change'} (${r.category})`)
+    const text = [header, '', ...lines].join('\n')
+    if (navigator.share) {
+      await navigator.share({ title: header, text }).catch(() => {})
+    } else {
+      await navigator.clipboard.writeText(text)
+      setShareLabel('Copied!')
+      setTimeout(() => setShareLabel('Share'), 2000)
+    }
+  }
 
   const barColor = (consumed: number) => {
     const pct = consumed / maxConsumed
@@ -141,7 +156,17 @@ export default function ReportsPage() {
                 />
                 Hide items with no change
               </label>
-              <span className="text-sm text-gray-400 ml-auto">{filtered.length} items</span>
+              <div className="ml-auto flex items-center gap-3">
+                <span className="text-sm text-gray-400">{filtered.length} items</span>
+                {filtered.length > 0 && (
+                  <button
+                    onClick={handleShare}
+                    className="text-sm text-blue-600 font-semibold border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                  >
+                    {shareLabel}
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Results */}
