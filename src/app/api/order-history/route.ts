@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { type, notes, items, related_order_id, resolved } = body
+  const { type, notes, items, related_order_id, resolved, received_by } = body
 
   if (!type || !Array.isArray(items) || items.length === 0)
     return NextResponse.json({ error: 'Missing type or items' }, { status: 400 })
@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
       notes: notes || '',
       related_order_id: related_order_id || null,
       resolved: resolved !== undefined ? resolved : true,
+      received_by: received_by || null,
     })
     .select()
     .single()

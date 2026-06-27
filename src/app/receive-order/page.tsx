@@ -33,9 +33,11 @@ export default function ReceiveOrderPage() {
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null)
   const [received, setReceived] = useState<ReceivedQty>({})
   const [notes, setNotes] = useState('')
+  const [receivedBy, setReceivedBy] = useState('')
   const [shorts, setShorts] = useState<ShortItem[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [role, setRole] = useState<string | null>(null)
 
   const submitRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -53,8 +55,9 @@ export default function ReceiveOrderPage() {
   }, [])
 
   useEffect(() => {
-    const role = getRole()
-    if (!role) { router.replace('/login'); return }
+    const r = getRole()
+    if (!r) { router.replace('/login'); return }
+    setRole(r)
     Promise.all([fetchItems(), fetchRecentOrders()]).finally(() => setLoading(false))
   }, [router])
 
@@ -77,6 +80,7 @@ export default function ReceiveOrderPage() {
 
   const handleContinue = () => {
     setError('')
+    if (role !== 'owner' && !receivedBy.trim()) { setError('Please enter your name before continuing.'); return }
     const entered = Object.entries(received).filter(([, v]) => v !== '' && parseFloat(v) > 0)
     if (entered.length === 0) { setError('Enter at least one quantity before continuing.'); return }
 
@@ -135,6 +139,7 @@ export default function ReceiveOrderPage() {
           items: receivedItems,
           related_order_id: selectedOrder?.id || null,
           resolved: true,
+          received_by: receivedBy.trim() || null,
         }),
       })
       if (!receiptRes.ok) throw new Error()
@@ -353,6 +358,20 @@ export default function ReceiveOrderPage() {
             <p className="text-gray-500 mt-1 text-sm">Quantities will be added to current counts.</p>
           )}
         </div>
+
+        {/* Who's receiving — shift lead only */}
+        {role !== 'owner' && (
+          <div className="mb-4 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 flex items-center gap-3">
+            <label className="text-sm font-semibold text-gray-600 flex-shrink-0">Who&apos;s receiving?</label>
+            <input
+              type="text"
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:border-blue-400 text-sm"
+              placeholder="Enter your name"
+              value={receivedBy}
+              onChange={(e) => setReceivedBy(e.target.value)}
+            />
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 mb-5">
           <input
