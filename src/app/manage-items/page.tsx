@@ -29,6 +29,9 @@ export default function ManageItemsPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Reorder state
+  const [moving, setMoving] = useState(false)
+
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
@@ -94,6 +97,37 @@ export default function ManageItemsPage() {
       setError('Could not save. Try again.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const moveItem = async (item: Item, direction: 'up' | 'down', catItems: Item[]) => {
+    if (moving) return
+    const sorted = [...catItems].sort((a, b) => {
+      if (a.supplier_order == null && b.supplier_order == null) return 0
+      if (a.supplier_order == null) return 1
+      if (b.supplier_order == null) return -1
+      return a.supplier_order - b.supplier_order
+    })
+    const idx = sorted.findIndex((i) => i.id === item.id)
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= sorted.length) return
+    const itemA = sorted[idx]
+    const itemB = sorted[swapIdx]
+    const aOrder = itemA.supplier_order ?? idx * 10
+    const bOrder = itemB.supplier_order ?? swapIdx * 10
+    setMoving(true)
+    try {
+      await Promise.all([
+        fetch('/api/items', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: itemA.id, supplier_order: bOrder }) }),
+        fetch('/api/items', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: itemB.id, supplier_order: aOrder }) }),
+      ])
+      setItems((prev) => prev.map((i) => {
+        if (i.id === itemA.id) return { ...i, supplier_order: bOrder }
+        if (i.id === itemB.id) return { ...i, supplier_order: aOrder }
+        return i
+      }))
+    } finally {
+      setMoving(false)
     }
   }
 
@@ -192,7 +226,12 @@ export default function ManageItemsPage() {
           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">All Items</h2>
           <div className="flex flex-col gap-6">
             {CATEGORIES.map((cat) => {
-              const catItems = items.filter((i) => i.category === cat)
+              const catItems = [...items.filter((i) => i.category === cat)].sort((a, b) => {
+                if (a.supplier_order == null && b.supplier_order == null) return 0
+                if (a.supplier_order == null) return 1
+                if (b.supplier_order == null) return -1
+                return a.supplier_order - b.supplier_order
+              })
               if (catItems.length === 0) return null
               return (
                 <div key={cat}>
@@ -268,6 +307,24 @@ export default function ManageItemsPage() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-3">
+                            <div className="flex flex-col gap-0.5 flex-shrink-0">
+                              <button
+                                onClick={() => moveItem(item, 'up', catItems)}
+                                disabled={moving || idx === 0}
+                                className="text-gray-300 hover:text-gray-500 disabled:opacity-20 disabled:cursor-not-allowed leading-none"
+                                aria-label="Move up"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" /></svg>
+                              </button>
+                              <button
+                                onClick={() => moveItem(item, 'down', catItems)}
+                                disabled={moving || idx === catItems.length - 1}
+                                className="text-gray-300 hover:text-gray-500 disabled:opacity-20 disabled:cursor-not-allowed leading-none"
+                                aria-label="Move down"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                              </button>
+                            </div>
                             <div className="flex-1 min-w-0">
                               <p className="font-semibold text-gray-900">{item.name}</p>
                               <p className="text-sm text-gray-400">
