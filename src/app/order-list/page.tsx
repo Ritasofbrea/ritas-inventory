@@ -21,6 +21,7 @@ interface OrderRecord {
   notes: string
   created_at: string
   related_order_id: string | null
+  received_by: string | null
   order_history_items: OrderHistoryItem[]
 }
 
@@ -434,7 +435,10 @@ export default function OrderListPage() {
                           </span>
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-gray-900">{formatDate(order.created_at)}</p>
-                            <p className="text-xs text-gray-400">{order.order_history_items.length} items</p>
+                            <p className="text-xs text-gray-400">
+                              {order.order_history_items.length} items
+                              {order.received_by && <span className="text-[#1a7a3c] font-medium"> · {order.received_by}</span>}
+                            </p>
                           </div>
                         </div>
                         <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
