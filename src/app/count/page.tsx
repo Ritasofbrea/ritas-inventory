@@ -21,6 +21,7 @@ export default function CountPage() {
   const [error, setError] = useState('')
   const [countedBy, setCountedBy] = useState('')
   const [role, setRole] = useState<string | null>(null)
+  const [lastCount, setLastCount] = useState<{ created_at: string; entered_by: string } | null>(null)
   const firstInputRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -53,6 +54,7 @@ export default function CountPage() {
     const saved = localStorage.getItem('countedBy')
     if (saved) setCountedBy(saved)
     fetchItems()
+    fetch('/api/dashboard-summary').then((res) => res.json()).then((d) => setLastCount(d.lastCount)).catch(() => {})
   }, [router])
 
   const handleCountedByChange = (val: string) => {
@@ -187,7 +189,15 @@ export default function CountPage() {
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Count Entry</h1>
-            <p className="text-gray-500 mt-1">Enter today&apos;s counts for each item.</p>
+            {lastCount ? (() => {
+              const d = new Date(lastCount.created_at)
+              const isToday = d.toDateString() === new Date().toDateString()
+              const dateStr = isToday
+                ? `Today at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+              const by = lastCount.entered_by && lastCount.entered_by !== 'shift_lead' ? ` by ${lastCount.entered_by}` : ''
+              return <p className="text-sm mt-1 text-gray-400">Last count: {dateStr}{by}</p>
+            })() : <p className="text-gray-500 mt-1">Enter today&apos;s counts for each item.</p>}
           </div>
           <button
             onClick={() => { setShowAddModal(true); setAddError('') }}
