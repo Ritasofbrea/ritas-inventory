@@ -35,12 +35,13 @@ export default function DashboardPage() {
   const [shorts, setShorts] = useState<ShortRecord[]>([])
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [summary, setSummary] = useState<SummaryData>({ lastCount: null, lastReceived: null })
+  const [onOrderCount, setOnOrderCount] = useState(0)
 
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
-    Promise.all([fetchItems(), fetchShorts(), fetchSummary()])
+    Promise.all([fetchItems(), fetchShorts(), fetchSummary(), fetchOnOrder()])
   }, [router])
 
   const fetchItems = async () => {
@@ -64,6 +65,18 @@ export default function DashboardPage() {
   const fetchSummary = async () => {
     const res = await fetch('/api/dashboard-summary')
     if (res.ok) setSummary(await res.json())
+  }
+
+  const fetchOnOrder = async () => {
+    const res = await fetch('/api/order-history')
+    if (!res.ok) return
+    const all: { id: string; type: string; related_order_id: string | null; order_history_items: { item_id: string }[] }[] = await res.json()
+    const fulfilledIds = new Set(
+      all.filter((r) => r.type === 'received' || r.type === 'will_call').map((r) => r.related_order_id).filter(Boolean) as string[]
+    )
+    const pending = all.filter((r) => r.type === 'ordered' && !fulfilledIds.has(r.id))
+    const itemIds = new Set(pending.flatMap((o) => o.order_history_items.map((i) => i.item_id)))
+    setOnOrderCount(itemIds.size)
   }
 
   const resolveShort = async (id: string) => {
@@ -97,7 +110,7 @@ export default function DashboardPage() {
         <div className="mb-5 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <button
-            onClick={() => { fetchItems(); fetchShorts(); fetchSummary() }}
+            onClick={() => { fetchItems(); fetchShorts(); fetchSummary(); fetchOnOrder() }}
             className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
           >
             Refresh
@@ -137,6 +150,19 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
+
+        {/* On order indicator */}
+        {onOrderCount > 0 && (
+          <div className="mb-5 bg-blue-50 border border-blue-200 rounded-2xl px-5 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-blue-800 font-bold">{onOrderCount} item{onOrderCount !== 1 ? 's' : ''} on order</p>
+              <p className="text-blue-600 text-sm">Delivery pending</p>
+            </div>
+            <button onClick={() => router.push('/order-list')} className="text-sm text-blue-600 font-semibold border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100">
+              View →
+            </button>
+          </div>
+        )}
 
         {/* Short shipment alerts */}
         {shorts.length > 0 && (
