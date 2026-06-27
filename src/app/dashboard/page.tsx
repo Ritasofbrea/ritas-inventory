@@ -11,6 +11,7 @@ interface ShortRecord {
   created_at: string
   notes: string
   resolved: boolean
+  related_order_id: string | null
   order_history_items: { item_name: string; quantity: number; unit: string }[]
 }
 
@@ -36,12 +37,13 @@ export default function DashboardPage() {
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [summary, setSummary] = useState<SummaryData>({ lastCount: null, lastReceived: null })
   const [onOrderCount, setOnOrderCount] = useState(0)
+  const [receiptReceivedBy, setReceiptReceivedBy] = useState<Record<string, string | null>>({})
 
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
-    Promise.all([fetchItems(), fetchShorts(), fetchSummary(), fetchOnOrder()])
+    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary()])
   }, [router])
 
   const fetchItems = async () => {
@@ -54,29 +56,30 @@ export default function DashboardPage() {
     }
   }
 
-  const fetchShorts = async () => {
-    const res = await fetch('/api/order-history?type=short&unresolved=true')
-    if (res.ok) {
-      const data = await res.json()
-      setShorts(Array.isArray(data) ? data : [])
-    }
+  const fetchOrderHistory = async () => {
+    const res = await fetch('/api/order-history')
+    if (!res.ok) return
+    type HistoryRecord = { id: string; type: string; resolved: boolean; related_order_id: string | null; received_by?: string | null; notes: string; created_at: string; order_history_items: { item_id?: string; item_name: string; quantity: number; unit: string }[] }
+    const all = (await res.json()) as HistoryRecord[]
+
+    // Unresolved shorts
+    setShorts(all.filter((r) => r.type === 'short' && r.resolved === false) as ShortRecord[])
+
+    // Receipt lookup for received_by
+    const byId: Record<string, string | null> = {}
+    all.filter((r) => r.type === 'received' || r.type === 'will_call').forEach((r) => { byId[r.id] = r.received_by ?? null })
+    setReceiptReceivedBy(byId)
+
+    // On-order count
+    const fulfilledIds = new Set(all.filter((r) => r.type === 'received' || r.type === 'will_call').map((r) => r.related_order_id).filter(Boolean) as string[])
+    const pending = all.filter((r) => r.type === 'ordered' && !fulfilledIds.has(r.id))
+    const itemIds = new Set(pending.flatMap((o) => o.order_history_items.map((i) => i.item_id).filter(Boolean)))
+    setOnOrderCount(itemIds.size)
   }
 
   const fetchSummary = async () => {
     const res = await fetch('/api/dashboard-summary')
     if (res.ok) setSummary(await res.json())
-  }
-
-  const fetchOnOrder = async () => {
-    const res = await fetch('/api/order-history')
-    if (!res.ok) return
-    const all: { id: string; type: string; related_order_id: string | null; order_history_items: { item_id: string }[] }[] = await res.json()
-    const fulfilledIds = new Set(
-      all.filter((r) => r.type === 'received' || r.type === 'will_call').map((r) => r.related_order_id).filter(Boolean) as string[]
-    )
-    const pending = all.filter((r) => r.type === 'ordered' && !fulfilledIds.has(r.id))
-    const itemIds = new Set(pending.flatMap((o) => o.order_history_items.map((i) => i.item_id)))
-    setOnOrderCount(itemIds.size)
   }
 
   const resolveShort = async (id: string) => {
@@ -110,7 +113,7 @@ export default function DashboardPage() {
         <div className="mb-5 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <button
-            onClick={() => { fetchItems(); fetchShorts(); fetchSummary(); fetchOnOrder() }}
+            onClick={() => { fetchItems(); fetchOrderHistory(); fetchSummary() }}
             className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
           >
             Refresh
@@ -180,6 +183,9 @@ export default function DashboardPage() {
                         </li>
                       ))}
                     </ul>
+                    {short.related_order_id && receiptReceivedBy[short.related_order_id] && (
+                      <p className="text-red-200 text-xs mt-1">Received by {receiptReceivedBy[short.related_order_id]}</p>
+                    )}
                     {short.notes && <p className="text-red-200 text-xs mt-2 italic">{short.notes}</p>}
                   </div>
                   <button

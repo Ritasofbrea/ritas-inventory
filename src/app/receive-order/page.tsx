@@ -10,6 +10,7 @@ interface OrderRecord {
   id: string
   type: string
   created_at: string
+  related_order_id: string | null
   order_history_items: { item_id: string; item_name: string; quantity: number; unit: string }[]
 }
 
