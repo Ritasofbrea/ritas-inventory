@@ -20,10 +20,12 @@ export default function CountPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [countedBy, setCountedBy] = useState('')
+  const [nameError, setNameError] = useState('')
   const [role, setRole] = useState<string | null>(null)
   const [lastCount, setLastCount] = useState<{ created_at: string; entered_by: string } | null>(null)
   const [search, setSearch] = useState('')
   const firstInputRef = useRef<HTMLInputElement>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
@@ -60,6 +62,7 @@ export default function CountPage() {
 
   const handleCountedByChange = (val: string) => {
     setCountedBy(val)
+    if (val.trim()) setNameError('')
     localStorage.setItem('countedBy', val)
   }
 
@@ -93,7 +96,9 @@ export default function CountPage() {
 
   const handleSubmit = async () => {
     if (role !== 'owner' && !countedBy.trim()) {
-      setError('Please enter your name before saving.')
+      setNameError('Please enter your name before saving.')
+      nameInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      nameInputRef.current?.focus()
       return
     }
     setSaving(true)
@@ -212,15 +217,21 @@ export default function CountPage() {
 
         {/* Who's counting — shift lead only */}
         {role !== 'owner' && (
-          <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 flex items-center gap-3">
-            <label className="text-sm font-semibold text-gray-600 flex-shrink-0">Who&apos;s counting?</label>
-            <input
-              type="text"
-              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:border-blue-400 text-sm"
-              placeholder="Enter your name"
-              value={countedBy}
-              onChange={(e) => handleCountedByChange(e.target.value)}
-            />
+          <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-semibold text-gray-600 flex-shrink-0">Who&apos;s counting?</label>
+              <input
+                ref={nameInputRef}
+                type="text"
+                className={`flex-1 border rounded-xl px-3 py-2 text-gray-900 focus:outline-none text-sm ${nameError ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-blue-400'}`}
+                placeholder="Enter your name"
+                value={countedBy}
+                onChange={(e) => handleCountedByChange(e.target.value)}
+              />
+            </div>
+            {nameError && (
+              <p className="text-red-500 text-xs mt-2 ml-0">{nameError}</p>
+            )}
           </div>
         )}
 
