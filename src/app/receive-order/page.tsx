@@ -67,9 +67,14 @@ export default function ReceiveOrderPage() {
   }
 
   const fetchRecentOrders = async () => {
-    const res = await fetch('/api/order-history?type=ordered')
+    const res = await fetch('/api/order-history')
     const data = await res.json()
-    setRecentOrders(Array.isArray(data) ? data.slice(0, 6) : [])
+    const all: OrderRecord[] = Array.isArray(data) ? data : []
+    const fulfilledIds = new Set(
+      all.filter((r) => r.type === 'received' || r.type === 'will_call').map((r) => r.related_order_id).filter(Boolean) as string[]
+    )
+    const pending = all.filter((r) => r.type === 'ordered' && !fulfilledIds.has(r.id))
+    setRecentOrders(pending.slice(0, 6))
   }
 
   const handleChange = (id: string, val: string) => {
