@@ -26,6 +26,7 @@ export default function ParSettingsPage() {
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
   const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({})
 
   useEffect(() => {
@@ -145,9 +146,20 @@ export default function ParSettingsPage() {
           </div>
         )}
 
+        <div className="mb-5">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search items…"
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400 bg-white text-sm"
+          />
+        </div>
+
         <div className="flex flex-col gap-6">
           {CATEGORIES.map((category) => {
-            const catItems = itemsByCategory[category] || []
+            const searchTerm = search.trim().toLowerCase()
+            const catItems = (itemsByCategory[category] || []).filter((i) => !searchTerm || i.name.toLowerCase().includes(searchTerm))
             if (catItems.length === 0) return null
             return (
               <section key={category}>

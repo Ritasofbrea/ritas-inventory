@@ -22,6 +22,7 @@ export default function CountPage() {
   const [countedBy, setCountedBy] = useState('')
   const [role, setRole] = useState<string | null>(null)
   const [lastCount, setLastCount] = useState<{ created_at: string; entered_by: string } | null>(null)
+  const [search, setSearch] = useState('')
   const firstInputRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -176,8 +177,10 @@ export default function CountPage() {
     )
   }
 
+  const searchTerm = search.trim().toLowerCase()
+  const visibleItems = searchTerm ? items.filter((i) => i.name.toLowerCase().includes(searchTerm)) : items
   const itemsByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
-    acc[cat] = items.filter((i) => i.category === cat)
+    acc[cat] = visibleItems.filter((i) => i.category === cat)
     return acc
   }, {})
 
@@ -227,6 +230,22 @@ export default function CountPage() {
           </div>
         )}
 
+        <div className="mb-4">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search items…"
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400 bg-white text-sm"
+          />
+        </div>
+
+        {searchTerm && visibleItems.length === 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10 text-center mb-4">
+            <p className="text-gray-400">No items match &ldquo;{search}&rdquo;</p>
+          </div>
+        )}
+
         <div className="flex flex-col gap-6">
           {CATEGORIES.map((category) => {
             const catItems = itemsByCategory[category] || []
@@ -251,15 +270,20 @@ export default function CountPage() {
                         <p className="text-sm text-gray-400">{item.unit}</p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <input
-                          ref={idx === 0 && category === CATEGORIES[0] ? firstInputRef : undefined}
-                          type="text"
-                          inputMode="decimal"
-                          className="count-input w-20 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
-                          value={counts[item.id] ?? ''}
-                          onChange={(e) => handleChange(item.id, e.target.value)}
-                          placeholder="0"
-                        />
+                        <div className="flex flex-col items-center gap-0.5">
+                          <input
+                            ref={idx === 0 && category === CATEGORIES[0] ? firstInputRef : undefined}
+                            type="text"
+                            inputMode="decimal"
+                            className="count-input w-20 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
+                            value={counts[item.id] ?? ''}
+                            onChange={(e) => handleChange(item.id, e.target.value)}
+                            placeholder="0"
+                          />
+                          {counts[item.id] === undefined && item.current_count > 0 && (
+                            <span className="text-xs text-gray-300">was {item.current_count}</span>
+                          )}
+                        </div>
                         {item.secondary_unit && (
                           <>
                             <span className="text-gray-300 text-lg font-light">+</span>

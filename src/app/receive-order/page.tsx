@@ -39,6 +39,7 @@ export default function ReceiveOrderPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [role, setRole] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   const submitRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -197,8 +198,9 @@ export default function ReceiveOrderPage() {
     return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-400 text-lg">Loading…</p></div>
   }
 
+  const receiveSearchTerm = search.trim().toLowerCase()
   const itemsByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
-    acc[cat] = items.filter((i) => i.category === cat)
+    acc[cat] = items.filter((i) => i.category === cat && (!receiveSearchTerm || i.name.toLowerCase().includes(receiveSearchTerm)))
     return acc
   }, {})
 
@@ -399,6 +401,16 @@ export default function ReceiveOrderPage() {
         )}
 
         {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>}
+
+        <div className="mb-4">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search items…"
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400 bg-white text-sm"
+          />
+        </div>
 
         <div className="flex flex-col gap-6">
           {CATEGORIES.map((category) => {

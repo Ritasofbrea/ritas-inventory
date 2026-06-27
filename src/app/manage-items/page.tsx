@@ -23,6 +23,10 @@ export default function ManageItemsPage() {
   const [editName, setEditName] = useState('')
   const [editUnit, setEditUnit] = useState('')
   const [editSecondaryUnit, setEditSecondaryUnit] = useState('')
+  const [editCategory, setEditCategory] = useState<typeof CATEGORIES[number]>(CATEGORIES[0])
+  const [editDistributor, setEditDistributor] = useState('')
+  const [editItemNumber, setEditItemNumber] = useState('')
+  const [editDistributorItemName, setEditDistributorItemName] = useState('')
   const [saving, setSaving] = useState(false)
 
   // Delete confirm state
@@ -31,6 +35,7 @@ export default function ManageItemsPage() {
 
   // Reorder state
   const [moving, setMoving] = useState(false)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     const role = getRole()
@@ -77,6 +82,10 @@ export default function ManageItemsPage() {
     setEditName(item.name)
     setEditUnit(item.unit)
     setEditSecondaryUnit(item.secondary_unit || '')
+    setEditCategory(item.category)
+    setEditDistributor(item.distributor || '')
+    setEditItemNumber(item.item_number || '')
+    setEditDistributorItemName(item.distributor_item_name || '')
     setConfirmDeleteId(null)
   }
 
@@ -87,7 +96,16 @@ export default function ManageItemsPage() {
       const res = await fetch('/api/items', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, name: editName.trim(), unit: editUnit.trim(), secondary_unit: editSecondaryUnit.trim() }),
+        body: JSON.stringify({
+          id: item.id,
+          name: editName.trim(),
+          unit: editUnit.trim(),
+          secondary_unit: editSecondaryUnit.trim() || null,
+          category: editCategory,
+          distributor: editDistributor || null,
+          item_number: editItemNumber.trim() || null,
+          distributor_item_name: editDistributorItemName.trim() || null,
+        }),
       })
       if (!res.ok) throw new Error()
       const updated = await res.json()
@@ -224,9 +242,19 @@ export default function ManageItemsPage() {
         {/* Existing items by category */}
         <section>
           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">All Items</h2>
+          <div className="mb-4">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search items…"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400 bg-white text-sm"
+            />
+          </div>
           <div className="flex flex-col gap-6">
             {CATEGORIES.map((cat) => {
-              const catItems = [...items.filter((i) => i.category === cat)].sort((a, b) => {
+              const searchTerm = search.trim().toLowerCase()
+              const catItems = [...items.filter((i) => i.category === cat && (!searchTerm || i.name.toLowerCase().includes(searchTerm)))].sort((a, b) => {
                 if (a.supplier_order == null && b.supplier_order == null) return 0
                 if (a.supplier_order == null) return 1
                 if (b.supplier_order == null) return -1
@@ -259,6 +287,55 @@ export default function ManageItemsPage() {
                                 onChange={(e) => setEditUnit(e.target.value)}
                                 placeholder="unit"
                               />
+                            </div>
+                            <div className="flex gap-2">
+                              <div className="flex flex-col gap-1 flex-1">
+                                <span className="text-xs text-gray-400">Category</span>
+                                <select
+                                  className="border border-blue-300 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500 bg-white"
+                                  value={editCategory}
+                                  onChange={(e) => setEditCategory(e.target.value as typeof CATEGORIES[number])}
+                                >
+                                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                              </div>
+                              <div className="flex flex-col gap-1 w-32">
+                                <span className="text-xs text-gray-400">Distributor</span>
+                                <select
+                                  className="border border-blue-300 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500 bg-white"
+                                  value={editDistributor}
+                                  onChange={(e) => setEditDistributor(e.target.value)}
+                                >
+                                  <option value="">—</option>
+                                  <option value="bunzl">Bunzl</option>
+                                  <option value="balford">Balford</option>
+                                  <option value="other">Other</option>
+                                  <option value="seasonal">Seasonal</option>
+                                  <option value="discontinued">Discontinued</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <div className="flex flex-col gap-1 flex-1">
+                                <span className="text-xs text-gray-400">Item # (distributor)</span>
+                                <input
+                                  type="text"
+                                  className="border border-blue-300 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500"
+                                  value={editItemNumber}
+                                  onChange={(e) => setEditItemNumber(e.target.value)}
+                                  placeholder="e.g. 0101"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1 flex-1">
+                                <span className="text-xs text-gray-400">Catalog name</span>
+                                <input
+                                  type="text"
+                                  className="border border-blue-300 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-blue-500"
+                                  value={editDistributorItemName}
+                                  onChange={(e) => setEditDistributorItemName(e.target.value)}
+                                  placeholder="Name in catalog"
+                                />
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-gray-400 flex-shrink-0">Sub-unit (optional):</span>
@@ -329,9 +406,9 @@ export default function ManageItemsPage() {
                               <p className="font-semibold text-gray-900">{item.name}</p>
                               <p className="text-sm text-gray-400">
                                 {item.unit}
-                                {item.secondary_unit && (
-                                  <span className="text-purple-400"> + {item.secondary_unit}</span>
-                                )}
+                                {item.secondary_unit && <span className="text-purple-400"> + {item.secondary_unit}</span>}
+                                {item.item_number && <span className="font-mono text-gray-400"> · #{item.item_number}</span>}
+                                {item.distributor && <span className="text-gray-300"> · {item.distributor}</span>}
                               </p>
                             </div>
                             <button

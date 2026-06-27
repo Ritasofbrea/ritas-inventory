@@ -37,6 +37,7 @@ export default function ReportsPage() {
   const [categoryFilter, setCategoryFilter] = useState<Category | 'All'>('All')
   const [hideZero, setHideZero] = useState(true)
   const [shareLabel, setShareLabel] = useState('Share')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     const role = getRole()
@@ -59,9 +60,11 @@ export default function ReportsPage() {
     }
   }
 
+  const searchTerm = search.trim().toLowerCase()
   const filtered = rows.filter((r) => {
     if (hideZero && r.consumed <= 0) return false
     if (categoryFilter !== 'All' && r.category !== categoryFilter) return false
+    if (searchTerm && !r.name.toLowerCase().includes(searchTerm)) return false
     return true
   })
 
@@ -139,6 +142,13 @@ export default function ReportsPage() {
           <>
             {/* Filters */}
             <div className="flex flex-wrap gap-3 items-center mb-4">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search items…"
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-blue-400 bg-white"
+              />
               <select
                 className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-blue-400 bg-white"
                 value={categoryFilter}
