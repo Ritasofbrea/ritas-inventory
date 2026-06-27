@@ -35,6 +35,8 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [shorts, setShorts] = useState<ShortRecord[]>([])
   const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [pendingResolveId, setPendingResolveId] = useState<string | null>(null)
+  const [resolveByName, setResolveByName] = useState('')
   const [summary, setSummary] = useState<SummaryData>({ lastCount: null, lastReceived: null })
   const [onOrderCount, setOnOrderCount] = useState(0)
   const [receiptReceivedBy, setReceiptReceivedBy] = useState<Record<string, string | null>>({})
@@ -82,9 +84,11 @@ export default function DashboardPage() {
     if (res.ok) setSummary(await res.json())
   }
 
-  const resolveShort = async (id: string) => {
+  const resolveShort = async (id: string, name: string) => {
     setResolvingId(id)
-    await fetch('/api/order-history', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, resolved: true }) })
+    setPendingResolveId(null)
+    setResolveByName('')
+    await fetch('/api/order-history', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, resolved: true, resolved_by: name.trim() || null }) })
     setShorts((prev) => prev.filter((s) => s.id !== id))
     setResolvingId(null)
   }
@@ -188,14 +192,44 @@ export default function DashboardPage() {
                     )}
                     {short.notes && <p className="text-red-200 text-xs mt-2 italic">{short.notes}</p>}
                   </div>
-                  <button
-                    onClick={() => resolveShort(short.id)}
-                    disabled={resolvingId === short.id}
-                    className="flex-shrink-0 bg-white text-red-700 hover:bg-red-50 font-bold text-sm px-4 py-2 rounded-xl transition-colors disabled:opacity-60"
-                  >
-                    {resolvingId === short.id ? '…' : 'Resolved ✓'}
-                  </button>
+                  {pendingResolveId !== short.id && (
+                    <button
+                      onClick={() => { setPendingResolveId(short.id); setResolveByName('') }}
+                      disabled={resolvingId === short.id}
+                      className="flex-shrink-0 bg-white text-red-700 hover:bg-red-50 font-bold text-sm px-4 py-2 rounded-xl transition-colors disabled:opacity-60"
+                    >
+                      {resolvingId === short.id ? '…' : 'Resolved ✓'}
+                    </button>
+                  )}
                 </div>
+                {pendingResolveId === short.id && (
+                  <div className="mt-3 pt-3 border-t border-red-500">
+                    <p className="text-red-100 text-xs mb-2">Who resolved this? (optional)</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={resolveByName}
+                        onChange={(e) => setResolveByName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') resolveShort(short.id, resolveByName) }}
+                        placeholder="Your name"
+                        className="flex-1 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => resolveShort(short.id, resolveByName)}
+                        className="bg-white text-red-700 hover:bg-red-50 font-bold text-sm px-4 py-2 rounded-xl"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => setPendingResolveId(null)}
+                        className="text-red-200 hover:text-white text-sm px-2"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

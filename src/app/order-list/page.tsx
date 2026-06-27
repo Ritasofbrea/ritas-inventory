@@ -22,6 +22,8 @@ interface OrderRecord {
   created_at: string
   related_order_id: string | null
   received_by: string | null
+  resolved_at: string | null
+  resolved_by: string | null
   order_history_items: OrderHistoryItem[]
 }
 
@@ -46,7 +48,9 @@ export default function OrderListPage() {
 
   // On-order tracking
   const [onOrderItemIds, setOnOrderItemIds] = useState<Set<string>>(new Set())
-  const [onOrderDetails, setOnOrderDetails] = useState<Record<string, { qty: number; unit: string; orderedAt: string }>>({})
+  const [onOrderDetails, setOnOrderDetails] = useState<Record<string, { qty: number; unit: string; orderedAt: string; orderId: string }>>({})
+  const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
+  const [pendingOrders, setPendingOrders] = useState<OrderRecord[]>([])
 
   // Order history tab
   const [orderHistory, setOrderHistory] = useState<OrderRecord[]>([])
@@ -96,18 +100,19 @@ export default function OrderListPage() {
     const pending = all.filter((r) => r.type === 'ordered' && !fulfilledOrderIds.has(r.id))
 
     const itemIds = new Set<string>()
-    const details: Record<string, { qty: number; unit: string; orderedAt: string }> = {}
+    const details: Record<string, { qty: number; unit: string; orderedAt: string; orderId: string }> = {}
     for (const order of pending) {
       for (const item of order.order_history_items) {
         if (item.item_id) {
           itemIds.add(item.item_id)
-          details[item.item_id] = { qty: item.quantity, unit: item.unit, orderedAt: order.created_at }
+          details[item.item_id] = { qty: item.quantity, unit: item.unit, orderedAt: order.created_at, orderId: order.id }
         }
       }
     }
 
     setOnOrderItemIds(itemIds)
     setOnOrderDetails(details)
+    setPendingOrders(pending)
     return { onOrderIds: itemIds }
   }
 
@@ -161,6 +166,14 @@ export default function OrderListPage() {
     } finally {
       setMarking(false)
     }
+  }
+
+  const cancelOrder = async (orderId: string) => {
+    setCancellingOrderId(orderId)
+    await fetch('/api/order-history', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: orderId }) })
+    setOrderHistory([])
+    await loadAll()
+    setCancellingOrderId(null)
   }
 
   const toggleOrder = (id: string) => {
@@ -382,26 +395,30 @@ export default function OrderListPage() {
                 )}
 
                 {/* On Order section */}
-                {onOrderItems.length > 0 && (
+                {pendingOrders.length > 0 && (
                   <section className="mb-6">
                     <h2 className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2">On Order</h2>
-                    <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
-                      {sortedOnOrder.map((item, idx) => {
-                        const detail = onOrderDetails[item.id]
-                        return (
-                          <div key={item.id} className={`flex items-center gap-3 px-5 py-4 ${idx < sortedOnOrder.length - 1 ? 'border-b border-gray-100' : ''}`}>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-500">{item.name}</p>
-                              <p className="text-xs text-gray-400">
-                                Ordered {detail ? formatShort(detail.orderedAt) : ''} · {detail ? `${detail.qty} ${detail.unit}` : ''}
-                              </p>
-                            </div>
-                            <span className="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-100 text-blue-600">
-                              ON ORDER
-                            </span>
+                    <div className="flex flex-col gap-3">
+                      {pendingOrders.map((order) => (
+                        <div key={order.id} className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
+                          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+                            <p className="text-xs text-gray-400">Ordered {formatShort(order.created_at)} · {order.order_history_items.length} items</p>
+                            <button
+                              onClick={() => cancelOrder(order.id)}
+                              disabled={cancellingOrderId === order.id}
+                              className="text-xs text-red-500 hover:text-red-700 font-semibold disabled:opacity-50"
+                            >
+                              {cancellingOrderId === order.id ? 'Cancelling…' : 'Cancel Order'}
+                            </button>
                           </div>
-                        )
-                      })}
+                          {order.order_history_items.map((item, idx) => (
+                            <div key={item.item_id} className={`flex items-center gap-3 px-5 py-3 ${idx < order.order_history_items.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                              <p className="flex-1 text-sm font-semibold text-gray-500">{item.item_name}</p>
+                              <p className="text-sm text-gray-400">{item.quantity} {item.unit}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
                     </div>
                   </section>
                 )}
@@ -462,6 +479,14 @@ export default function OrderListPage() {
                             {order.notes && (
                               <div className="px-5 py-3 bg-yellow-50 border-t border-gray-100">
                                 <p className="text-xs text-gray-500 italic">{order.notes}</p>
+                              </div>
+                            )}
+                            {order.type === 'short' && order.resolved_at && (
+                              <div className="px-5 py-3 bg-green-50 border-t border-gray-100">
+                                <p className="text-xs text-green-700">
+                                  Resolved {new Date(order.resolved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  {order.resolved_by && <span className="font-semibold"> · {order.resolved_by}</span>}
+                                </p>
                               </div>
                             )}
                           </div>

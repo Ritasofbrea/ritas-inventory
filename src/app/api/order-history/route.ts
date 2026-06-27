@@ -72,15 +72,32 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ...order, order_history_items: rows })
 }
 
-export async function PATCH(request: NextRequest) {
+export async function DELETE(request: NextRequest) {
   const body = await request.json()
-  const { id, resolved } = body
+  const { id } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const db = getServerSupabase()
+  const { error } = await db.from('order_history').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
+
+export async function PATCH(request: NextRequest) {
+  const body = await request.json()
+  const { id, resolved, resolved_by } = body
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+
+  const db = getServerSupabase()
+  const updates: Record<string, unknown> = { resolved }
+  if (resolved === true) {
+    updates.resolved_at = new Date().toISOString()
+    updates.resolved_by = resolved_by || null
+  }
+
   const { data, error } = await db
     .from('order_history')
-    .update({ resolved })
+    .update(updates)
     .eq('id', id)
     .select()
     .single()
