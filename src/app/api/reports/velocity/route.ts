@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await db
     .from('inventory_counts')
     .select('item_id, count, created_at, items(name, category, unit)')
+    .eq('type', 'count')
     .lte('created_at', new Date(endMs).toISOString())
     .order('created_at', { ascending: false })
 

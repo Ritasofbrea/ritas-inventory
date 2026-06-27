@@ -32,10 +32,12 @@ export async function POST(request: NextRequest) {
   const db = getServerSupabase()
 
   // Insert history records
-  const rows = counts.map((c: { item_id: string; count: number }) => ({
+  const rows = counts.map((c: { item_id: string; count: number; notes?: string; type?: string }) => ({
     item_id: c.item_id,
     count: c.count,
     entered_by: entered_by || 'shift_lead',
+    notes: c.notes || null,
+    type: c.type || 'count',
   }))
 
   const { error: insertError } = await db.from('inventory_counts').insert(rows)

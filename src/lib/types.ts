@@ -30,6 +30,9 @@ export interface Item {
   par_level: number
   sort_order: number
   supplier_order: number | null
+  distributor: string | null
+  item_number: string | null
+  distributor_item_name: string | null
   secondary_count: number
   secondary_unit: string
   created_at: string
@@ -42,6 +45,7 @@ export interface InventoryCount {
   count: number
   entered_by: string
   notes: string | null
+  type: 'count' | 'adjustment'
   created_at: string
   items?: Item
 }

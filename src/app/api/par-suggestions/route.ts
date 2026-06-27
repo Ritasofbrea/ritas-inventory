@@ -10,6 +10,7 @@ export async function GET() {
   const { data, error } = await db
     .from('inventory_counts')
     .select('item_id, count, created_at, items(name, unit)')
+    .eq('type', 'count')
     .gte('created_at', since)
     .order('created_at', { ascending: true })
 

@@ -24,6 +24,7 @@ export default function HistoryPage() {
   const [top10, setTop10] = useState<VelocityRow[]>([])
   const [top10Loading, setTop10Loading] = useState(false)
   const [top10Fetched, setTop10Fetched] = useState(false)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     const role = getRole()
@@ -88,8 +89,13 @@ export default function HistoryPage() {
     })
   }
 
+  const searchTerm = search.trim().toLowerCase()
+  const filteredHistory = searchTerm
+    ? history.filter((h) => h.items?.name?.toLowerCase().includes(searchTerm))
+    : history
+
   const grouped: Record<string, InventoryCount[]> = {}
-  history.forEach((h) => {
+  filteredHistory.forEach((h) => {
     const day = new Date(h.created_at).toLocaleDateString('en-US', {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     })
@@ -144,6 +150,18 @@ export default function HistoryPage() {
           </button>
         </div>
 
+        {view === 'recent' && history.length > 0 && (
+          <div className="mb-4">
+            <input
+              type="text"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400 bg-white text-sm"
+              placeholder="Search items…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        )}
+
         {history.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-12 text-center">
             <p className="text-gray-400 text-lg">No history yet.</p>
@@ -152,6 +170,11 @@ export default function HistoryPage() {
             </p>
           </div>
         ) : view === 'recent' ? (
+          Object.keys(grouped).length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-12 text-center">
+              <p className="text-gray-400">No results for &ldquo;{search}&rdquo;</p>
+            </div>
+          ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             {Object.entries(grouped).map(([day, entries], dayIdx, arr) => {
               const isExpanded = expandedDays.has(day)
@@ -184,7 +207,12 @@ export default function HistoryPage() {
                           }`}
                         >
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-gray-900 text-sm">{entry.items?.name ?? '—'}</p>
+                            <p className="font-medium text-gray-900 text-sm flex items-center gap-2">
+                              {entry.items?.name ?? '—'}
+                              {entry.type === 'adjustment' && (
+                                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">Adj</span>
+                              )}
+                            </p>
                             <p className="text-xs text-gray-400">
                               {entry.items?.category}
                               {entry.notes && <span className="text-amber-600 italic"> · {entry.notes}</span>}
@@ -202,6 +230,7 @@ export default function HistoryPage() {
               )
             })}
           </div>
+          )
         ) : (
           <div>
             <p className="text-xs text-gray-400 mb-4">
