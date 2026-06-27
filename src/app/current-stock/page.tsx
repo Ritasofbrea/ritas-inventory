@@ -33,7 +33,7 @@ export default function CurrentStockPage() {
   const [lastCounts, setLastCounts] = useState<Record<string, LastCount>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'all' | 'out' | 'low' | 'ok'>('all')
+  const [filter, setFilter] = useState<'all' | 'out' | 'low' | 'ok' | 'stale'>('all')
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   useEffect(() => {
@@ -63,8 +63,11 @@ export default function CurrentStockPage() {
 
   const searchTerm = search.trim().toLowerCase()
 
+  const staleCount = items.filter((i) => isStale(lastCounts[i.id])).length
+
   const visible = items.filter((i) => {
     if (searchTerm && !i.name.toLowerCase().includes(searchTerm)) return false
+    if (filter === 'stale') return isStale(lastCounts[i.id])
     if (filter !== 'all' && getStockStatus(i) !== filter) return false
     return true
   })
@@ -105,15 +108,21 @@ export default function CurrentStockPage() {
 
         {/* Summary pills */}
         <div className="flex gap-2 mb-4 flex-wrap">
-          {(['all', 'out', 'low', 'ok'] as const).map((f) => {
-            const label = f === 'all' ? `All (${items.length})` : f === 'out' ? `Out (${outCount})` : f === 'low' ? `Low (${lowCount})` : `OK (${okCount})`
+          {(['all', 'out', 'low', 'ok', 'stale'] as const).map((f) => {
+            const label = f === 'all' ? `All (${items.length})`
+              : f === 'out' ? `Out (${outCount})`
+              : f === 'low' ? `Low (${lowCount})`
+              : f === 'ok' ? `OK (${okCount})`
+              : `Stale (${staleCount})`
             const activeClass = f === 'out' ? 'bg-red-600 text-white border-red-600'
               : f === 'low' ? 'bg-amber-500 text-white border-amber-500'
               : f === 'ok' ? 'bg-green-600 text-white border-green-600'
+              : f === 'stale' ? 'bg-orange-500 text-white border-orange-500'
               : 'bg-gray-800 text-white border-gray-800'
             const inactiveClass = f === 'out' ? 'bg-red-50 text-red-700 border-red-200'
               : f === 'low' ? 'bg-amber-50 text-amber-700 border-amber-200'
               : f === 'ok' ? 'bg-green-50 text-green-700 border-green-200'
+              : f === 'stale' ? 'bg-orange-50 text-orange-700 border-orange-200'
               : 'bg-white text-gray-600 border-gray-200'
             return (
               <button
