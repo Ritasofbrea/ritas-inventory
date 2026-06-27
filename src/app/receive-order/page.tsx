@@ -171,10 +171,13 @@ export default function ReceiveOrderPage() {
 
       setStep('done')
       const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      const pushPayload = shortItems.length > 0
+        ? { title: 'Short Shipment', body: `${shortItems.length} item${shortItems.length !== 1 ? 's' : ''} not received — check the dashboard` }
+        : { title: 'Order Received', body: `An order was marked received at ${time}` }
       fetch('/api/send-push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'Order Received', body: `An order was marked received at ${time}` }),
+        body: JSON.stringify(pushPayload),
       }).catch(() => {})
       setTimeout(() => router.push(shortItems.length > 0 ? '/dashboard' : '/order-list'), 1800)
     } catch (err) {

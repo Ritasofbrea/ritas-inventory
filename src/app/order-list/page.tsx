@@ -28,8 +28,8 @@ const DISTRIBUTOR_ORDER = ['bunzl', 'balford', 'other', 'seasonal', 'discontinue
 const DISTRIBUTOR_LABELS: Record<string, string> = { bunzl: 'Bunzl', balford: 'Balford', other: 'Other', seasonal: 'Seasonal', discontinued: 'Discontinued' }
 const DISTRIBUTOR_COLORS: Record<string, string> = { bunzl: 'text-blue-600', balford: 'text-purple-600', other: 'text-gray-500', seasonal: 'text-green-600', discontinued: 'text-gray-400' }
 
-const TYPE_LABELS: Record<string, string> = { ordered: 'Order Placed', received: 'Delivery Received', will_call: 'Will Call Received' }
-const TYPE_COLORS: Record<string, string> = { ordered: 'bg-blue-100 text-blue-700', received: 'bg-green-100 text-green-700', will_call: 'bg-purple-100 text-purple-700' }
+const TYPE_LABELS: Record<string, string> = { ordered: 'Order Placed', received: 'Delivery Received', will_call: 'Will Call Received', short: 'Short Shipment' }
+const TYPE_COLORS: Record<string, string> = { ordered: 'bg-blue-100 text-blue-700', received: 'bg-green-100 text-green-700', will_call: 'bg-purple-100 text-purple-700', short: 'bg-red-100 text-red-700' }
 
 export default function OrderListPage() {
   const router = useRouter()
@@ -420,7 +420,7 @@ export default function OrderListPage() {
               </div>
             ) : (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                {orderHistory.filter((o) => o.type !== 'short').map((order, idx, arr) => {
+                {orderHistory.map((order, idx, arr) => {
                   const isExpanded = expandedOrders.has(order.id)
                   return (
                     <div key={order.id} className={idx < arr.length - 1 ? 'border-b border-gray-100' : ''}>

@@ -191,7 +191,6 @@ Auto-deploys on push to `main`. If pushes stop deploying, go to Vercel dashboard
 ---
 
 ## Open Items / Known Gaps
-- Short records (`type: short`) appear in Order History but aren't styled differently from ordered/received records
 - No push notifications for short shipments (dashboard banner only)
 - Clover POS integration was discussed but not pursued
 - `distributor` values in active use: `bunzl`, `balford`, `other`, `seasonal`, `discontinued`
