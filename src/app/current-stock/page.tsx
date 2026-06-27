@@ -8,9 +8,23 @@ import { Item, CATEGORIES, getStockStatus } from '@/lib/types'
 
 const STATUS_ORDER = { out: 0, low: 1, ok: 2 }
 
+type LastCount = { item_id: string; created_at: string; entered_by: string }
+
+function formatCountDate(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffDays = Math.floor(diffMs / 86400000)
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  if (diffDays < 7) return `${diffDays}d ago`
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
 export default function CurrentStockPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
+  const [lastCounts, setLastCounts] = useState<Record<string, LastCount>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'out' | 'low' | 'ok'>('all')
@@ -20,12 +34,19 @@ export default function CurrentStockPage() {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
-    fetchItems()
+    fetchData()
   }, [router])
 
-  const fetchItems = async () => {
-    const res = await fetch('/api/items')
-    setItems(await res.json())
+  const fetchData = async () => {
+    const [itemsRes, countsRes] = await Promise.all([
+      fetch('/api/items'),
+      fetch('/api/counts/last-per-item'),
+    ])
+    setItems(await itemsRes.json())
+    const counts: LastCount[] = await countsRes.json()
+    const map: Record<string, LastCount> = {}
+    for (const c of counts) map[c.item_id] = c
+    setLastCounts(map)
     setLastUpdated(new Date())
     setLoading(false)
   }
@@ -69,7 +90,7 @@ export default function CurrentStockPage() {
             )}
           </div>
           <button
-            onClick={fetchItems}
+            onClick={fetchData}
             className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
           >
             Refresh
@@ -133,6 +154,9 @@ export default function CurrentStockPage() {
                           <p className="text-xs text-gray-400 mt-0.5">
                             par {item.par_level} {item.unit}
                             {item.secondary_unit ? ` · ${item.secondary_count} ${item.secondary_unit}` : ''}
+                            {lastCounts[item.id]
+                              ? ` · counted ${formatCountDate(lastCounts[item.id].created_at)}`
+                              : ' · never counted'}
                           </p>
                         </div>
                         <div className="text-right flex-shrink-0">
