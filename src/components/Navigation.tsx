@@ -131,6 +131,7 @@ export default function Navigation() {
           {role === 'owner' && (
             <>
               {navLink('/dashboard', 'Dashboard')}
+              {navLink('/current-stock', 'Stock')}
               {navLink('/order-list', 'Order List')}
               {navLink('/history', 'History')}
 
