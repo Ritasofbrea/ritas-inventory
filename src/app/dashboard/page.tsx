@@ -7,6 +7,7 @@ import { getRole } from '@/lib/auth'
 import { Item, getStockStatus } from '@/lib/types'
 
 type LastCount = { item_id: string; created_at: string; entered_by: string }
+type VelocityRow = { item_id: string; name: string; unit: string; consumed: number }
 
 function daysSince(iso: string) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
@@ -34,10 +35,19 @@ function formatDateTime(iso: string) {
   }
 }
 
+const DIST_LABEL: Record<string, string> = {
+  bunzl: 'Bunzl',
+  balford: 'Balford',
+  other: 'Other',
+  seasonal: 'Seasonal',
+  discontinued: 'Discontinued',
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
   const [lastCounts, setLastCounts] = useState<Record<string, LastCount>>({})
+  const [topMovers, setTopMovers] = useState<VelocityRow[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [shorts, setShorts] = useState<ShortRecord[]>([])
@@ -52,7 +62,7 @@ export default function DashboardPage() {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
-    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary(), fetchLastCounts()])
+    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary(), fetchLastCounts(), fetchTopMovers()])
   }, [router])
 
   const fetchItems = async () => {
@@ -70,16 +80,10 @@ export default function DashboardPage() {
     if (!res.ok) return
     type HistoryRecord = { id: string; type: string; resolved: boolean; related_order_id: string | null; received_by?: string | null; notes: string; created_at: string; order_history_items: { item_id?: string; item_name: string; quantity: number; unit: string }[] }
     const all = (await res.json()) as HistoryRecord[]
-
-    // Unresolved shorts
     setShorts(all.filter((r) => r.type === 'short' && r.resolved === false) as ShortRecord[])
-
-    // Receipt lookup for received_by
     const byId: Record<string, string | null> = {}
     all.filter((r) => r.type === 'received' || r.type === 'will_call').forEach((r) => { byId[r.id] = r.received_by ?? null })
     setReceiptReceivedBy(byId)
-
-    // On-order count
     const fulfilledIds = new Set(all.filter((r) => r.type === 'received' || r.type === 'will_call').map((r) => r.related_order_id).filter(Boolean) as string[])
     const pending = all.filter((r) => r.type === 'ordered' && !fulfilledIds.has(r.id))
     const itemIds = new Set(pending.flatMap((o) => o.order_history_items.map((i) => i.item_id).filter(Boolean)))
@@ -98,6 +102,17 @@ export default function DashboardPage() {
     const map: Record<string, LastCount> = {}
     for (const c of counts) map[c.item_id] = c
     setLastCounts(map)
+  }
+
+  const fetchTopMovers = async () => {
+    const end = new Date()
+    const start = new Date(end)
+    start.setDate(start.getDate() - 30)
+    const fmt = (d: Date) => d.toISOString().split('T')[0]
+    const res = await fetch(`/api/reports/velocity?start=${fmt(start)}&end=${fmt(end)}`)
+    if (!res.ok) return
+    const data: VelocityRow[] = await res.json()
+    setTopMovers(data.filter((r) => r.consumed > 0).slice(0, 5))
   }
 
   const resolveShort = async (id: string, name: string) => {
@@ -126,6 +141,20 @@ export default function DashboardPage() {
     return !lc || daysSince(lc.created_at) > 7
   })
 
+  const countedThisWeek = items.filter((i) => {
+    const lc = lastCounts[i.id]
+    return lc && daysSince(lc.created_at) <= 7
+  }).length
+
+  // Group out+low items by distributor for order breakdown
+  const needsOrderItems = [...outItems, ...lowItems]
+  const byDistributor = needsOrderItems.reduce<Record<string, Item[]>>((acc, item) => {
+    const key = item.distributor || 'other'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(item)
+    return acc
+  }, {})
+
   const countFmt = summary.lastCount ? formatDateTime(summary.lastCount.created_at) : null
   const recvFmt = summary.lastReceived ? formatDateTime(summary.lastReceived.created_at) : null
 
@@ -138,7 +167,7 @@ export default function DashboardPage() {
         <div className="mb-5 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <button
-            onClick={() => { fetchItems(); fetchOrderHistory(); fetchSummary(); fetchLastCounts() }}
+            onClick={() => { fetchItems(); fetchOrderHistory(); fetchSummary(); fetchLastCounts(); fetchTopMovers() }}
             className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
           >
             Refresh
@@ -146,7 +175,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Activity summary cards */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-4">
             <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Last Count</p>
             {countFmt ? (
@@ -177,6 +206,38 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-400">No deliveries yet</p>
             )}
           </div>
+        </div>
+
+        {/* Count coverage bar */}
+        {items.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3 mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Count Coverage This Week</p>
+              <p className="text-sm font-bold text-gray-900">{countedThisWeek} / {items.length}</p>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all ${countedThisWeek === items.length ? 'bg-green-500' : countedThisWeek / items.length >= 0.5 ? 'bg-amber-400' : 'bg-red-400'}`}
+                style={{ width: `${Math.round((countedThisWeek / items.length) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Quick actions */}
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <button
+            onClick={() => router.push('/count')}
+            className="bg-[#1a7a3c] hover:bg-[#155f2f] text-white font-bold py-3 rounded-2xl text-sm transition-colors"
+          >
+            Start Count →
+          </button>
+          <button
+            onClick={() => router.push('/receive-order')}
+            className="bg-white hover:bg-gray-50 text-gray-800 font-bold py-3 rounded-2xl text-sm border border-gray-200 transition-colors"
+          >
+            Receive Order →
+          </button>
         </div>
 
         {/* On order indicator */}
@@ -236,18 +297,8 @@ export default function DashboardPage() {
                         className="flex-1 rounded-xl px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none"
                         autoFocus
                       />
-                      <button
-                        onClick={() => resolveShort(short.id, resolveByName)}
-                        className="bg-white text-red-700 hover:bg-red-50 font-bold text-sm px-4 py-2 rounded-xl"
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        onClick={() => setPendingResolveId(null)}
-                        className="text-red-200 hover:text-white text-sm px-2"
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={() => resolveShort(short.id, resolveByName)} className="bg-white text-red-700 hover:bg-red-50 font-bold text-sm px-4 py-2 rounded-xl">Confirm</button>
+                      <button onClick={() => setPendingResolveId(null)} className="text-red-200 hover:text-white text-sm px-2">Cancel</button>
                     </div>
                   </div>
                 )}
@@ -258,12 +309,12 @@ export default function DashboardPage() {
 
         {/* Stock status */}
         {needsAttention === 0 ? (
-          <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 flex items-center gap-3">
+          <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 flex items-center gap-3 mb-5">
             <span className="text-2xl">✅</span>
             <p className="text-green-800 font-semibold text-lg">Everything is stocked!</p>
           </div>
         ) : (
-          <>
+          <div className="mb-5">
             <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-3 mb-4">
               <p className="text-red-800 font-bold">
                 {needsAttention} item{needsAttention !== 1 ? 's' : ''} need{needsAttention === 1 ? 's' : ''} ordering
@@ -275,9 +326,7 @@ export default function DashboardPage() {
               <section className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-red-500 mb-2">Out of Stock</p>
                 <div className="flex flex-wrap gap-2">
-                  {outItems.map((item) => (
-                    <StockPill key={item.id} item={item} variant="out" />
-                  ))}
+                  {outItems.map((item) => <StockPill key={item.id} item={item} variant="out" />)}
                 </div>
               </section>
             )}
@@ -286,18 +335,53 @@ export default function DashboardPage() {
               <section className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-amber-500 mb-2">Running Low</p>
                 <div className="flex flex-wrap gap-2">
-                  {lowItems.map((item) => (
-                    <StockPill key={item.id} item={item} variant="low" />
-                  ))}
+                  {lowItems.map((item) => <StockPill key={item.id} item={item} variant="low" />)}
                 </div>
               </section>
             )}
-          </>
+
+            {/* Distributor breakdown */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 px-5 pt-4 pb-2">Order From</p>
+              {Object.entries(byDistributor).map(([dist, distItems], idx, arr) => (
+                <div key={dist} className={`px-5 py-3 ${idx < arr.length - 1 ? 'border-b border-gray-100' : 'pb-4'}`}>
+                  <p className="text-sm font-bold text-gray-800 mb-1">{DIST_LABEL[dist] ?? dist}</p>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    {distItems.map((i) => i.name).join(', ')}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Top movers */}
+        {topMovers.length > 0 && (
+          <section className="mb-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Top Movers — Last 30 Days</p>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              {topMovers.map((item, idx) => {
+                const maxConsumed = topMovers[0].consumed
+                return (
+                  <div key={item.item_id} className={`flex items-center gap-3 px-5 py-3 ${idx < topMovers.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                    <span className="text-xs font-bold text-gray-300 w-4">{idx + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 mt-1">
+                        <div className="h-1.5 rounded-full bg-[#1a7a3c]" style={{ width: `${Math.round((item.consumed / maxConsumed) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-gray-700 flex-shrink-0">{item.consumed} <span className="text-xs font-normal text-gray-400">{item.unit}</span></span>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
         )}
 
         {/* Stale items */}
         {staleItems.length > 0 && (
-          <section className="mt-5">
+          <section className="mb-5">
             <div className="bg-orange-50 border border-orange-200 rounded-2xl px-5 py-3 mb-3">
               <p className="text-orange-800 font-bold">
                 {staleItems.length} item{staleItems.length !== 1 ? 's' : ''} not counted in 7+ days
@@ -320,7 +404,7 @@ export default function DashboardPage() {
         )}
 
         {lastUpdated && (
-          <p className="text-center text-gray-400 text-xs mt-6">
+          <p className="text-center text-gray-400 text-xs mt-2">
             Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         )}
@@ -331,13 +415,7 @@ export default function DashboardPage() {
 
 function StockPill({ item, variant }: { item: Item; variant: 'out' | 'low' }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold ${
-        variant === 'out'
-          ? 'bg-red-100 text-red-800 border border-red-200'
-          : 'bg-amber-100 text-amber-800 border border-amber-200'
-      }`}
-    >
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold ${variant === 'out' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
       {item.name}
       <span className={`text-xs font-normal ${variant === 'out' ? 'text-red-500' : 'text-amber-600'}`}>
         {variant === 'out' ? '0' : item.current_count}/{item.par_level}
