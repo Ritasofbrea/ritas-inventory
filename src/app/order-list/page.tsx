@@ -421,48 +421,55 @@ export default function OrderListPage() {
               </div>
             ) : (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                {orderHistory.map((order, idx, arr) => {
-                  const isExpanded = expandedOrders.has(order.id)
-                  return (
-                    <div key={order.id} className={idx < arr.length - 1 ? 'border-b border-gray-100' : ''}>
-                      <button
-                        onClick={() => toggleOrder(order.id)}
-                        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${TYPE_COLORS[order.type] ?? 'bg-gray-100 text-gray-500'}`}>
-                            {TYPE_LABELS[order.type] ?? order.type}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900">{formatDate(order.created_at)}</p>
-                            <p className="text-xs text-gray-400">
-                              {order.order_history_items.length} items
-                              {order.received_by && <span className="text-[#1a7a3c] font-medium"> · {order.received_by}</span>}
-                            </p>
+                {(() => {
+                  const orderById = Object.fromEntries(orderHistory.map((o) => [o.id, o]))
+                  return orderHistory.map((order, idx, arr) => {
+                    const isExpanded = expandedOrders.has(order.id)
+                    const relatedOrder = order.related_order_id ? orderById[order.related_order_id] : null
+                    return (
+                      <div key={order.id} className={idx < arr.length - 1 ? 'border-b border-gray-100' : ''}>
+                        <button
+                          onClick={() => toggleOrder(order.id)}
+                          className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${TYPE_COLORS[order.type] ?? 'bg-gray-100 text-gray-500'}`}>
+                              {TYPE_LABELS[order.type] ?? order.type}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900">{formatDate(order.created_at)}</p>
+                              <p className="text-xs text-gray-400">
+                                {order.order_history_items.length} items
+                                {order.received_by && <span className="text-[#1a7a3c] font-medium"> · {order.received_by}</span>}
+                                {order.type === 'short' && relatedOrder && (
+                                  <span className="text-gray-400"> · from {formatDate(relatedOrder.created_at)} delivery</span>
+                                )}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                      {isExpanded && (
-                        <div className="border-t border-gray-100">
-                          {order.order_history_items.map((item, i) => (
-                            <div key={i} className={`flex items-center justify-between px-5 py-3 bg-gray-50 ${i < order.order_history_items.length - 1 ? 'border-b border-gray-100' : ''}`}>
-                              <p className="text-sm font-medium text-gray-900">{item.item_name}</p>
-                              <p className="text-sm font-bold text-gray-700">{item.quantity} <span className="font-normal text-gray-400">{item.unit}</span></p>
-                            </div>
-                          ))}
-                          {order.notes && (
-                            <div className="px-5 py-3 bg-yellow-50 border-t border-gray-100">
-                              <p className="text-xs text-gray-500 italic">{order.notes}</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                          <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {isExpanded && (
+                          <div className="border-t border-gray-100">
+                            {order.order_history_items.map((item, i) => (
+                              <div key={i} className={`flex items-center justify-between px-5 py-3 bg-gray-50 ${i < order.order_history_items.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                                <p className="text-sm font-medium text-gray-900">{item.item_name}</p>
+                                <p className="text-sm font-bold text-gray-700">{item.quantity} <span className="font-normal text-gray-400">{item.unit}</span></p>
+                              </div>
+                            ))}
+                            {order.notes && (
+                              <div className="px-5 py-3 bg-yellow-50 border-t border-gray-100">
+                                <p className="text-xs text-gray-500 italic">{order.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                })()}
               </div>
             )}
           </>
