@@ -17,10 +17,12 @@ export default function AdjustPage() {
   const [search, setSearch] = useState('')
   const [openItemId, setOpenItemId] = useState<string | null>(null)
   const [newCount, setNewCount] = useState('')
+  const [newSecondaryCount, setNewSecondaryCount] = useState('')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [localCounts, setLocalCounts] = useState<Record<string, number>>({})
+  const [localSecondaryCounts, setLocalSecondaryCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
     const r = getRole()
@@ -36,6 +38,7 @@ export default function AdjustPage() {
     if (openItemId === id) { setOpenItemId(null); return }
     setOpenItemId(id)
     setNewCount('')
+    setNewSecondaryCount('')
     setReason('')
   }
 
@@ -44,18 +47,33 @@ export default function AdjustPage() {
     if (role === 'shift_lead' && !enteredBy.trim()) return
     setSaving(true)
     const count = parseFloat(newCount)
-    await fetch('/api/counts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        entered_by: enteredBy.trim() || 'owner',
-        counts: [{ item_id: item.id, count, notes: reason.trim(), type: 'adjustment' }],
+    const saves: Promise<unknown>[] = [
+      fetch('/api/counts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entered_by: enteredBy.trim() || 'owner',
+          counts: [{ item_id: item.id, count, notes: reason.trim(), type: 'adjustment' }],
+        }),
       }),
-    })
+    ]
+    const secondaryVal = item.secondary_unit ? parseFloat(newSecondaryCount || '0') || 0 : null
+    if (secondaryVal !== null) {
+      saves.push(
+        fetch('/api/items', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id, secondary_count: secondaryVal }),
+        })
+      )
+    }
+    await Promise.all(saves)
     setLocalCounts((prev) => ({ ...prev, [item.id]: count }))
+    if (secondaryVal !== null) setLocalSecondaryCounts((prev) => ({ ...prev, [item.id]: secondaryVal }))
     setSavedIds((prev) => new Set(prev).add(item.id))
     setOpenItemId(null)
     setNewCount('')
+    setNewSecondaryCount('')
     setReason('')
     setSaving(false)
     setTimeout(() => setSavedIds((prev) => { const s = new Set(prev); s.delete(item.id); return s }), 4000)
@@ -123,6 +141,7 @@ export default function AdjustPage() {
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   {byCategory[category].map((item, idx, arr) => {
                     const displayCount = localCounts[item.id] ?? item.current_count
+                    const displaySecondary = localSecondaryCounts[item.id] ?? item.secondary_count
                     const isOpen = openItemId === item.id
                     const wasSaved = savedIds.has(item.id)
                     return (
@@ -134,7 +153,8 @@ export default function AdjustPage() {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-gray-900">{item.name}</p>
                             <p className="text-sm text-gray-400">
-                              {displayCount} {item.unit} on hand
+                              {displayCount} {item.unit}
+                              {item.secondary_unit ? ` + ${displaySecondary} ${item.secondary_unit}` : ''} on hand
                             </p>
                           </div>
                           {wasSaved && !isOpen && (
@@ -149,17 +169,35 @@ export default function AdjustPage() {
                           <div className="border-t border-gray-100 bg-blue-50 px-5 py-4">
                             <div className="mb-3">
                               <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 mb-1.5">New count</label>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={newCount}
-                                  onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setNewCount(e.target.value) }}
-                                  placeholder={String(displayCount)}
-                                  className="w-28 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-white"
-                                  autoFocus
-                                />
-                                <span className="text-gray-500 text-sm">{item.unit}</span>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={newCount}
+                                    onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setNewCount(e.target.value) }}
+                                    placeholder={String(displayCount)}
+                                    className="w-24 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-white"
+                                    autoFocus
+                                  />
+                                  <span className="text-gray-500 text-sm">{item.unit}</span>
+                                </div>
+                                {item.secondary_unit && (
+                                  <>
+                                    <span className="text-gray-300 text-lg font-light">+</span>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={newSecondaryCount}
+                                        onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setNewSecondaryCount(e.target.value) }}
+                                        placeholder={String(displaySecondary)}
+                                        className="w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
+                                      />
+                                      <span className="text-purple-500 text-sm font-medium">{item.secondary_unit}</span>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </div>
 
