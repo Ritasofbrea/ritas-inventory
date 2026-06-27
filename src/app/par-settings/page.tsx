@@ -23,6 +23,8 @@ export default function ParSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<Set<string>>(new Set())
+  const [savingAll, setSavingAll] = useState(false)
+  const [savedAll, setSavedAll] = useState(false)
   const [error, setError] = useState('')
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({})
 
@@ -49,6 +51,37 @@ export default function ParSettingsPage() {
     }
   }
 
+  const handleSaveAll = async () => {
+    const changed = items.filter((item) => String(item.par_level) !== pars[item.id] && pars[item.id] !== '')
+    if (changed.length === 0) return
+    setSavingAll(true)
+    setError('')
+    try {
+      await Promise.all(changed.map((item) =>
+        fetch('/api/items', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id, par_level: parseInt(pars[item.id] || '0') }),
+        })
+      ))
+      setItems((prev) => prev.map((i) => {
+        const changedItem = changed.find((c) => c.id === i.id)
+        return changedItem ? { ...i, par_level: parseInt(pars[i.id] || '0') } : i
+      }))
+      setPars((prev) => {
+        const next = { ...prev }
+        changed.forEach((item) => { next[item.id] = String(parseInt(pars[item.id] || '0')) })
+        return next
+      })
+      setSavedAll(true)
+      setTimeout(() => setSavedAll(false), 2500)
+    } catch {
+      setError('Could not save all. Try again.')
+    } finally {
+      setSavingAll(false)
+    }
+  }
+
   const handleChange = (itemId: string, value: string) => {
     if (value === '' || /^\d+$/.test(value)) {
       setPars((prev) => ({ ...prev, [itemId]: value }))
@@ -69,6 +102,7 @@ export default function ParSettingsPage() {
       setItems((prev) =>
         prev.map((i) => (i.id === item.id ? { ...i, par_level: newPar } : i))
       )
+      setPars((prev) => ({ ...prev, [item.id]: String(newPar) }))
       setSaved((prev) => new Set(prev).add(item.id))
       setTimeout(() => {
         setSaved((prev) => { const s = new Set(prev); s.delete(item.id); return s })
@@ -144,13 +178,11 @@ export default function ParSettingsPage() {
                         )}
                       </div>
                       <input
-                        type="number"
+                        type="text"
                         inputMode="numeric"
-                        pattern="[0-9]*"
                         className="count-input w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
                         value={pars[item.id] ?? ''}
                         onChange={(e) => handleChange(item.id, e.target.value)}
-                        min="0"
                         placeholder="0"
                       />
                       <button
@@ -176,6 +208,20 @@ export default function ParSettingsPage() {
             )
           })}
         </div>
+
+        {items.some((item) => String(item.par_level) !== pars[item.id] && pars[item.id] !== '') && (
+          <div className="mt-6 pb-8">
+            <button
+              onClick={handleSaveAll}
+              disabled={savingAll}
+              className={`w-full py-4 rounded-2xl font-bold text-lg transition-colors ${
+                savedAll ? 'bg-green-500 text-white' : savingAll ? 'bg-gray-200 text-gray-400' : 'bg-[#1a7a3c] hover:bg-[#155f2f] text-white'
+              }`}
+            >
+              {savedAll ? '✓ All Saved' : savingAll ? 'Saving…' : 'Save All Changes'}
+            </button>
+          </div>
+        )}
       </main>
     </div>
   )
