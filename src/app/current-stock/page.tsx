@@ -10,15 +10,21 @@ const STATUS_ORDER = { out: 0, low: 1, ok: 2 }
 
 type LastCount = { item_id: string; created_at: string; entered_by: string }
 
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+}
+
 function formatCountDate(iso: string): string {
-  const d = new Date(iso)
-  const now = new Date()
-  const diffMs = now.getTime() - d.getTime()
-  const diffDays = Math.floor(diffMs / 86400000)
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays}d ago`
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  const days = daysSince(iso)
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return `${days}d ago`
+  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
+function isStale(lastCount: LastCount | undefined): boolean {
+  if (!lastCount) return true
+  return daysSince(lastCount.created_at) > 7
 }
 
 export default function CurrentStockPage() {
@@ -144,14 +150,15 @@ export default function CurrentStockPage() {
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   {byCategory[category].map((item, idx, arr) => {
                     const status = getStockStatus(item)
+                    const stale = isStale(lastCounts[item.id])
                     return (
                       <div
                         key={item.id}
-                        className={`flex items-center gap-4 px-5 py-3.5 ${idx < arr.length - 1 ? 'border-b border-gray-100' : ''}`}
+                        className={`flex items-center gap-4 px-5 py-3.5 ${stale ? 'bg-orange-50' : ''} ${idx < arr.length - 1 ? 'border-b border-gray-100' : ''}`}
                       >
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-gray-900 text-sm">{item.name}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">
+                          <p className={`text-xs mt-0.5 ${stale ? 'text-orange-500' : 'text-gray-400'}`}>
                             par {item.par_level} {item.unit}
                             {item.secondary_unit ? ` · ${item.secondary_count} ${item.secondary_unit}` : ''}
                             {lastCounts[item.id]
