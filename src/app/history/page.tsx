@@ -185,7 +185,10 @@ export default function HistoryPage() {
                         >
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-gray-900 text-sm">{entry.items?.name ?? '—'}</p>
-                            <p className="text-xs text-gray-400">{entry.items?.category}</p>
+                            <p className="text-xs text-gray-400">
+                              {entry.items?.category}
+                              {entry.notes && <span className="text-amber-600 italic"> · {entry.notes}</span>}
+                            </p>
                           </div>
                           <span className="font-bold text-gray-900">
                             {entry.count}
