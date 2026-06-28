@@ -43,21 +43,27 @@ export default function AdjustPage() {
   }
 
   const handleSave = async (item: Item) => {
-    if (!reason.trim() || newCount === '') return
+    const hasSecondary = !!item.secondary_unit && newSecondaryCount !== ''
+    if (!reason.trim() || (newCount === '' && !hasSecondary)) return
     if (role === 'shift_lead' && !enteredBy.trim()) return
     setSaving(true)
-    const count = parseFloat(newCount)
-    const saves: Promise<unknown>[] = [
-      fetch('/api/counts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entered_by: enteredBy.trim() || 'owner',
-          counts: [{ item_id: item.id, count, notes: reason.trim(), type: 'adjustment' }],
-        }),
-      }),
-    ]
-    const secondaryVal = item.secondary_unit ? parseFloat(newSecondaryCount || '0') || 0 : null
+    const saves: Promise<unknown>[] = []
+
+    if (newCount !== '') {
+      const count = parseFloat(newCount)
+      saves.push(
+        fetch('/api/counts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            entered_by: enteredBy.trim() || 'owner',
+            counts: [{ item_id: item.id, count, notes: reason.trim(), type: 'adjustment' }],
+          }),
+        })
+      )
+    }
+
+    const secondaryVal = hasSecondary ? parseFloat(newSecondaryCount) || 0 : null
     if (secondaryVal !== null) {
       saves.push(
         fetch('/api/items', {
@@ -68,7 +74,7 @@ export default function AdjustPage() {
       )
     }
     await Promise.all(saves)
-    setLocalCounts((prev) => ({ ...prev, [item.id]: count }))
+    if (newCount !== '') setLocalCounts((prev) => ({ ...prev, [item.id]: parseFloat(newCount) }))
     if (secondaryVal !== null) setLocalSecondaryCounts((prev) => ({ ...prev, [item.id]: secondaryVal }))
     setSavedIds((prev) => new Set(prev).add(item.id))
     setOpenItemId(null)
@@ -226,7 +232,7 @@ export default function AdjustPage() {
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleSave(item)}
-                                disabled={saving || !reason.trim() || newCount === '' || nameRequired}
+                                disabled={saving || !reason.trim() || (newCount === '' && !(item.secondary_unit && newSecondaryCount !== '')) || nameRequired}
                                 className="flex-1 bg-[#1a7a3c] hover:bg-[#155f2f] disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition-colors"
                               >
                                 {saving ? 'Saving…' : nameRequired ? 'Enter your name above first' : 'Save Adjustment'}
