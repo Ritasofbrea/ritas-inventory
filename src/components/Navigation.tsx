@@ -14,6 +14,7 @@ const MORE_LINKS = [
   { href: '/par-settings', label: 'Par Levels' },
   { href: '/manage-items', label: 'Manage Items' },
   { href: '/reports', label: 'Reports' },
+  { href: '/clover-mapping', label: 'Clover Mapping' },
 ]
 
 export default function Navigation() {
