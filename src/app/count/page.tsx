@@ -241,6 +241,27 @@ export default function CountPage() {
           </div>
         )}
 
+        {/* Count progress */}
+        {items.length > 0 && (() => {
+          const entered = items.filter((i) => counts[i.id] !== undefined && counts[i.id] !== '').length
+          const pct = entered / items.length
+          const barColor = entered === items.length ? 'bg-green-500' : pct >= 0.5 ? 'bg-amber-400' : 'bg-blue-400'
+          return (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Items Entered</p>
+                <p className="text-sm font-bold text-gray-900">
+                  {entered} / {items.length}
+                  {entered === items.length && <span className="text-green-500 ml-1.5">✓ All done</span>}
+                </p>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div className={`h-2 rounded-full transition-all ${barColor}`} style={{ width: `${Math.round(pct * 100)}%` }} />
+              </div>
+            </div>
+          )
+        })()}
+
         <div className="mb-4">
           <input
             type="text"
