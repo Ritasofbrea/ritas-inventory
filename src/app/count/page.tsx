@@ -10,6 +10,16 @@ interface CountDraft {
   [itemId: string]: string
 }
 
+type CountDraftData = {
+  counts: CountDraft
+  secondaryCounts: CountDraft
+  countedBy: string
+  savedAt: number
+}
+
+const DRAFT_KEY = 'count_draft'
+const DRAFT_EXPIRY_MS = 4 * 60 * 60 * 1000
+
 export default function CountPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
@@ -28,6 +38,7 @@ export default function CountPage() {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const submitRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [draftToRestore, setDraftToRestore] = useState<CountDraftData | null>(null)
 
   useEffect(() => {
     const el = submitRef.current
@@ -66,15 +77,44 @@ export default function CountPage() {
     localStorage.setItem('countedBy', val)
   }
 
+  const saveDraft = (c: CountDraft, sc: CountDraft) => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ counts: c, secondaryCounts: sc, countedBy, savedAt: Date.now() }))
+  }
+
+  const handleRestore = () => {
+    if (!draftToRestore) return
+    setCounts(draftToRestore.counts)
+    setSecondaryCounts(draftToRestore.secondaryCounts)
+    setCountedBy('')
+    localStorage.removeItem('countedBy')
+    setDraftToRestore(null)
+  }
+
+  const handleDiscardDraft = () => {
+    localStorage.removeItem(DRAFT_KEY)
+    setDraftToRestore(null)
+  }
+
   const fetchItems = async () => {
     try {
       const res = await fetch('/api/items')
       const data = await res.json()
       setItems(data)
-      const initial: CountDraft = {}
-      const initialSecondary: CountDraft = {}
-      setCounts(initial)
-      setSecondaryCounts(initialSecondary)
+      setCounts({})
+      setSecondaryCounts({})
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY)
+        if (raw) {
+          const draft = JSON.parse(raw) as CountDraftData
+          if (Date.now() - draft.savedAt > DRAFT_EXPIRY_MS) {
+            localStorage.removeItem(DRAFT_KEY)
+          } else {
+            setDraftToRestore(draft)
+          }
+        }
+      } catch {
+        localStorage.removeItem(DRAFT_KEY)
+      }
     } catch {
       setError('Failed to load items. Check your connection.')
     } finally {
@@ -84,13 +124,17 @@ export default function CountPage() {
 
   const handleChange = (itemId: string, value: string) => {
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
-      setCounts((prev) => ({ ...prev, [itemId]: value }))
+      const next = { ...counts, [itemId]: value }
+      setCounts(next)
+      saveDraft(next, secondaryCounts)
     }
   }
 
   const handleSecondaryChange = (itemId: string, value: string) => {
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
-      setSecondaryCounts((prev) => ({ ...prev, [itemId]: value }))
+      const next = { ...secondaryCounts, [itemId]: value }
+      setSecondaryCounts(next)
+      saveDraft(counts, next)
     }
   }
 
@@ -132,6 +176,7 @@ export default function CountPage() {
 
       setCounts({})
       setSecondaryCounts({})
+      localStorage.removeItem(DRAFT_KEY)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
       const name = countedBy.trim() || 'Someone'
@@ -214,6 +259,31 @@ export default function CountPage() {
             + Add Item
           </button>
         </div>
+
+        {/* Draft restore prompt */}
+        {draftToRestore && (
+          <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+            <p className="text-sm font-semibold text-amber-800">
+              {draftToRestore.countedBy?.trim()
+                ? `Restore ${draftToRestore.countedBy.trim()}'s count from ${new Date(draftToRestore.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}?`
+                : `Restore in-progress count from ${new Date(draftToRestore.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}?`}
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleRestore}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 rounded-xl text-sm transition-colors"
+              >
+                Restore
+              </button>
+              <button
+                onClick={handleDiscardDraft}
+                className="flex-1 bg-white hover:bg-gray-50 text-amber-700 font-semibold py-2 rounded-xl text-sm border border-amber-200 transition-colors"
+              >
+                Start Fresh
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Who's counting — shift lead only */}
         {role !== 'owner' && (
