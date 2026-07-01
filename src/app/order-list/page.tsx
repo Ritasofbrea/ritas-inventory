@@ -45,6 +45,7 @@ export default function OrderListPage() {
   const [marking, setMarking] = useState(false)
   const [marked, setMarked] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [orderQuantities, setOrderQuantities] = useState<Record<string, string>>({})
 
   // On-order tracking
   const [onOrderItemIds, setOnOrderItemIds] = useState<Set<string>>(new Set())
@@ -140,6 +141,16 @@ export default function OrderListPage() {
     })
   }
 
+  const getDefaultQty = (item: DistributorItem) => Math.max(0, item.par_level - item.current_count)
+
+  const getQtyValue = (item: DistributorItem) => orderQuantities[item.id] ?? String(getDefaultQty(item))
+
+  const handleQtyChange = (id: string, value: string) => {
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setOrderQuantities((prev) => ({ ...prev, [id]: value }))
+    }
+  }
+
   const handleMarkOrdered = async () => {
     if (selectedIds.size === 0) return
     setMarking(true)
@@ -149,7 +160,7 @@ export default function OrderListPage() {
         .map((item) => ({
           item_id: item.id,
           item_name: item.name,
-          quantity: Math.max(0, item.par_level - item.current_count),
+          quantity: parseFloat(orderQuantities[item.id] ?? '') || getDefaultQty(item),
           unit: item.unit,
         }))
       const res = await fetch('/api/order-history', {
@@ -159,6 +170,7 @@ export default function OrderListPage() {
       })
       if (res.ok) {
         setMarked(true)
+        setOrderQuantities({})
         setOrderHistory([])
         await loadAll()
         setTimeout(() => setMarked(false), 3000)
@@ -332,6 +344,20 @@ export default function OrderListPage() {
                                       {item.item_number && <span className="font-mono text-gray-500 mr-2">#{item.item_number}</span>}
                                       {item.distributor_item_name ?? item.category}
                                     </p>
+                                    {checked && (
+                                      <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                                        <span className="text-xs text-gray-400">Order qty:</span>
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={getQtyValue(item)}
+                                          onChange={(e) => handleQtyChange(item.id, e.target.value)}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
+                                        />
+                                        <span className="text-xs text-gray-400">{item.unit}</span>
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="text-right flex-shrink-0 mr-2">
                                     <p className="text-sm text-gray-500">
@@ -374,6 +400,20 @@ export default function OrderListPage() {
                                 <div className="flex-1 min-w-0">
                                   <p className="font-semibold text-gray-900">{item.name}</p>
                                   <p className="text-sm text-gray-400">{item.category}</p>
+                                  {checked && (
+                                    <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                                      <span className="text-xs text-gray-400">Order qty:</span>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={getQtyValue(item)}
+                                        onChange={(e) => handleQtyChange(item.id, e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
+                                      />
+                                      <span className="text-xs text-gray-400">{item.unit}</span>
+                                    </div>
+                                  )}
                                 </div>
                                 <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${status === 'out' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                                   {status === 'out' ? 'OUT' : 'LOW'}
