@@ -8,6 +8,7 @@ export async function GET() {
     db
       .from('inventory_counts')
       .select('created_at, entered_by')
+      .eq('is_test_data', false)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),

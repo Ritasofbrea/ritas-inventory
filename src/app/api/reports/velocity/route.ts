@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     .from('inventory_counts')
     .select('item_id, count, created_at, items(name, category, unit)')
     .eq('type', 'count')
+    .eq('is_test_data', false)
     .lte('created_at', new Date(endMs).toISOString())
     .order('created_at', { ascending: false })
 

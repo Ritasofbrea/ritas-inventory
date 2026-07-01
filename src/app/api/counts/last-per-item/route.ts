@@ -7,6 +7,7 @@ export async function GET() {
     .from('inventory_counts')
     .select('item_id, created_at, entered_by')
     .eq('type', 'count')
+    .eq('is_test_data', false)
     .order('created_at', { ascending: false })
     .limit(1000)
 

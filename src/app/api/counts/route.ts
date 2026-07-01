@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
   let query = db
     .from('inventory_counts')
     .select('*, items(name, category, unit)')
+    .eq('is_test_data', false)
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { counts, entered_by } = body
+  const { counts, entered_by, is_test_data } = body
   // counts: Array<{ item_id: string; count: number }>
 
   if (!Array.isArray(counts) || counts.length === 0) {
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
   }
 
   const db = getServerSupabase()
+  const isTestData = !!is_test_data
 
   // Insert history records
   const rows = counts.map((c: { item_id: string; count: number; notes?: string; type?: string }) => ({
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
     entered_by: entered_by || 'shift_lead',
     notes: c.notes || null,
     type: c.type || 'count',
+    is_test_data: isTestData,
   }))
 
   const { error: insertError } = await db.from('inventory_counts').insert(rows)
@@ -45,11 +48,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
 
-  // Update current counts on items
-  const updates = counts.map((c: { item_id: string; count: number }) =>
-    db.from('items').update({ current_count: c.count }).eq('id', c.item_id)
-  )
-  await Promise.all(updates)
+  // Test-data sessions must never affect live stock levels
+  if (!isTestData) {
+    const updates = counts.map((c: { item_id: string; count: number }) =>
+      db.from('items').update({ current_count: c.count }).eq('id', c.item_id)
+    )
+    await Promise.all(updates)
+  }
 
   return NextResponse.json({ ok: true })
 }

@@ -11,6 +11,7 @@ export async function GET() {
     .from('inventory_counts')
     .select('item_id, count, created_at, items(name, unit)')
     .eq('type', 'count')
+    .eq('is_test_data', false)
     .gte('created_at', since)
     .order('created_at', { ascending: true })
 

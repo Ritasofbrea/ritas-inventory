@@ -46,6 +46,7 @@ export interface InventoryCount {
   entered_by: string
   notes: string | null
   type: 'count' | 'adjustment'
+  is_test_data: boolean
   created_at: string
   items?: Item
 }

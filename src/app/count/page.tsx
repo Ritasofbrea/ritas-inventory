@@ -14,6 +14,7 @@ type CountDraftData = {
   counts: CountDraft
   secondaryCounts: CountDraft
   countedBy: string
+  isTestCount: boolean
   savedAt: number
 }
 
@@ -39,6 +40,7 @@ export default function CountPage() {
   const submitRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [draftToRestore, setDraftToRestore] = useState<CountDraftData | null>(null)
+  const [isTestCount, setIsTestCount] = useState(false)
 
   useEffect(() => {
     const el = submitRef.current
@@ -77,14 +79,21 @@ export default function CountPage() {
     localStorage.setItem('countedBy', val)
   }
 
-  const saveDraft = (c: CountDraft, sc: CountDraft) => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ counts: c, secondaryCounts: sc, countedBy, savedAt: Date.now() }))
+  const saveDraft = (c: CountDraft, sc: CountDraft, testFlag: boolean = isTestCount) => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ counts: c, secondaryCounts: sc, countedBy, isTestCount: testFlag, savedAt: Date.now() }))
+  }
+
+  const handleTestToggle = () => {
+    const next = !isTestCount
+    setIsTestCount(next)
+    saveDraft(counts, secondaryCounts, next)
   }
 
   const handleRestore = () => {
     if (!draftToRestore) return
     setCounts(draftToRestore.counts)
     setSecondaryCounts(draftToRestore.secondaryCounts)
+    setIsTestCount(draftToRestore.isTestCount ?? false)
     setCountedBy('')
     localStorage.removeItem('countedBy')
     setDraftToRestore(null)
@@ -155,37 +164,43 @@ export default function CountPage() {
       const res = await fetch('/api/counts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ counts: payload, entered_by: countedBy.trim() || 'shift_lead' }),
+        body: JSON.stringify({ counts: payload, entered_by: countedBy.trim() || 'shift_lead', is_test_data: isTestCount }),
       })
       if (!res.ok) throw new Error('Save failed')
 
-      // Save secondary counts for items that have a secondary_unit
-      const itemsWithSecondary = items.filter((i) => i.secondary_unit)
-      await Promise.all(
-        itemsWithSecondary.map((item) =>
-          fetch('/api/items', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: item.id,
-              secondary_count: parseFloat(secondaryCounts[item.id] || '0') || 0,
-            }),
-          })
+      // Test counts must never touch live stock levels (secondary_count included)
+      if (!isTestCount) {
+        const itemsWithSecondary = items.filter((i) => i.secondary_unit)
+        await Promise.all(
+          itemsWithSecondary.map((item) =>
+            fetch('/api/items', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: item.id,
+                secondary_count: parseFloat(secondaryCounts[item.id] || '0') || 0,
+              }),
+            })
+          )
         )
-      )
+      }
 
+      const wasTestCount = isTestCount
       setCounts({})
       setSecondaryCounts({})
+      setIsTestCount(false)
       localStorage.removeItem(DRAFT_KEY)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
-      const name = countedBy.trim() || 'Someone'
-      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      fetch('/api/send-push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: 'New Count Submitted', body: `${name} submitted a count at ${time}` }),
-      }).then((r) => r.json()).then((d) => console.log('push result:', d)).catch((e) => console.error('push error:', e))
+      if (!wasTestCount) {
+        const name = countedBy.trim() || 'Someone'
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        fetch('/api/send-push', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: 'New Count Submitted', body: `${name} submitted a count at ${time}` }),
+        }).then((r) => r.json()).then((d) => console.log('push result:', d)).catch((e) => console.error('push error:', e))
+      }
     } catch {
       setError('Could not save. Try again.')
     } finally {
@@ -235,7 +250,7 @@ export default function CountPage() {
   }, {})
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#d4edda]">
+    <div className={`min-h-screen flex flex-col bg-[#d4edda] ${isTestCount ? 'ring-4 ring-inset ring-purple-400' : ''}`}>
       <Navigation />
 
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6">
@@ -265,8 +280,8 @@ export default function CountPage() {
           <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
             <p className="text-sm font-semibold text-amber-800">
               {draftToRestore.countedBy?.trim()
-                ? `Restore ${draftToRestore.countedBy.trim()}'s count from ${new Date(draftToRestore.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}?`
-                : `Restore in-progress count from ${new Date(draftToRestore.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}?`}
+                ? `Restore ${draftToRestore.countedBy.trim()}'s${draftToRestore.isTestCount ? ' TEST' : ''} count from ${new Date(draftToRestore.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}?`
+                : `Restore ${draftToRestore.isTestCount ? 'TEST ' : ''}in-progress count from ${new Date(draftToRestore.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}?`}
             </p>
             <div className="flex gap-2 mt-3">
               <button
@@ -281,6 +296,35 @@ export default function CountPage() {
               >
                 Start Fresh
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Test Count toggle — owner only */}
+        {role === 'owner' && (
+          <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-700">Test Count</p>
+              <p className="text-xs text-gray-400">Excludes from reports, trends, and par suggestions</p>
+            </div>
+            <button
+              onClick={handleTestToggle}
+              role="switch"
+              aria-checked={isTestCount}
+              className={`relative flex-shrink-0 w-12 h-7 rounded-full transition-colors ${isTestCount ? 'bg-purple-500' : 'bg-gray-200'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${isTestCount ? 'translate-x-5' : ''}`} />
+            </button>
+          </div>
+        )}
+
+        {/* Persistent test-mode indicator */}
+        {isTestCount && (
+          <div className="mb-5 bg-purple-100 border-2 border-purple-400 rounded-2xl px-5 py-3 flex items-center gap-3">
+            <span className="text-xl">🧪</span>
+            <div>
+              <p className="text-sm font-bold text-purple-800">Test Mode Active</p>
+              <p className="text-xs text-purple-600">This count won&apos;t update live stock and is excluded from reports.</p>
             </div>
           </div>
         )}
