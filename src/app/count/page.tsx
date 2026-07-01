@@ -267,12 +267,29 @@ export default function CountPage() {
               return <p className="text-sm mt-1 text-gray-400">Last count: {dateStr}{by}</p>
             })() : <p className="text-gray-500 mt-1">Enter today&apos;s counts for each item.</p>}
           </div>
-          <button
-            onClick={() => { setShowAddModal(true); setAddError('') }}
-            className="flex-shrink-0 bg-[#c8102e] hover:bg-[#a50d26] text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors"
-          >
-            + Add Item
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => { setShowAddModal(true); setAddError('') }}
+              className="flex-shrink-0 bg-[#c8102e] hover:bg-[#a50d26] text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors"
+            >
+              + Add Item
+            </button>
+            {role === 'owner' && (
+              <button
+                onClick={handleTestToggle}
+                role="switch"
+                aria-checked={isTestCount}
+                title="Test Count — excludes from reports, trends, and par suggestions"
+                className={`flex-shrink-0 font-semibold px-4 py-2 rounded-xl text-sm transition-colors ${
+                  isTestCount
+                    ? 'bg-purple-500 hover:bg-purple-600 text-white'
+                    : 'bg-white text-purple-600 border border-purple-200 hover:border-purple-400'
+                }`}
+              >
+                🧪 Test{isTestCount ? ' ON' : ''}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Draft restore prompt */}
@@ -297,24 +314,6 @@ export default function CountPage() {
                 Start Fresh
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Test Count toggle — owner only */}
-        {role === 'owner' && (
-          <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-700">Test Count</p>
-              <p className="text-xs text-gray-400">Excludes from reports, trends, and par suggestions</p>
-            </div>
-            <button
-              onClick={handleTestToggle}
-              role="switch"
-              aria-checked={isTestCount}
-              className={`relative flex-shrink-0 w-12 h-7 rounded-full transition-colors ${isTestCount ? 'bg-purple-500' : 'bg-gray-200'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${isTestCount ? 'translate-x-5' : ''}`} />
-            </button>
           </div>
         )}
 
