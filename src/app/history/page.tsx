@@ -19,7 +19,7 @@ export default function HistoryPage() {
   const [history, setHistory] = useState<InventoryCount[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<'recent' | 'top10'>('top10')
-  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   const [top10, setTop10] = useState<VelocityRow[]>([])
   const [top10Loading, setTop10Loading] = useState(false)
@@ -66,10 +66,10 @@ export default function HistoryPage() {
     if (v === 'top10') fetchTop10()
   }
 
-  const toggleDay = (day: string) => {
-    setExpandedDays((prev) => {
+  const toggleGroup = (key: string) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev)
-      next.has(day) ? next.delete(day) : next.add(day)
+      next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
   }
@@ -82,11 +82,11 @@ export default function HistoryPage() {
     )
   }
 
-  const formatDate = (dateStr: string) => {
+  const formatDateTime = (dateStr: string) => {
     const d = new Date(dateStr)
-    return d.toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    })
+    const dateStr2 = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    return `${dateStr2} at ${timeStr}`
   }
 
   const searchTerm = search.trim().toLowerCase()
@@ -94,14 +94,18 @@ export default function HistoryPage() {
     ? history.filter((h) => h.items?.name?.toLowerCase().includes(searchTerm))
     : history
 
+  // Group by submission: every row from one Save press shares the exact same
+  // entered_by + created_at (Postgres NOW() is stable within the insert's transaction)
   const grouped: Record<string, InventoryCount[]> = {}
   filteredHistory.forEach((h) => {
-    const day = new Date(h.created_at).toLocaleDateString('en-US', {
-      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-    })
-    if (!grouped[day]) grouped[day] = []
-    grouped[day].push(h)
+    const key = `${h.entered_by}|${h.created_at}`
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(h)
   })
+
+  const groupEntries = Object.entries(grouped).sort(
+    (a, b) => new Date(b[1][0].created_at).getTime() - new Date(a[1][0].created_at).getTime()
+  )
 
   const maxConsumed = top10.length > 0 ? top10[0].consumed : 1
 
@@ -170,27 +174,25 @@ export default function HistoryPage() {
             </p>
           </div>
         ) : view === 'recent' ? (
-          Object.keys(grouped).length === 0 ? (
+          groupEntries.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-12 text-center">
               <p className="text-gray-400">No results for &ldquo;{search}&rdquo;</p>
             </div>
           ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {Object.entries(grouped).map(([day, entries], dayIdx, arr) => {
-              const isExpanded = expandedDays.has(day)
-              // Get unique people who counted that day
-              const counters = [...new Set(entries.map((e) => e.entered_by).filter((n) => n && n !== 'shift_lead'))]
+            {groupEntries.map(([key, entries], groupIdx, arr) => {
+              const isExpanded = expandedGroups.has(key)
+              const submitter = entries[0].entered_by && entries[0].entered_by !== 'shift_lead' ? entries[0].entered_by : 'Shift Lead'
               return (
-                <div key={day} className={dayIdx < arr.length - 1 ? 'border-b border-gray-100' : ''}>
+                <div key={key} className={groupIdx < arr.length - 1 ? 'border-b border-gray-100' : ''}>
                   <button
-                    onClick={() => toggleDay(day)}
+                    onClick={() => toggleGroup(key)}
                     className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left"
                   >
                     <div>
-                      <p className="font-semibold text-gray-900">{day}</p>
+                      <p className="font-semibold text-gray-900">{submitter}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {entries.length} items counted
-                        {counters.length > 0 && ` · ${counters.join(', ')}`}
+                        {entries.length} item{entries.length !== 1 ? 's' : ''} · {formatDateTime(entries[0].created_at)}
                       </p>
                     </div>
                     <svg className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
