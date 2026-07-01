@@ -380,6 +380,7 @@ export default function CountPage() {
                             className="count-input w-20 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
                             value={counts[item.id] ?? ''}
                             onChange={(e) => handleChange(item.id, e.target.value)}
+                            onFocus={(e) => e.target.select()}
                             placeholder="0"
                           />
                           {counts[item.id] === undefined && item.current_count > 0 && (
@@ -396,6 +397,7 @@ export default function CountPage() {
                                 className="w-16 text-center text-lg font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
                                 value={secondaryCounts[item.id] ?? ''}
                                 onChange={(e) => handleSecondaryChange(item.id, e.target.value)}
+                                onFocus={(e) => e.target.select()}
                                 placeholder="0"
                               />
                               <span className="text-xs text-purple-400 font-medium">{item.secondary_unit}</span>

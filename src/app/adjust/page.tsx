@@ -182,6 +182,7 @@ export default function AdjustPage() {
                                     inputMode="decimal"
                                     value={newCount}
                                     onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setNewCount(e.target.value) }}
+                                    onFocus={(e) => e.target.select()}
                                     placeholder={String(displayCount)}
                                     className="w-24 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-white"
                                     autoFocus
@@ -197,6 +198,7 @@ export default function AdjustPage() {
                                         inputMode="decimal"
                                         value={newSecondaryCount}
                                         onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setNewSecondaryCount(e.target.value) }}
+                                        onFocus={(e) => e.target.select()}
                                         placeholder={String(displaySecondary)}
                                         className="w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
                                       />

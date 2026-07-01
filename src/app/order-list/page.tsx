@@ -353,6 +353,7 @@ export default function OrderListPage() {
                                           value={getQtyValue(item)}
                                           onChange={(e) => handleQtyChange(item.id, e.target.value)}
                                           onClick={(e) => e.stopPropagation()}
+                                          onFocus={(e) => e.target.select()}
                                           className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
                                         />
                                         <span className="text-xs text-gray-400">{item.unit}</span>
@@ -409,6 +410,7 @@ export default function OrderListPage() {
                                         value={getQtyValue(item)}
                                         onChange={(e) => handleQtyChange(item.id, e.target.value)}
                                         onClick={(e) => e.stopPropagation()}
+                                        onFocus={(e) => e.target.select()}
                                         className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
                                       />
                                       <span className="text-xs text-gray-400">{item.unit}</span>

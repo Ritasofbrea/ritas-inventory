@@ -262,6 +262,7 @@ export default function CloverMappingPage() {
                                 inputMode="decimal"
                                 value={newQuantity}
                                 onChange={(e) => { if (e.target.value === '' || /^\d*\.?\d*$/.test(e.target.value)) setNewQuantity(e.target.value) }}
+                                onFocus={(e) => e.target.select()}
                                 className="w-16 border border-gray-200 rounded-xl px-2 py-2 text-sm text-center text-gray-900 focus:outline-none focus:border-blue-400"
                               />
                             </div>

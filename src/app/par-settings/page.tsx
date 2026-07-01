@@ -195,6 +195,7 @@ export default function ParSettingsPage() {
                         className="count-input w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
                         value={pars[item.id] ?? ''}
                         onChange={(e) => handleChange(item.id, e.target.value)}
+                        onFocus={(e) => e.target.select()}
                         placeholder="0"
                       />
                       <button

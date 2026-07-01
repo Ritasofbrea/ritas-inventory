@@ -454,6 +454,7 @@ export default function ReceiveOrderPage() {
                             }`}
                             value={received[item.id] ?? ''}
                             onChange={(e) => handleChange(item.id, e.target.value)}
+                            onFocus={(e) => e.target.select()}
                             placeholder="0"
                           />
                           {isShort && <span className="text-xs text-red-600 font-bold">SHORT</span>}
