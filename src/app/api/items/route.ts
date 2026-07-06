@@ -44,13 +44,14 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
-  const { id, current_count, par_level, name, unit, secondary_count, secondary_unit } = body
+  const { id, current_count, par_level, par_level_secondary, name, unit, secondary_count, secondary_unit } = body
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const updates: Record<string, number | string> = {}
+  const updates: Record<string, number | string | null> = {}
   if (current_count !== undefined) updates.current_count = current_count
   if (par_level !== undefined) updates.par_level = par_level
+  if (par_level_secondary !== undefined) updates.par_level_secondary = par_level_secondary
   if (name !== undefined) updates.name = name
   if (unit !== undefined) updates.unit = unit
   if (secondary_count !== undefined) updates.secondary_count = secondary_count

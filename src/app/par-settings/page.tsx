@@ -20,6 +20,7 @@ export default function ParSettingsPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
   const [pars, setPars] = useState<ParDraft>({})
+  const [parsSecondary, setParsSecondary] = useState<ParDraft>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
   const [saved, setSaved] = useState<Set<string>>(new Set())
@@ -43,8 +44,13 @@ export default function ParSettingsPage() {
       const data = await res.json()
       setItems(data)
       const initial: ParDraft = {}
-      data.forEach((item: Item) => { initial[item.id] = String(item.par_level) })
+      const initialSecondary: ParDraft = {}
+      data.forEach((item: Item) => {
+        initial[item.id] = String(item.par_level)
+        initialSecondary[item.id] = item.par_level_secondary != null ? String(item.par_level_secondary) : ''
+      })
       setPars(initial)
+      setParsSecondary(initialSecondary)
     } catch {
       setError('Failed to load items.')
     } finally {
@@ -52,26 +58,54 @@ export default function ParSettingsPage() {
     }
   }
 
+  const hasSecondary = (item: Item) => item.secondary_unit !== ''
+
+  const isRowChanged = (item: Item) => {
+    const primaryChanged = String(item.par_level) !== pars[item.id] && pars[item.id] !== ''
+    const secondaryChanged =
+      hasSecondary(item) && String(item.par_level_secondary ?? '') !== (parsSecondary[item.id] ?? '')
+    return primaryChanged || secondaryChanged
+  }
+
   const handleSaveAll = async () => {
-    const changed = items.filter((item) => String(item.par_level) !== pars[item.id] && pars[item.id] !== '')
+    const changed = items.filter(isRowChanged)
     if (changed.length === 0) return
     setSavingAll(true)
     setError('')
     try {
-      await Promise.all(changed.map((item) =>
-        fetch('/api/items', {
+      await Promise.all(changed.map((item) => {
+        const body: Record<string, string | number> = {
+          id: item.id,
+          par_level: parseInt(pars[item.id] || '0'),
+        }
+        if (hasSecondary(item)) {
+          body.par_level_secondary = parseInt(parsSecondary[item.id] || '0')
+        }
+        return fetch('/api/items', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: item.id, par_level: parseInt(pars[item.id] || '0') }),
+          body: JSON.stringify(body),
         })
-      ))
+      }))
       setItems((prev) => prev.map((i) => {
         const changedItem = changed.find((c) => c.id === i.id)
-        return changedItem ? { ...i, par_level: parseInt(pars[i.id] || '0') } : i
+        if (!changedItem) return i
+        return {
+          ...i,
+          par_level: parseInt(pars[i.id] || '0'),
+          par_level_secondary: hasSecondary(i) ? parseInt(parsSecondary[i.id] || '0') : i.par_level_secondary,
+        }
       }))
       setPars((prev) => {
         const next = { ...prev }
         changed.forEach((item) => { next[item.id] = String(parseInt(pars[item.id] || '0')) })
+        return next
+      })
+      setParsSecondary((prev) => {
+        const next = { ...prev }
+        changed.forEach((item) => {
+          if (hasSecondary(item)) next[item.id] = String(parseInt(parsSecondary[item.id] || '0'))
+        })
         return next
       })
       setSavedAll(true)
@@ -89,21 +123,33 @@ export default function ParSettingsPage() {
     }
   }
 
+  const handleChangeSecondary = (itemId: string, value: string) => {
+    if (value === '' || /^\d+$/.test(value)) {
+      setParsSecondary((prev) => ({ ...prev, [itemId]: value }))
+    }
+  }
+
   const handleSaveItem = async (item: Item) => {
     const newPar = parseInt(pars[item.id] || '0')
+    const newParSecondary = hasSecondary(item) ? parseInt(parsSecondary[item.id] || '0') : null
     setSaving(item.id)
     setError('')
     try {
+      const body: Record<string, string | number> = { id: item.id, par_level: newPar }
+      if (hasSecondary(item)) body.par_level_secondary = newParSecondary as number
       const res = await fetch('/api/items', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: item.id, par_level: newPar }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error()
       setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, par_level: newPar } : i))
+        prev.map((i) => (i.id === item.id ? { ...i, par_level: newPar, par_level_secondary: hasSecondary(item) ? newParSecondary : i.par_level_secondary } : i))
       )
       setPars((prev) => ({ ...prev, [item.id]: String(newPar) }))
+      if (hasSecondary(item)) {
+        setParsSecondary((prev) => ({ ...prev, [item.id]: String(newParSecondary) }))
+      }
       setSaved((prev) => new Set(prev).add(item.id))
       setTimeout(() => {
         setSaved((prev) => { const s = new Set(prev); s.delete(item.id); return s })
@@ -189,24 +235,43 @@ export default function ParSettingsPage() {
                           </button>
                         )}
                       </div>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="count-input w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
-                        value={pars[item.id] ?? ''}
-                        onChange={(e) => handleChange(item.id, e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                        placeholder="0"
-                      />
+                      <div className="flex items-end gap-2">
+                        <div className="flex flex-col items-center">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            className="count-input w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
+                            value={pars[item.id] ?? ''}
+                            onChange={(e) => handleChange(item.id, e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            placeholder="0"
+                          />
+                          <span className="text-[10px] text-gray-400 mt-1">{item.unit}</span>
+                        </div>
+                        {hasSecondary(item) && (
+                          <div className="flex flex-col items-center">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              className="count-input w-20 text-center text-xl font-bold border-2 border-purple-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
+                              value={parsSecondary[item.id] ?? ''}
+                              onChange={(e) => handleChangeSecondary(item.id, e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              placeholder="0"
+                            />
+                            <span className="text-[10px] text-purple-400 mt-1">{item.secondary_unit}</span>
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={() => handleSaveItem(item)}
-                        disabled={saving === item.id || String(item.par_level) === pars[item.id]}
+                        disabled={saving === item.id || !isRowChanged(item)}
                         className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors min-w-[60px] ${
                           saved.has(item.id)
                             ? 'bg-green-100 text-green-700'
                             : saving === item.id
                             ? 'bg-gray-100 text-gray-400'
-                            : String(item.par_level) === pars[item.id]
+                            : !isRowChanged(item)
                             ? 'bg-gray-100 text-gray-300 cursor-default'
                             : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
                         }`}
@@ -222,7 +287,7 @@ export default function ParSettingsPage() {
           })}
         </div>
 
-        {items.some((item) => String(item.par_level) !== pars[item.id] && pars[item.id] !== '') && (
+        {items.some(isRowChanged) && (
           <div className="mt-6 pb-8">
             <button
               onClick={handleSaveAll}
