@@ -18,8 +18,23 @@ type CountDraftData = {
   savedAt: number
 }
 
-const DRAFT_KEY = 'count_draft'
-const DRAFT_EXPIRY_MS = 4 * 60 * 60 * 1000
+type ServerDraft = {
+  counts: CountDraft
+  secondary_counts: CountDraft
+  counted_by: string
+  is_test_count: boolean
+  updated_at: string
+}
+
+const DRAFT_SAVE_DEBOUNCE_MS = 2000
+
+const toDraftData = (d: ServerDraft): CountDraftData => ({
+  counts: d.counts,
+  secondaryCounts: d.secondary_counts,
+  countedBy: d.counted_by,
+  isTestCount: d.is_test_count,
+  savedAt: new Date(d.updated_at).getTime(),
+})
 
 export default function CountPage() {
   const router = useRouter()
@@ -41,6 +56,13 @@ export default function CountPage() {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [draftToRestore, setDraftToRestore] = useState<CountDraftData | null>(null)
   const [isTestCount, setIsTestCount] = useState(false)
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+    }
+  }, [])
 
   useEffect(() => {
     const el = submitRef.current
@@ -79,14 +101,24 @@ export default function CountPage() {
     localStorage.setItem('countedBy', val)
   }
 
+  const saveDraftNow = (c: CountDraft, sc: CountDraft, testFlag: boolean = isTestCount, by: string = countedBy) => {
+    fetch('/api/count-draft', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ counts: c, secondary_counts: sc, counted_by: by, is_test_count: testFlag }),
+    }).catch(() => {})
+  }
+
   const saveDraft = (c: CountDraft, sc: CountDraft, testFlag: boolean = isTestCount) => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ counts: c, secondaryCounts: sc, countedBy, isTestCount: testFlag, savedAt: Date.now() }))
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+    draftSaveTimer.current = setTimeout(() => saveDraftNow(c, sc, testFlag), DRAFT_SAVE_DEBOUNCE_MS)
   }
 
   const handleTestToggle = () => {
     const next = !isTestCount
     setIsTestCount(next)
-    saveDraft(counts, secondaryCounts, next)
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+    saveDraftNow(counts, secondaryCounts, next)
   }
 
   const handleRestore = () => {
@@ -100,7 +132,7 @@ export default function CountPage() {
   }
 
   const handleDiscardDraft = () => {
-    localStorage.removeItem(DRAFT_KEY)
+    fetch('/api/count-draft', { method: 'DELETE' }).catch(() => {})
     setDraftToRestore(null)
   }
 
@@ -112,17 +144,11 @@ export default function CountPage() {
       setCounts({})
       setSecondaryCounts({})
       try {
-        const raw = localStorage.getItem(DRAFT_KEY)
-        if (raw) {
-          const draft = JSON.parse(raw) as CountDraftData
-          if (Date.now() - draft.savedAt > DRAFT_EXPIRY_MS) {
-            localStorage.removeItem(DRAFT_KEY)
-          } else {
-            setDraftToRestore(draft)
-          }
-        }
+        const draftRes = await fetch('/api/count-draft')
+        const draft = await draftRes.json()
+        if (draft) setDraftToRestore(toDraftData(draft as ServerDraft))
       } catch {
-        localStorage.removeItem(DRAFT_KEY)
+        // draft fetch failing shouldn't block count entry
       }
     } catch {
       setError('Failed to load items. Check your connection.')
@@ -189,7 +215,8 @@ export default function CountPage() {
       setCounts({})
       setSecondaryCounts({})
       setIsTestCount(false)
-      localStorage.removeItem(DRAFT_KEY)
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+      fetch('/api/count-draft', { method: 'DELETE' }).catch(() => {})
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
       if (!wasTestCount) {
