@@ -7,6 +7,8 @@ import { clearRole, getRole } from '@/lib/auth'
 import { useEffect, useRef, useState } from 'react'
 import { Role } from '@/lib/types'
 
+const MORE_DROPDOWN_MARGIN = 16
+
 const MORE_LINKS = [
   { href: '/count', label: 'Count Entry' },
   { href: '/receive-order', label: 'Receive Order' },
@@ -22,7 +24,7 @@ export default function Navigation() {
   const router = useRouter()
   const [role, setRole] = useState<Role | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
-  const [morePos, setMorePos] = useState({ top: 80, right: 0 })
+  const [moreTop, setMoreTop] = useState(80)
   const moreRef = useRef<HTMLDivElement>(null)
   const moreButtonRef = useRef<HTMLButtonElement>(null)
   const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
@@ -120,29 +122,30 @@ export default function Navigation() {
         </div>
 
         {/* Bottom row: nav tabs — scrollable on mobile */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-hide">
+        <div className="flex items-center gap-1 pb-2">
           {role === 'shift_lead' && (
-            <>
+            <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
               {navLink('/count', 'Count Entry')}
               {navLink('/receive-order', 'Receive Order')}
               {navLink('/adjust', 'Adjustment')}
-            </>
+            </div>
           )}
 
           {role === 'owner' && (
             <>
-              {navLink('/dashboard', 'Dashboard')}
-              {navLink('/current-stock', 'Stock')}
-              {navLink('/order-list', 'Order List')}
-              {navLink('/history', 'History')}
+              <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0">
+                {navLink('/dashboard', 'Dashboard')}
+                {navLink('/current-stock', 'Stock')}
+                {navLink('/order-list', 'Order List')}
+                {navLink('/history', 'History')}
+              </div>
 
               <div className="relative flex-shrink-0" ref={moreRef}>
                 <button
                   ref={moreButtonRef}
                   onClick={() => {
                     if (moreButtonRef.current) {
-                      const rect = moreButtonRef.current.getBoundingClientRect()
-                      setMorePos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                      setMoreTop(moreButtonRef.current.getBoundingClientRect().bottom + 4)
                     }
                     setMoreOpen((o) => !o)
                   }}
@@ -159,7 +162,7 @@ export default function Navigation() {
                 </button>
 
                 {moreOpen && (
-                  <div className="fixed bg-white rounded-xl border border-gray-300 py-1 min-w-[180px] z-[9999]" style={{ top: morePos.top, right: morePos.right, boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)' }}>
+                  <div className="fixed bg-white rounded-xl border border-gray-300 py-1 min-w-[180px] z-[9999]" style={{ top: moreTop, right: MORE_DROPDOWN_MARGIN, boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)' }}>
                     {MORE_LINKS.map((l) => (
                       <Link
                         key={l.href}
