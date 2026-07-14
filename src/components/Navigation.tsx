@@ -22,7 +22,7 @@ export default function Navigation() {
   const router = useRouter()
   const [role, setRole] = useState<Role | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
-  const [morePos, setMorePos] = useState({ top: 80, left: 0 })
+  const [morePos, setMorePos] = useState({ top: 80, right: 0 })
   const moreRef = useRef<HTMLDivElement>(null)
   const moreButtonRef = useRef<HTMLButtonElement>(null)
   const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
@@ -142,7 +142,7 @@ export default function Navigation() {
                   onClick={() => {
                     if (moreButtonRef.current) {
                       const rect = moreButtonRef.current.getBoundingClientRect()
-                      setMorePos({ top: rect.bottom + 4, left: rect.left })
+                      setMorePos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
                     }
                     setMoreOpen((o) => !o)
                   }}
@@ -159,7 +159,7 @@ export default function Navigation() {
                 </button>
 
                 {moreOpen && (
-                  <div className="fixed bg-white rounded-xl border border-gray-300 py-1 min-w-[180px] z-[9999]" style={{ top: morePos.top, left: morePos.left, boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)' }}>
+                  <div className="fixed bg-white rounded-xl border border-gray-300 py-1 min-w-[180px] z-[9999]" style={{ top: morePos.top, right: morePos.right, boxShadow: '0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12)' }}>
                     {MORE_LINKS.map((l) => (
                       <Link
                         key={l.href}
