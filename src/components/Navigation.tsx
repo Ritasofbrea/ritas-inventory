@@ -84,7 +84,7 @@ export default function Navigation() {
   const navLink = (href: string, label: string) => (
     <Link
       href={href}
-      className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
+      className={`px-1.5 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
         pathname === href
           ? 'bg-[#c8102e] text-white'
           : 'text-green-100 hover:bg-[#155f2f]'
@@ -122,9 +122,9 @@ export default function Navigation() {
         </div>
 
         {/* Bottom row: nav tabs — scrollable on mobile */}
-        <div className="flex items-center gap-1 pb-2">
+        <div className="flex items-center gap-0.5 pb-2">
           {role === 'shift_lead' && (
-            <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide">
               {navLink('/count', 'Count Entry')}
               {navLink('/receive-order', 'Receive Order')}
               {navLink('/adjust', 'Adjustment')}
@@ -133,7 +133,7 @@ export default function Navigation() {
 
           {role === 'owner' && (
             <>
-              <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0">
+              <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide min-w-0">
                 {navLink('/dashboard', 'Dashboard')}
                 {navLink('/current-stock', 'Stock')}
                 {navLink('/order-list', 'Order List')}
@@ -149,14 +149,14 @@ export default function Navigation() {
                     }
                     setMoreOpen((o) => !o)
                   }}
-                  className={`flex items-center gap-1 px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
+                  className={`flex items-center gap-0.5 px-1.5 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
                     moreActive
                       ? 'bg-[#c8102e] text-white'
                       : 'text-green-100 hover:bg-[#155f2f]'
                   }`}
                 >
                   More
-                  <svg className={`w-3.5 h-3.5 transition-transform ${moreOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className={`w-3 h-3 transition-transform ${moreOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
