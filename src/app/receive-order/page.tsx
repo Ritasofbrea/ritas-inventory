@@ -85,6 +85,19 @@ export default function ReceiveOrderPage() {
     }
   }
 
+  const handleSelectOrder = (order: OrderRecord | null) => {
+    setSelectedOrder(order)
+    if (order) {
+      const prefilled: ReceivedQty = {}
+      order.order_history_items.forEach((i) => {
+        prefilled[i.item_id] = String(i.quantity)
+      })
+      setReceived(prefilled)
+    } else {
+      setReceived({})
+    }
+  }
+
   const handleContinue = () => {
     setError('')
     if (role !== 'owner' && !receivedBy.trim()) { setError('Please enter your name before continuing.'); return }
@@ -323,7 +336,7 @@ export default function ReceiveOrderPage() {
           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Receiving against which order?</h2>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-5">
             <label className={`flex items-center gap-3 px-5 py-4 cursor-pointer border-b border-gray-100 transition-colors ${selectedOrder === null ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-              <input type="radio" name="order" checked={selectedOrder === null} onChange={() => setSelectedOrder(null)} className="accent-blue-600" />
+              <input type="radio" name="order" checked={selectedOrder === null} onChange={() => handleSelectOrder(null)} className="accent-blue-600" />
               <div>
                 <p className="font-semibold text-gray-900">No specific order / Standalone</p>
                 <p className="text-xs text-gray-400">Just receiving stock — no short tracking</p>
@@ -334,7 +347,7 @@ export default function ReceiveOrderPage() {
             ) : (
               recentOrders.map((order) => (
                 <label key={order.id} className={`flex items-center gap-3 px-5 py-4 cursor-pointer border-b border-gray-100 last:border-0 transition-colors ${selectedOrder?.id === order.id ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
-                  <input type="radio" name="order" checked={selectedOrder?.id === order.id} onChange={() => setSelectedOrder(order)} className="accent-[#1a7a3c]" />
+                  <input type="radio" name="order" checked={selectedOrder?.id === order.id} onChange={() => handleSelectOrder(order)} className="accent-[#1a7a3c]" />
                   <div>
                     <p className="font-semibold text-gray-900">{formatDate(order.created_at)}</p>
                     <p className="text-xs text-gray-400">{order.order_history_items.length} items on this order</p>
