@@ -57,6 +57,7 @@ export default function CountPage() {
   const [draftToRestore, setDraftToRestore] = useState<CountDraftData | null>(null)
   const [isTestCount, setIsTestCount] = useState(false)
   const [confirmedItems, setConfirmedItems] = useState<Set<string>>(new Set())
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -187,6 +188,16 @@ export default function CountPage() {
     })
   }
 
+  const toggleCategory = (sectionKey: string, category: string) => {
+    const key = `${sectionKey}:${category}`
+    setExpandedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   const handleSubmit = async () => {
     if (role !== 'owner' && !countedBy.trim()) {
       setNameError('Please enter your name before saving.')
@@ -298,15 +309,37 @@ export default function CountPage() {
     return acc
   }, {})
 
-  const renderCategorySections = (byCategory: Record<string, Item[]>, assignFirstRef: boolean) =>
+  const renderCategorySections = (byCategory: Record<string, Item[]>, assignFirstRef: boolean, sectionKey: string) =>
     CATEGORIES.map((category) => {
       const catItems = byCategory[category] || []
       if (catItems.length === 0) return null
+      const catAll = visibleItems.filter((i) => i.category === category)
+      const catCounted = catAll.filter((i) => confirmedItems.has(i.id)).length
+      const expanded = expandedCategories.has(`${sectionKey}:${category}`)
       return (
         <section key={category}>
-          <h2 className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-3">
-            {category}
-          </h2>
+          <button
+            type="button"
+            onClick={() => toggleCategory(sectionKey, category)}
+            aria-expanded={expanded}
+            className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-3 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
+          >
+            <span className="text-xs font-bold uppercase tracking-widest text-blue-500">
+              {category}
+            </span>
+            <span className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs font-semibold text-gray-400">{catCounted} / {catAll.length} counted</span>
+              <svg
+                className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </span>
+          </button>
+          {expanded && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             {catItems.map((item, idx) => (
               <div
@@ -359,6 +392,7 @@ export default function CountPage() {
               </div>
             ))}
           </div>
+          )}
         </section>
       )
     })
@@ -509,7 +543,7 @@ export default function CountPage() {
           {countedItems.length > 0 && stillCountingItems.length > 0 && (
             <p className="text-xs font-bold uppercase tracking-widest text-gray-400 -mb-2">Still Counting</p>
           )}
-          {renderCategorySections(stillCountingByCategory, true)}
+          {renderCategorySections(stillCountingByCategory, true, 'still')}
         </div>
 
         {countedItems.length > 0 && (
@@ -519,7 +553,7 @@ export default function CountPage() {
               <div className="flex-1 h-px bg-gray-200" />
             </div>
             <div className="flex flex-col gap-6">
-              {renderCategorySections(countedByCategory, false)}
+              {renderCategorySections(countedByCategory, false, 'counted')}
             </div>
           </div>
         )}
