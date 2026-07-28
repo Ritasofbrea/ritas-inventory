@@ -56,6 +56,7 @@ export default function CountPage() {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [draftToRestore, setDraftToRestore] = useState<CountDraftData | null>(null)
   const [isTestCount, setIsTestCount] = useState(false)
+  const [confirmedItems, setConfirmedItems] = useState<Set<string>>(new Set())
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function CountPage() {
     setCounts(draftToRestore.counts)
     setSecondaryCounts(draftToRestore.secondaryCounts)
     setIsTestCount(draftToRestore.isTestCount ?? false)
+    setConfirmedItems(new Set(Object.entries(draftToRestore.counts).filter(([, v]) => v !== '').map(([id]) => id)))
     setCountedBy('')
     localStorage.removeItem('countedBy')
     setDraftToRestore(null)
@@ -143,6 +145,7 @@ export default function CountPage() {
       setItems(data)
       setCounts({})
       setSecondaryCounts({})
+      setConfirmedItems(new Set())
       try {
         const draftRes = await fetch('/api/count-draft')
         const draft = await draftRes.json()
@@ -171,6 +174,17 @@ export default function CountPage() {
       setSecondaryCounts(next)
       saveDraft(counts, next)
     }
+  }
+
+  const handleCountBlur = (itemId: string) => {
+    const hasValue = counts[itemId] !== undefined && counts[itemId] !== ''
+    setConfirmedItems((prev) => {
+      if (hasValue === prev.has(itemId)) return prev
+      const next = new Set(prev)
+      if (hasValue) next.add(itemId)
+      else next.delete(itemId)
+      return next
+    })
   }
 
   const handleSubmit = async () => {
@@ -214,6 +228,7 @@ export default function CountPage() {
       const wasTestCount = isTestCount
       setCounts({})
       setSecondaryCounts({})
+      setConfirmedItems(new Set())
       setIsTestCount(false)
       if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
       fetch('/api/count-draft', { method: 'DELETE' }).catch(() => {})
@@ -250,6 +265,7 @@ export default function CountPage() {
       setItems((prev) => [...prev, created])
       setCounts((prev) => ({ ...prev, [created.id]: '0' }))
       setSecondaryCounts((prev) => ({ ...prev, [created.id]: '' }))
+      setConfirmedItems((prev) => new Set(prev).add(created.id))
       setNewName('')
       setNewUnit('boxes')
       setNewSecondaryUnit('')
@@ -271,10 +287,81 @@ export default function CountPage() {
 
   const searchTerm = search.trim().toLowerCase()
   const visibleItems = searchTerm ? items.filter((i) => i.name.toLowerCase().includes(searchTerm)) : items
-  const itemsByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
-    acc[cat] = visibleItems.filter((i) => i.category === cat)
+  const stillCountingItems = visibleItems.filter((i) => !confirmedItems.has(i.id))
+  const countedItems = visibleItems.filter((i) => confirmedItems.has(i.id))
+  const stillCountingByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
+    acc[cat] = stillCountingItems.filter((i) => i.category === cat)
     return acc
   }, {})
+  const countedByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
+    acc[cat] = countedItems.filter((i) => i.category === cat)
+    return acc
+  }, {})
+
+  const renderCategorySections = (byCategory: Record<string, Item[]>, assignFirstRef: boolean) =>
+    CATEGORIES.map((category) => {
+      const catItems = byCategory[category] || []
+      if (catItems.length === 0) return null
+      return (
+        <section key={category}>
+          <h2 className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-3">
+            {category}
+          </h2>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {catItems.map((item, idx) => (
+              <div
+                key={item.id}
+                className={`flex items-center gap-3 px-5 py-4 ${
+                  idx < catItems.length - 1 ? 'border-b border-gray-100' : ''
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 text-base leading-tight">
+                    {item.name}
+                  </p>
+                  <p className="text-sm text-gray-400">{item.unit}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <input
+                      ref={assignFirstRef && idx === 0 && category === CATEGORIES[0] ? firstInputRef : undefined}
+                      type="text"
+                      inputMode="decimal"
+                      className="count-input w-20 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
+                      value={counts[item.id] ?? ''}
+                      onChange={(e) => handleChange(item.id, e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={() => handleCountBlur(item.id)}
+                      placeholder="0"
+                    />
+                    {counts[item.id] === undefined && item.current_count > 0 && (
+                      <span className="text-xs text-gray-300">was {item.current_count}</span>
+                    )}
+                  </div>
+                  {item.secondary_unit && (
+                    <>
+                      <span className="text-gray-300 text-lg font-light">+</span>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          className="w-16 text-center text-lg font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
+                          value={secondaryCounts[item.id] ?? ''}
+                          onChange={(e) => handleSecondaryChange(item.id, e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          placeholder="0"
+                        />
+                        <span className="text-xs text-purple-400 font-medium">{item.secondary_unit}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )
+    })
 
   return (
     <div className={`min-h-screen flex flex-col bg-[#d4edda] ${isTestCount ? 'ring-4 ring-inset ring-purple-400' : ''}`}>
@@ -419,69 +506,23 @@ export default function CountPage() {
         )}
 
         <div className="flex flex-col gap-6">
-          {CATEGORIES.map((category) => {
-            const catItems = itemsByCategory[category] || []
-            if (catItems.length === 0) return null
-            return (
-              <section key={category}>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-3">
-                  {category}
-                </h2>
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  {catItems.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className={`flex items-center gap-3 px-5 py-4 ${
-                        idx < catItems.length - 1 ? 'border-b border-gray-100' : ''
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 text-base leading-tight">
-                          {item.name}
-                        </p>
-                        <p className="text-sm text-gray-400">{item.unit}</p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <div className="flex flex-col items-center gap-0.5">
-                          <input
-                            ref={idx === 0 && category === CATEGORIES[0] ? firstInputRef : undefined}
-                            type="text"
-                            inputMode="decimal"
-                            className="count-input w-20 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
-                            value={counts[item.id] ?? ''}
-                            onChange={(e) => handleChange(item.id, e.target.value)}
-                            onFocus={(e) => e.target.select()}
-                            placeholder="0"
-                          />
-                          {counts[item.id] === undefined && item.current_count > 0 && (
-                            <span className="text-xs text-gray-300">was {item.current_count}</span>
-                          )}
-                        </div>
-                        {item.secondary_unit && (
-                          <>
-                            <span className="text-gray-300 text-lg font-light">+</span>
-                            <div className="flex flex-col items-center gap-0.5">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                className="w-16 text-center text-lg font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
-                                value={secondaryCounts[item.id] ?? ''}
-                                onChange={(e) => handleSecondaryChange(item.id, e.target.value)}
-                                onFocus={(e) => e.target.select()}
-                                placeholder="0"
-                              />
-                              <span className="text-xs text-purple-400 font-medium">{item.secondary_unit}</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )
-          })}
+          {countedItems.length > 0 && stillCountingItems.length > 0 && (
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 -mb-2">Still Counting</p>
+          )}
+          {renderCategorySections(stillCountingByCategory, true)}
         </div>
+
+        {countedItems.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Counted</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+            <div className="flex flex-col gap-6">
+              {renderCategorySections(countedByCategory, false)}
+            </div>
+          </div>
+        )}
 
         {/* Submit button */}
         <div ref={submitRef} className="mt-8 pb-8">
