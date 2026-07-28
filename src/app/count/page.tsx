@@ -91,8 +91,6 @@ export default function CountPage() {
     const r = getRole()
     if (!r) { router.replace('/login'); return }
     setRole(r)
-    const saved = localStorage.getItem('countedBy')
-    if (saved) setCountedBy(saved)
     fetchItems()
     fetch('/api/dashboard-summary').then((res) => res.json()).then((d) => setLastCount(d.lastCount)).catch(() => {})
   }, [router])
@@ -100,7 +98,6 @@ export default function CountPage() {
   const handleCountedByChange = (val: string) => {
     setCountedBy(val)
     if (val.trim()) setNameError('')
-    localStorage.setItem('countedBy', val)
   }
 
   const saveDraftNow = (c: CountDraft, sc: CountDraft, testFlag: boolean = isTestCount, by: string = countedBy) => {
@@ -130,7 +127,6 @@ export default function CountPage() {
     setIsTestCount(draftToRestore.isTestCount ?? false)
     setConfirmedItems(new Set(Object.entries(draftToRestore.counts).filter(([, v]) => v !== '').map(([id]) => id)))
     setCountedBy('')
-    localStorage.removeItem('countedBy')
     setDraftToRestore(null)
   }
 
