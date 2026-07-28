@@ -35,6 +35,16 @@ export default function CurrentStockPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'out' | 'low' | 'ok' | 'stale'>('all')
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }
 
   useEffect(() => {
     const role = getRole()
@@ -153,9 +163,22 @@ export default function CurrentStockPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-5">
-            {CATEGORIES.filter((c) => byCategory[c]).map((category) => (
+            {CATEGORIES.filter((c) => byCategory[c]).map((category) => {
+              const expanded = expandedCategories.has(category)
+              return (
               <section key={category}>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">{category}</h2>
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(category)}
+                  aria-expanded={expanded}
+                  className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-2 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
+                >
+                  <span className="text-xs font-bold uppercase tracking-widest text-gray-400">{category}</span>
+                  <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {expanded && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   {byCategory[category].map((item, idx, arr) => {
                     const status = getStockStatus(item)
@@ -192,8 +215,10 @@ export default function CurrentStockPage() {
                     )
                   })}
                 </div>
+                )}
               </section>
-            ))}
+              )
+            })}
           </div>
         )}
       </main>

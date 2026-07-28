@@ -23,6 +23,16 @@ export default function AdjustPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [localCounts, setLocalCounts] = useState<Record<string, number>>({})
   const [localSecondaryCounts, setLocalSecondaryCounts] = useState<Record<string, number>>({})
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }
 
   useEffect(() => {
     const r = getRole()
@@ -141,9 +151,22 @@ export default function AdjustPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-5">
-            {CATEGORIES.filter((c) => byCategory[c]).map((category) => (
+            {CATEGORIES.filter((c) => byCategory[c]).map((category) => {
+              const catExpanded = expandedCategories.has(category)
+              return (
               <section key={category}>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">{category}</h2>
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(category)}
+                  aria-expanded={catExpanded}
+                  className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-2 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
+                >
+                  <span className="text-xs font-bold uppercase tracking-widest text-gray-400">{category}</span>
+                  <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${catExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {catExpanded && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   {byCategory[category].map((item, idx, arr) => {
                     const displayCount = localCounts[item.id] ?? item.current_count
@@ -252,8 +275,10 @@ export default function AdjustPage() {
                     )
                   })}
                 </div>
+                )}
               </section>
-            ))}
+              )
+            })}
           </div>
         )}
       </main>

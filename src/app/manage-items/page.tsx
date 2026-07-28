@@ -36,6 +36,16 @@ export default function ManageItemsPage() {
   // Reorder state
   const [moving, setMoving] = useState(false)
   const [search, setSearch] = useState('')
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }
 
   useEffect(() => {
     const role = getRole()
@@ -261,9 +271,21 @@ export default function ManageItemsPage() {
                 return a.supplier_order - b.supplier_order
               })
               if (catItems.length === 0) return null
+              const expanded = expandedCategories.has(cat)
               return (
                 <div key={cat}>
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2">{cat}</h3>
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(cat)}
+                    aria-expanded={expanded}
+                    className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-2 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
+                  >
+                    <span className="text-xs font-bold uppercase tracking-widest text-blue-500">{cat}</span>
+                    <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expanded && (
                   <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                     {catItems.map((item, idx) => (
                       <div
@@ -428,6 +450,7 @@ export default function ManageItemsPage() {
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
               )
             })}
