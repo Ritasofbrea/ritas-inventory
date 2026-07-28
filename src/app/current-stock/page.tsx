@@ -173,7 +173,7 @@ export default function CurrentStockPage() {
                   aria-expanded={expanded}
                   className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-2 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
                 >
-                  <span className="text-xs font-bold uppercase tracking-widest text-gray-400">{category}</span>
+                  <span className="text-xs font-bold uppercase tracking-widest text-blue-500">{category}</span>
                   <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                   </svg>
