@@ -31,11 +31,12 @@ export default function ParSettingsPage() {
   const [suggestions, setSuggestions] = useState<Record<string, Suggestion>>({})
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
 
-  const toggleCategory = (category: string) => {
+  const toggleCategory = (sectionKey: string, category: string) => {
+    const key = `${sectionKey}:${category}`
     setExpandedCategories((prev) => {
       const next = new Set(prev)
-      if (next.has(category)) next.delete(category)
-      else next.add(category)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -179,10 +180,120 @@ export default function ParSettingsPage() {
     )
   }
 
-  const itemsByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
-    acc[cat] = items.filter((i) => i.category === cat)
+  const searchTerm = search.trim().toLowerCase()
+  const visibleItems = searchTerm ? items.filter((i) => i.name.toLowerCase().includes(searchTerm)) : items
+  const isParSet = (item: Item) => (item.par_level ?? 0) > 0
+  const notSetItems = visibleItems.filter((i) => !isParSet(i))
+  const configuredItems = visibleItems.filter(isParSet)
+  const notSetByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
+    acc[cat] = notSetItems.filter((i) => i.category === cat)
     return acc
   }, {})
+  const configuredByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
+    acc[cat] = configuredItems.filter((i) => i.category === cat)
+    return acc
+  }, {})
+
+  const renderCategorySections = (byCategory: Record<string, Item[]>, sectionKey: string) =>
+    CATEGORIES.map((category) => {
+      const catItems = byCategory[category] || []
+      if (catItems.length === 0) return null
+      const catAll = visibleItems.filter((i) => i.category === category)
+      const catSet = catAll.filter(isParSet).length
+      const expanded = expandedCategories.has(`${sectionKey}:${category}`)
+      return (
+        <section key={category}>
+          <button
+            type="button"
+            onClick={() => toggleCategory(sectionKey, category)}
+            aria-expanded={expanded}
+            className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-3 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
+          >
+            <span className="text-xs font-bold uppercase tracking-widest text-blue-500">
+              {category}
+            </span>
+            <span className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs font-semibold text-gray-400">{catSet} / {catAll.length} set</span>
+              <svg className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </span>
+          </button>
+          {expanded && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {catItems.map((item, idx) => {
+              const suggestion = suggestions[item.id]
+              const showSuggestion = suggestion && suggestion.suggested_par !== item.par_level
+              return (
+              <div
+                key={item.id}
+                className={`flex items-center gap-3 px-5 py-4 ${
+                  idx < catItems.length - 1 ? 'border-b border-gray-100' : ''
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900">{item.name}</p>
+                  <p className="text-sm text-gray-400">{item.unit}</p>
+                  {showSuggestion && (
+                    <button
+                      onClick={() => setPars((prev) => ({ ...prev, [item.id]: String(suggestion.suggested_par) }))}
+                      className="mt-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Suggested: {suggestion.suggested_par} · ~{suggestion.weekly_avg}/wk — Use ↑
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex flex-col items-center">
+                    <input
+                      type="number"
+                      step="0.25"
+                      className="count-input w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
+                      value={pars[item.id] ?? ''}
+                      onChange={(e) => handleChange(item.id, e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="0"
+                    />
+                    <span className="text-[10px] text-gray-400 mt-1">{item.unit}</span>
+                  </div>
+                  {hasSecondary(item) && (
+                    <div className="flex flex-col items-center">
+                      <input
+                        type="number"
+                        step="0.25"
+                        className="count-input w-20 text-center text-xl font-bold border-2 border-purple-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
+                        value={parsSecondary[item.id] ?? ''}
+                        onChange={(e) => handleChangeSecondary(item.id, e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        placeholder="0"
+                      />
+                      <span className="text-[10px] text-purple-400 mt-1">{item.secondary_unit}</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleSaveItem(item)}
+                  disabled={saving === item.id || !isRowChanged(item)}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors min-w-[60px] ${
+                    saved.has(item.id)
+                      ? 'bg-green-100 text-green-700'
+                      : saving === item.id
+                      ? 'bg-gray-100 text-gray-400'
+                      : !isRowChanged(item)
+                      ? 'bg-gray-100 text-gray-300 cursor-default'
+                      : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
+                  }`}
+                >
+                  {saved.has(item.id) ? '✓' : saving === item.id ? '…' : 'Save'}
+                </button>
+              </div>
+              )
+            })}
+          </div>
+          )}
+        </section>
+      )
+    })
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
@@ -213,102 +324,23 @@ export default function ParSettingsPage() {
         </div>
 
         <div className="flex flex-col gap-6">
-          {CATEGORIES.map((category) => {
-            const searchTerm = search.trim().toLowerCase()
-            const catItems = (itemsByCategory[category] || []).filter((i) => !searchTerm || i.name.toLowerCase().includes(searchTerm))
-            if (catItems.length === 0) return null
-            const expanded = expandedCategories.has(category)
-            return (
-              <section key={category}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(category)}
-                  aria-expanded={expanded}
-                  className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-3 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
-                >
-                  <span className="text-xs font-bold uppercase tracking-widest text-blue-500">
-                    {category}
-                  </span>
-                  <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {expanded && (
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  {catItems.map((item, idx) => {
-                    const suggestion = suggestions[item.id]
-                    const showSuggestion = suggestion && suggestion.suggested_par !== item.par_level
-                    return (
-                    <div
-                      key={item.id}
-                      className={`flex items-center gap-3 px-5 py-4 ${
-                        idx < catItems.length - 1 ? 'border-b border-gray-100' : ''
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900">{item.name}</p>
-                        <p className="text-sm text-gray-400">{item.unit}</p>
-                        {showSuggestion && (
-                          <button
-                            onClick={() => setPars((prev) => ({ ...prev, [item.id]: String(suggestion.suggested_par) }))}
-                            className="mt-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
-                          >
-                            Suggested: {suggestion.suggested_par} · ~{suggestion.weekly_avg}/wk — Use ↑
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex items-end gap-2">
-                        <div className="flex flex-col items-center">
-                          <input
-                            type="number"
-                            step="0.25"
-                            className="count-input w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
-                            value={pars[item.id] ?? ''}
-                            onChange={(e) => handleChange(item.id, e.target.value)}
-                            onFocus={(e) => e.target.select()}
-                            placeholder="0"
-                          />
-                          <span className="text-[10px] text-gray-400 mt-1">{item.unit}</span>
-                        </div>
-                        {hasSecondary(item) && (
-                          <div className="flex flex-col items-center">
-                            <input
-                              type="number"
-                              step="0.25"
-                              className="count-input w-20 text-center text-xl font-bold border-2 border-purple-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
-                              value={parsSecondary[item.id] ?? ''}
-                              onChange={(e) => handleChangeSecondary(item.id, e.target.value)}
-                              onFocus={(e) => e.target.select()}
-                              placeholder="0"
-                            />
-                            <span className="text-[10px] text-purple-400 mt-1">{item.secondary_unit}</span>
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => handleSaveItem(item)}
-                        disabled={saving === item.id || !isRowChanged(item)}
-                        className={`px-3 py-2 rounded-lg text-sm font-semibold transition-colors min-w-[60px] ${
-                          saved.has(item.id)
-                            ? 'bg-green-100 text-green-700'
-                            : saving === item.id
-                            ? 'bg-gray-100 text-gray-400'
-                            : !isRowChanged(item)
-                            ? 'bg-gray-100 text-gray-300 cursor-default'
-                            : 'bg-blue-100 hover:bg-blue-200 text-blue-700'
-                        }`}
-                      >
-                        {saved.has(item.id) ? '✓' : saving === item.id ? '…' : 'Save'}
-                      </button>
-                    </div>
-                    )
-                  })}
-                </div>
-                )}
-              </section>
-            )
-          })}
+          {configuredItems.length > 0 && notSetItems.length > 0 && (
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 -mb-2">Not Set</p>
+          )}
+          {renderCategorySections(notSetByCategory, 'notset')}
         </div>
+
+        {configuredItems.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center gap-3 mb-6">
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Set</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+            <div className="flex flex-col gap-6">
+              {renderCategorySections(configuredByCategory, 'set')}
+            </div>
+          </div>
+        )}
 
         {items.some(isRowChanged) && (
           <div className="mt-6 pb-8">
