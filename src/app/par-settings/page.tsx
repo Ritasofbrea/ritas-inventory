@@ -182,7 +182,7 @@ export default function ParSettingsPage() {
 
   const searchTerm = search.trim().toLowerCase()
   const visibleItems = searchTerm ? items.filter((i) => i.name.toLowerCase().includes(searchTerm)) : items
-  const isParSet = (item: Item) => (item.par_level ?? 0) > 0
+  const isParSet = (item: Item) => (item.par_level ?? 0) > 0 || (item.par_level_secondary ?? 0) > 0
   const notSetItems = visibleItems.filter((i) => !isParSet(i))
   const configuredItems = visibleItems.filter(isParSet)
   const notSetByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
