@@ -204,9 +204,16 @@ export default function CountPage() {
     setSaving(true)
     setError('')
     try {
-      const payload = Object.entries(counts)
-        .filter(([, v]) => v !== '')
-        .map(([item_id, count]) => ({ item_id, count: parseFloat(count) }))
+      const payload = items
+        .filter((item) => {
+          const hasPrimary = counts[item.id] !== undefined && counts[item.id] !== ''
+          const hasSecondary = secondaryCounts[item.id] !== undefined && secondaryCounts[item.id] !== ''
+          return hasPrimary || hasSecondary
+        })
+        .map((item) => ({
+          item_id: item.id,
+          count: counts[item.id] !== undefined && counts[item.id] !== '' ? parseFloat(counts[item.id]) : 0,
+        }))
 
       const res = await fetch('/api/counts', {
         method: 'POST',
@@ -500,7 +507,11 @@ export default function CountPage() {
 
         {/* Count progress */}
         {items.length > 0 && (() => {
-          const entered = items.filter((i) => counts[i.id] !== undefined && counts[i.id] !== '').length
+          const entered = items.filter((i) => {
+            const hasPrimary = counts[i.id] !== undefined && counts[i.id] !== ''
+            const hasSecondary = secondaryCounts[i.id] !== undefined && secondaryCounts[i.id] !== ''
+            return hasPrimary || hasSecondary
+          }).length
           const pct = entered / items.length
           const barColor = entered === items.length ? 'bg-green-500' : pct >= 0.5 ? 'bg-amber-400' : 'bg-blue-400'
           return (
