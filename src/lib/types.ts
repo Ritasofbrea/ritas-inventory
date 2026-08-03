@@ -65,13 +65,7 @@ export function getMainUnitTotal(item: Item): number {
 }
 
 export function getStockStatus(item: Item): StockStatus {
-  if (item.par_level <= 0) {
-    const hasSecondaryPar = item.par_level_secondary != null && item.par_level_secondary > 0
-    if (!hasSecondaryPar) return 'ok'
-    if (item.secondary_count === 0) return 'out'
-    if (item.secondary_count < item.par_level_secondary!) return 'low'
-    return 'ok'
-  }
+  if (item.par_level <= 0) return 'ok'
 
   const total = getMainUnitTotal(item)
   if (total === 0) return 'out'
