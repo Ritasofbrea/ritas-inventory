@@ -414,11 +414,13 @@ export default function DashboardPage() {
 }
 
 function StockPill({ item, variant }: { item: Item; variant: 'out' | 'low' }) {
+  const hasSecondary = item.units_per_sub_unit != null && item.units_per_sub_unit > 0
   return (
     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold ${variant === 'out' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
       {item.name}
       <span className={`text-xs font-normal ${variant === 'out' ? 'text-red-500' : 'text-amber-600'}`}>
-        {variant === 'out' ? '0' : item.current_count}/{item.par_level}
+        {item.current_count}/{item.par_level} {item.unit}
+        {hasSecondary ? ` · ${item.secondary_count} ${item.secondary_unit}` : ''}
       </span>
     </span>
   )

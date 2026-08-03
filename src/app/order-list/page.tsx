@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import { getRole } from '@/lib/auth'
-import { Item, getStockStatus } from '@/lib/types'
+import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
 
 type DistributorItem = Item & { distributor?: string; item_number?: string; distributor_item_name?: string }
 
@@ -141,7 +141,7 @@ export default function OrderListPage() {
     })
   }
 
-  const getDefaultQty = (item: DistributorItem) => Math.max(0, item.par_level - item.current_count)
+  const getDefaultQty = (item: DistributorItem) => Math.max(0, item.par_level - getMainUnitTotal(item))
 
   const getQtyValue = (item: DistributorItem) => orderQuantities[item.id] ?? String(getDefaultQty(item))
 

@@ -36,6 +36,7 @@ export interface Item {
   distributor_item_name: string | null
   secondary_count: number
   secondary_unit: string
+  units_per_sub_unit: number | null
   created_at: string
   updated_at: string
 }
@@ -54,21 +55,21 @@ export interface InventoryCount {
 
 export type StockStatus = 'out' | 'low' | 'ok'
 
+// Combines full-unit and sub-unit counts into one main-unit total, e.g.
+// 0 boxes + 8 sleeves at 20 sleeves/box = 0.4 boxes.
+export function getMainUnitTotal(item: Item): number {
+  if (item.units_per_sub_unit && item.units_per_sub_unit > 0) {
+    return item.current_count + item.secondary_count / item.units_per_sub_unit
+  }
+  return item.current_count
+}
+
 export function getStockStatus(item: Item): StockStatus {
-  const hasPrimaryPar = item.par_level > 0
-  const hasSecondaryPar =
-    item.secondary_unit !== '' && item.par_level_secondary != null && item.par_level_secondary > 0
+  if (item.par_level <= 0) return 'ok'
 
-  if (!hasPrimaryPar && !hasSecondaryPar) return 'ok'
-
-  const primaryOut = hasPrimaryPar && item.current_count === 0
-  const secondaryOut = hasSecondaryPar && item.secondary_count === 0
-  if (primaryOut || secondaryOut) return 'out'
-
-  const primaryLow = hasPrimaryPar && item.current_count < item.par_level
-  const secondaryLow = hasSecondaryPar && item.secondary_count < item.par_level_secondary!
-  if (primaryLow || secondaryLow) return 'low'
-
+  const total = getMainUnitTotal(item)
+  if (total === 0) return 'out'
+  if (total < item.par_level) return 'low'
   return 'ok'
 }
 
