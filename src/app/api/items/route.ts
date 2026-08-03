@@ -15,7 +15,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { name, category, unit } = body
+  const { name, category, unit, secondary_unit, units_per_sub_unit } = body
 
   if (!name || !category || !unit)
     return NextResponse.json({ error: 'Missing name, category, or unit' }, { status: 400 })
@@ -32,9 +32,13 @@ export async function POST(request: NextRequest) {
 
   const sort_order = existing ? existing.sort_order + 10 : 10
 
+  const insertData: Record<string, string | number> = { name, category, unit, sort_order, par_level: 0, current_count: 0 }
+  if (secondary_unit) insertData.secondary_unit = secondary_unit
+  if (units_per_sub_unit !== undefined && units_per_sub_unit !== null) insertData.units_per_sub_unit = units_per_sub_unit
+
   const { data, error } = await db
     .from('items')
-    .insert({ name, category, unit, sort_order, par_level: 0, current_count: 0 })
+    .insert(insertData)
     .select()
     .single()
 

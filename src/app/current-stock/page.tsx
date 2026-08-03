@@ -202,6 +202,13 @@ export default function CurrentStockPage() {
                           <p className={`text-base font-bold ${status === 'out' ? 'text-red-600' : status === 'low' ? 'text-amber-600' : 'text-gray-900'}`}>
                             {item.current_count}
                             <span className="text-xs font-normal text-gray-400 ml-1">{item.unit}</span>
+                            {item.secondary_count > 0 && (
+                              <>
+                                <span className="text-xs font-normal text-gray-400"> · </span>
+                                {item.secondary_count}
+                                <span className="text-xs font-normal text-gray-400 ml-1">{item.secondary_unit}</span>
+                              </>
+                            )}
                           </p>
                         </div>
                         <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg w-10 text-center ${

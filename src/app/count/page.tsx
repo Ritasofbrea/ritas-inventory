@@ -84,6 +84,7 @@ export default function CountPage() {
   const [newCategory, setNewCategory] = useState<Category>(CATEGORIES[0])
   const [newUnit, setNewUnit] = useState('boxes')
   const [newSecondaryUnit, setNewSecondaryUnit] = useState('')
+  const [newUnitsPerSubUnit, setNewUnitsPerSubUnit] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
 
@@ -272,7 +273,13 @@ export default function CountPage() {
       const res = await fetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), category: newCategory, unit: newUnit.trim() || 'boxes', secondary_unit: newSecondaryUnit.trim() }),
+        body: JSON.stringify({
+          name: newName.trim(),
+          category: newCategory,
+          unit: newUnit.trim() || 'boxes',
+          secondary_unit: newSecondaryUnit.trim(),
+          units_per_sub_unit: newSecondaryUnit.trim() && newUnitsPerSubUnit ? parseInt(newUnitsPerSubUnit, 10) : null,
+        }),
       })
       if (!res.ok) throw new Error()
       const created: Item = await res.json()
@@ -283,6 +290,7 @@ export default function CountPage() {
       setNewName('')
       setNewUnit('boxes')
       setNewSecondaryUnit('')
+      setNewUnitsPerSubUnit('')
       setShowAddModal(false)
     } catch {
       setAddError('Could not add item. Try again.')
@@ -662,6 +670,25 @@ export default function CountPage() {
                 onChange={(e) => setNewSecondaryUnit(e.target.value)}
               />
             </div>
+
+            {newSecondaryUnit.trim() && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 font-medium">
+                  Units per {newSecondaryUnit.trim()} <span className="text-gray-400 font-normal">(optional — e.g. 20 sleeves per box)</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="border border-purple-200 rounded-xl px-3 py-2.5 text-gray-900 focus:outline-none focus:border-purple-400"
+                  placeholder="e.g. 20"
+                  value={newUnitsPerSubUnit}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === '' || /^\d*$/.test(v)) setNewUnitsPerSubUnit(v)
+                  }}
+                />
+              </div>
+            )}
 
             <div className="flex gap-3 mt-2">
               <button
