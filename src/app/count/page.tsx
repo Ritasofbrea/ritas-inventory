@@ -85,6 +85,9 @@ export default function CountPage() {
   const [newUnit, setNewUnit] = useState('boxes')
   const [newSecondaryUnit, setNewSecondaryUnit] = useState('')
   const [newUnitsPerSubUnit, setNewUnitsPerSubUnit] = useState('')
+  const [newDistributor, setNewDistributor] = useState('')
+  const [newItemNumber, setNewItemNumber] = useState('')
+  const [newDistributorItemName, setNewDistributorItemName] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
 
@@ -279,6 +282,9 @@ export default function CountPage() {
           unit: newUnit.trim() || 'boxes',
           secondary_unit: newSecondaryUnit.trim(),
           units_per_sub_unit: newSecondaryUnit.trim() && newUnitsPerSubUnit ? parseInt(newUnitsPerSubUnit, 10) : null,
+          distributor: newDistributor || null,
+          item_number: newItemNumber.trim() || null,
+          distributor_item_name: newDistributorItemName.trim() || null,
         }),
       })
       if (!res.ok) throw new Error()
@@ -291,6 +297,9 @@ export default function CountPage() {
       setNewUnit('boxes')
       setNewSecondaryUnit('')
       setNewUnitsPerSubUnit('')
+      setNewDistributor('')
+      setNewItemNumber('')
+      setNewDistributorItemName('')
       setShowAddModal(false)
     } catch {
       setAddError('Could not add item. Try again.')
@@ -659,6 +668,52 @@ export default function CountPage() {
                 />
               </div>
             </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Distributor <span className="text-gray-400 font-normal">(optional)</span></label>
+              <select
+                className="border border-gray-200 rounded-xl px-3 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400 bg-white"
+                value={newDistributor}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setNewDistributor(val)
+                  if (val !== 'bunzl' && val !== 'balford') setNewItemNumber('')
+                }}
+              >
+                <option value="">—</option>
+                <option value="bunzl">Bunzl</option>
+                <option value="balford">Balford</option>
+                <option value="other">Other</option>
+                <option value="seasonal">Seasonal/Promotional</option>
+                <option value="discontinued">Discontinued</option>
+              </select>
+            </div>
+
+            {(newDistributor === 'bunzl' || newDistributor === 'balford') && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 font-medium">Distributor Item #</label>
+                <input
+                  type="text"
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400"
+                  placeholder="e.g. 0101"
+                  value={newItemNumber}
+                  onChange={(e) => setNewItemNumber(e.target.value)}
+                />
+              </div>
+            )}
+
+            {newDistributor && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 font-medium">Distributor Item Name <span className="text-gray-400 font-normal">(optional)</span></label>
+                <input
+                  type="text"
+                  className="border border-gray-200 rounded-xl px-3 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400"
+                  placeholder="Name in distributor's catalog"
+                  value={newDistributorItemName}
+                  onChange={(e) => setNewDistributorItemName(e.target.value)}
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">Sub-unit <span className="text-gray-400 font-normal">(optional — e.g. sleeves, container)</span></label>

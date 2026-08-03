@@ -15,7 +15,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { name, category, unit, secondary_unit, units_per_sub_unit } = body
+  const { name, category, unit, secondary_unit, units_per_sub_unit, distributor, item_number, distributor_item_name } = body
 
   if (!name || !category || !unit)
     return NextResponse.json({ error: 'Missing name, category, or unit' }, { status: 400 })
@@ -35,6 +35,9 @@ export async function POST(request: NextRequest) {
   const insertData: Record<string, string | number> = { name, category, unit, sort_order, par_level: 0, current_count: 0 }
   if (secondary_unit) insertData.secondary_unit = secondary_unit
   if (units_per_sub_unit !== undefined && units_per_sub_unit !== null) insertData.units_per_sub_unit = units_per_sub_unit
+  if (distributor) insertData.distributor = distributor
+  if (item_number) insertData.item_number = item_number
+  if (distributor_item_name) insertData.distributor_item_name = distributor_item_name
 
   const { data, error } = await db
     .from('items')
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
-  const { id, current_count, par_level, par_level_secondary, name, unit, secondary_count, secondary_unit } = body
+  const { id, current_count, par_level, par_level_secondary, name, unit, secondary_count, secondary_unit, distributor, item_number, distributor_item_name } = body
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -60,6 +63,9 @@ export async function PATCH(request: NextRequest) {
   if (unit !== undefined) updates.unit = unit
   if (secondary_count !== undefined) updates.secondary_count = secondary_count
   if (secondary_unit !== undefined) updates.secondary_unit = secondary_unit
+  if (distributor !== undefined) updates.distributor = distributor
+  if (item_number !== undefined) updates.item_number = item_number
+  if (distributor_item_name !== undefined) updates.distributor_item_name = distributor_item_name
 
   const db = getServerSupabase()
   const { data, error } = await db
