@@ -387,8 +387,10 @@ export default function CountPage() {
                       onBlur={() => handleCountBlur(item.id)}
                       placeholder="0"
                     />
-                    {counts[item.id] === undefined && item.current_count > 0 && (
-                      <span className="text-xs text-gray-300">was {item.current_count}</span>
+                    {item.current_count > 0 && (
+                      <span className={`text-xs text-gray-300 ${counts[item.id] === undefined ? '' : 'invisible'}`}>
+                        was {item.current_count}
+                      </span>
                     )}
                   </div>
                   {item.secondary_unit && (
