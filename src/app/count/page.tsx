@@ -59,11 +59,27 @@ export default function CountPage() {
   const [confirmedItems, setConfirmedItems] = useState<Set<string>>(new Set())
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const blurTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  const clearBlurTimer = (itemId: string) => {
+    const t = blurTimers.current[itemId]
+    if (t) {
+      clearTimeout(t)
+      delete blurTimers.current[itemId]
+    }
+  }
+
+  const clearAllBlurTimers = () => {
+    Object.values(blurTimers.current).forEach(clearTimeout)
+    blurTimers.current = {}
+  }
 
   useEffect(() => {
     return () => {
       if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+      clearAllBlurTimers()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -126,6 +142,7 @@ export default function CountPage() {
 
   const handleRestore = () => {
     if (!draftToRestore) return
+    clearAllBlurTimers()
     setCounts(draftToRestore.counts)
     setSecondaryCounts(draftToRestore.secondaryCounts)
     setIsTestCount(draftToRestore.isTestCount ?? false)
@@ -144,6 +161,7 @@ export default function CountPage() {
       const res = await fetch('/api/items')
       const data = await res.json()
       setItems(data)
+      clearAllBlurTimers()
       setCounts({})
       setSecondaryCounts({})
       setConfirmedItems(new Set())
@@ -177,7 +195,11 @@ export default function CountPage() {
     }
   }
 
-  const handleCountBlur = (itemId: string) => {
+  // Confirms/unconfirms an item based on its primary count value. Called after
+  // a short delay from blur (see handleItemInputBlur) rather than immediately,
+  // so tapping from the primary input into that same item's secondary input
+  // doesn't briefly move the item to Counted mid-entry.
+  const confirmItem = (itemId: string) => {
     const hasValue = counts[itemId] !== undefined && counts[itemId] !== ''
     setConfirmedItems((prev) => {
       if (hasValue === prev.has(itemId)) return prev
@@ -186,6 +208,21 @@ export default function CountPage() {
       else next.delete(itemId)
       return next
     })
+  }
+
+  // Shared blur handler for both the primary and secondary inputs of an item.
+  // Debounced: if focus lands back on the other input for the same item
+  // within the delay, handleItemInputFocus cancels this before it fires.
+  const handleItemInputBlur = (itemId: string) => {
+    clearBlurTimer(itemId)
+    blurTimers.current[itemId] = setTimeout(() => {
+      delete blurTimers.current[itemId]
+      confirmItem(itemId)
+    }, 100)
+  }
+
+  const handleItemInputFocus = (itemId: string) => {
+    clearBlurTimer(itemId)
   }
 
   const toggleCategory = (sectionKey: string, category: string) => {
@@ -244,6 +281,7 @@ export default function CountPage() {
       }
 
       const wasTestCount = isTestCount
+      clearAllBlurTimers()
       setCounts({})
       setSecondaryCounts({})
       setConfirmedItems(new Set())
@@ -383,8 +421,8 @@ export default function CountPage() {
                       className="count-input w-20 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-slate-50"
                       value={counts[item.id] ?? ''}
                       onChange={(e) => handleChange(item.id, e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      onBlur={() => handleCountBlur(item.id)}
+                      onFocus={(e) => { e.target.select(); handleItemInputFocus(item.id) }}
+                      onBlur={() => handleItemInputBlur(item.id)}
                       placeholder="0"
                     />
                     {item.current_count > 0 && (
@@ -403,7 +441,8 @@ export default function CountPage() {
                           className="w-16 text-center text-lg font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
                           value={secondaryCounts[item.id] ?? ''}
                           onChange={(e) => handleSecondaryChange(item.id, e.target.value)}
-                          onFocus={(e) => e.target.select()}
+                          onFocus={(e) => { e.target.select(); handleItemInputFocus(item.id) }}
+                          onBlur={() => handleItemInputBlur(item.id)}
                           placeholder="0"
                         />
                         <span className="text-xs text-purple-400 font-medium">{item.secondary_unit}</span>
