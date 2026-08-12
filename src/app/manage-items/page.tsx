@@ -23,6 +23,7 @@ export default function ManageItemsPage() {
   const [editName, setEditName] = useState('')
   const [editUnit, setEditUnit] = useState('')
   const [editSecondaryUnit, setEditSecondaryUnit] = useState('')
+  const [editUnitsPerSubUnit, setEditUnitsPerSubUnit] = useState('')
   const [editCategory, setEditCategory] = useState<typeof CATEGORIES[number]>(CATEGORIES[0])
   const [editDistributor, setEditDistributor] = useState('')
   const [editItemNumber, setEditItemNumber] = useState('')
@@ -92,6 +93,7 @@ export default function ManageItemsPage() {
     setEditName(item.name)
     setEditUnit(item.unit)
     setEditSecondaryUnit(item.secondary_unit || '')
+    setEditUnitsPerSubUnit(item.units_per_sub_unit != null ? String(item.units_per_sub_unit) : '')
     setEditCategory(item.category)
     setEditDistributor(item.distributor || '')
     setEditItemNumber(item.item_number || '')
@@ -111,6 +113,7 @@ export default function ManageItemsPage() {
           name: editName.trim(),
           unit: editUnit.trim(),
           secondary_unit: editSecondaryUnit.trim() || null,
+          units_per_sub_unit: editSecondaryUnit.trim() && editUnitsPerSubUnit ? parseInt(editUnitsPerSubUnit, 10) : null,
           category: editCategory,
           distributor: editDistributor || null,
           item_number: editItemNumber.trim() || null,
@@ -369,6 +372,22 @@ export default function ManageItemsPage() {
                                 placeholder="e.g. sleeves, container"
                               />
                             </div>
+                            {editSecondaryUnit.trim() && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400 flex-shrink-0">Units per {editSecondaryUnit.trim()}:</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  className="flex-1 border border-purple-200 rounded-xl px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-purple-400"
+                                  value={editUnitsPerSubUnit}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    if (v === '' || /^\d*$/.test(v)) setEditUnitsPerSubUnit(v)
+                                  }}
+                                  placeholder="e.g. 20"
+                                />
+                              </div>
+                            )}
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleSaveEdit(item)}

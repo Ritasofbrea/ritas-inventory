@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
-  const { id, current_count, par_level, par_level_secondary, name, unit, secondary_count, secondary_unit, distributor, item_number, distributor_item_name } = body
+  const { id, current_count, par_level, par_level_secondary, name, unit, secondary_count, secondary_unit, units_per_sub_unit, distributor, item_number, distributor_item_name } = body
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -63,6 +63,7 @@ export async function PATCH(request: NextRequest) {
   if (unit !== undefined) updates.unit = unit
   if (secondary_count !== undefined) updates.secondary_count = secondary_count
   if (secondary_unit !== undefined) updates.secondary_unit = secondary_unit
+  if (units_per_sub_unit !== undefined) updates.units_per_sub_unit = units_per_sub_unit
   if (distributor !== undefined) updates.distributor = distributor
   if (item_number !== undefined) updates.item_number = item_number
   if (distributor_item_name !== undefined) updates.distributor_item_name = distributor_item_name
