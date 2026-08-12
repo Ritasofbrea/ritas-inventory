@@ -195,12 +195,16 @@ export default function CountPage() {
     }
   }
 
-  // Confirms/unconfirms an item based on its primary count value. Called after
-  // a short delay from blur (see handleItemInputBlur) rather than immediately,
-  // so tapping from the primary input into that same item's secondary input
-  // doesn't briefly move the item to Counted mid-entry.
+  // Confirms/unconfirms an item based on whether either its primary or
+  // secondary count has a value — same condition already used for the
+  // progress bar and the submit payload. Called after a short delay from
+  // blur (see handleItemInputBlur) rather than immediately, so tapping from
+  // the primary input into that same item's secondary input doesn't briefly
+  // move the item to Counted mid-entry.
   const confirmItem = (itemId: string) => {
-    const hasValue = counts[itemId] !== undefined && counts[itemId] !== ''
+    const hasPrimary = counts[itemId] !== undefined && counts[itemId] !== ''
+    const hasSecondary = secondaryCounts[itemId] !== undefined && secondaryCounts[itemId] !== ''
+    const hasValue = hasPrimary || hasSecondary
     setConfirmedItems((prev) => {
       if (hasValue === prev.has(itemId)) return prev
       const next = new Set(prev)
