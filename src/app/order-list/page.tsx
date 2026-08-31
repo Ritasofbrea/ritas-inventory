@@ -141,7 +141,11 @@ export default function OrderListPage() {
     })
   }
 
-  const getDefaultQty = (item: DistributorItem) => Math.max(0, item.par_level - getMainUnitTotal(item))
+  const getDefaultQty = (item: DistributorItem) => {
+    const shortage = Math.max(0, item.par_level - getMainUnitTotal(item))
+    if (item.units_per_sub_unit) return Math.ceil(shortage / item.units_per_sub_unit)
+    return shortage
+  }
 
   const getQtyValue = (item: DistributorItem) => orderQuantities[item.id] ?? String(getDefaultQty(item))
 
