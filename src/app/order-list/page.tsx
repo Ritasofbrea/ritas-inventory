@@ -147,6 +147,11 @@ export default function OrderListPage() {
     return shortage
   }
 
+  const getOrderUnitLabel = (item: DistributorItem) => {
+    if (!item.units_per_sub_unit) return item.unit
+    return item.unit === 'boxes' ? 'boxes' : 'cases'
+  }
+
   const getQtyValue = (item: DistributorItem) => orderQuantities[item.id] ?? String(getDefaultQty(item))
 
   const handleQtyChange = (id: string, value: string) => {
@@ -360,7 +365,7 @@ export default function OrderListPage() {
                                           onFocus={(e) => e.target.select()}
                                           className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
                                         />
-                                        <span className="text-xs text-gray-400">{item.unit}</span>
+                                        <span className="text-xs text-gray-400">{getOrderUnitLabel(item)}</span>
                                       </div>
                                     )}
                                   </div>
@@ -417,7 +422,7 @@ export default function OrderListPage() {
                                         onFocus={(e) => e.target.select()}
                                         className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
                                       />
-                                      <span className="text-xs text-gray-400">{item.unit}</span>
+                                      <span className="text-xs text-gray-400">{getOrderUnitLabel(item)}</span>
                                     </div>
                                   )}
                                 </div>
