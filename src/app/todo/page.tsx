@@ -142,6 +142,13 @@ export default function TodoPage() {
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Could not save')
+      // Tell subscribed (owner) devices. Fire-and-forget: a failed push must never
+      // affect the completion that already succeeded.
+      fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Task Completed', body: `${body.title} marked done by ${body.completed_by}` }),
+      }).catch(() => {})
       setCompleting(null)
       await loadTasks()
       notifyTasksChanged()
