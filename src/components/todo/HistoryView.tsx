@@ -83,7 +83,7 @@ export default function HistoryView() {
                   {t.status === 'done' ? 'DONE' : 'OPEN'}
                 </span>
               </div>
-              <p className="text-sm text-gray-500 mt-0.5">Due {formatDateShort(t.due_date)} · added by {t.created_by}</p>
+              <p className="text-sm text-gray-500 mt-0.5">Due {formatDateShort(t.due_date)} · assigned to {t.created_by}</p>
               {t.status === 'done' && t.completed_by && t.completed_at && (
                 <p className="text-sm text-gray-500">Done by {t.completed_by} · {formatDateTime(t.completed_at)}</p>
               )}
