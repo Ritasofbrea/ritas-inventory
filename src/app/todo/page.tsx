@@ -265,6 +265,7 @@ export default function TodoPage() {
                       </button>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-gray-900 leading-tight">{task.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Assigned to {task.created_by}</p>
                         {overdue && (
                           <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Overdue — was due {formatDateShort(task.due_date)}</p>
                         )}
