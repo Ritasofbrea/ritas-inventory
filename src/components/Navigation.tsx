@@ -28,6 +28,7 @@ export default function Navigation() {
   const moreRef = useRef<HTMLDivElement>(null)
   const moreButtonRef = useRef<HTMLButtonElement>(null)
   const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
+  const [todoBadge, setTodoBadge] = useState(0)
 
   useEffect(() => {
     setRole(getRole())
@@ -36,6 +37,24 @@ export default function Navigation() {
       else if (Notification.permission === 'denied') setNotifStatus('denied')
     }
   }, [])
+
+  // To-Do tab badge: open tasks due today + overdue. Refreshes on navigation and
+  // whenever the To-Do page changes something (it fires 'tasks-changed').
+  useEffect(() => {
+    let cancelled = false
+    const loadBadge = () => {
+      fetch('/api/tasks?view=badge')
+        .then((r) => r.json())
+        .then((d) => { if (!cancelled && typeof d.count === 'number') setTodoBadge(d.count) })
+        .catch(() => {})
+    }
+    loadBadge()
+    window.addEventListener('tasks-changed', loadBadge)
+    return () => {
+      cancelled = true
+      window.removeEventListener('tasks-changed', loadBadge)
+    }
+  }, [pathname])
 
   const enableNotifications = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
@@ -81,7 +100,7 @@ export default function Navigation() {
     router.push('/login')
   }
 
-  const navLink = (href: string, label: string) => (
+  const navLink = (href: string, label: string, badge = 0) => (
     <Link
       href={href}
       className={`px-1.5 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
@@ -91,6 +110,16 @@ export default function Navigation() {
       }`}
     >
       {label}
+      {badge > 0 && (
+        <span
+          aria-label={`${badge} open`}
+          className={`ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold leading-none ${
+            pathname === href ? 'bg-white text-[#c8102e]' : 'bg-[#c8102e] text-white'
+          }`}
+        >
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </Link>
   )
 
@@ -128,6 +157,7 @@ export default function Navigation() {
               {navLink('/count', 'Count Entry')}
               {navLink('/receive-order', 'Receive Order')}
               {navLink('/adjust', 'Adjustment')}
+              {navLink('/todo', 'To-Do', todoBadge)}
             </div>
           )}
 
@@ -137,6 +167,7 @@ export default function Navigation() {
                 {navLink('/dashboard', 'Dashboard')}
                 {navLink('/current-stock', 'Stock')}
                 {navLink('/order-list', 'Order List')}
+                {navLink('/todo', 'To-Do', todoBadge)}
                 {navLink('/history', 'History')}
               </div>
 
