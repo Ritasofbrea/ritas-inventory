@@ -7,8 +7,11 @@ export const TASK_TZ = 'America/Los_Angeles'
 export const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export const WEEKDAY_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-// created_by value for tasks that aren't assigned to one person
+// assigned_to value for tasks that aren't assigned to one person
 export const EVERYONE = 'Everyone'
+
+// Who can be recorded as having added a task (created_by)
+export const TASK_CREATORS = ['Josh', 'Gina', 'Valerie'] as const
 
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'custom'
 export type PhotoSetting = 'off' | 'optional' | 'required'
@@ -30,6 +33,7 @@ export interface TaskTemplate {
   active: boolean
   photo_required: boolean
   photo_allowed: boolean
+  assigned_to: string
   created_by: string
   created_at: string
 }
@@ -41,6 +45,7 @@ export interface TaskInstance {
   description: string | null
   due_date: string
   status: 'open' | 'done'
+  assigned_to: string
   created_by: string
   completed_by: string | null
   completed_at: string | null

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
-import { generateInstancesForDate, isValidCreator, normalizeRecurrence } from '@/lib/task-server'
+import { generateInstancesForDate, isValidAssignee, isValidCreator, normalizeRecurrence } from '@/lib/task-server'
 
 export async function GET() {
   const db = getServerSupabase()
@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { title, description, created_by, photo_setting } = body
+  const { title, description, assigned_to, created_by, photo_setting } = body
 
   if (typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 })
@@ -26,8 +26,11 @@ export async function POST(request: NextRequest) {
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
 
   const db = getServerSupabase()
-  if (!(await isValidCreator(db, created_by))) {
-    return NextResponse.json({ error: 'Pick your name from the list' }, { status: 400 })
+  if (!(await isValidAssignee(db, assigned_to))) {
+    return NextResponse.json({ error: 'Pick who this is assigned to' }, { status: 400 })
+  }
+  if (!isValidCreator(created_by)) {
+    return NextResponse.json({ error: 'Pick who added this task' }, { status: 400 })
   }
 
   const { data: template, error } = await db
@@ -37,6 +40,7 @@ export async function POST(request: NextRequest) {
       description: typeof description === 'string' && description.trim() ? description.trim() : null,
       ...recurrence,
       ...photoFlags(setting),
+      assigned_to,
       created_by,
     })
     .select()

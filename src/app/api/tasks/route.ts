@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
-import { generateInstancesForDate, isActiveStaff, isValidCreator, TASK_PHOTO_BUCKET } from '@/lib/task-server'
+import { generateInstancesForDate, isActiveStaff, isValidAssignee, isValidCreator, TASK_PHOTO_BUCKET } from '@/lib/task-server'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
 // Create a one-off task (due today, no template)
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { title, description, created_by, photo_setting } = body
+  const { title, description, assigned_to, created_by, photo_setting } = body
 
   if (typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 })
@@ -85,14 +85,18 @@ export async function POST(request: NextRequest) {
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
 
   const db = getServerSupabase()
-  if (!(await isValidCreator(db, created_by))) {
-    return NextResponse.json({ error: 'Pick your name from the list' }, { status: 400 })
+  if (!(await isValidAssignee(db, assigned_to))) {
+    return NextResponse.json({ error: 'Pick who this is assigned to' }, { status: 400 })
+  }
+  if (!isValidCreator(created_by)) {
+    return NextResponse.json({ error: 'Pick who added this task' }, { status: 400 })
   }
 
   const row: Record<string, string | boolean | null> = {
     template_id: null,
     title: title.trim(),
     due_date: todayInTZ(),
+    assigned_to,
     created_by,
     ...photoFlags(setting),
   }

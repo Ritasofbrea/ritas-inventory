@@ -7,6 +7,7 @@ import {
   PhotoSetting,
   WEEKDAY_LABELS,
   EVERYONE,
+  TASK_CREATORS,
   photoSettingOf,
 } from '@/lib/tasks'
 
@@ -31,6 +32,7 @@ export default function TaskFormModal({
   onSaved: (message: string) => void
 }) {
   const editing = !!template
+  const [assignedTo, setAssignedTo] = useState('')
   const [createdBy, setCreatedBy] = useState('')
   const [title, setTitle] = useState(template?.title ?? '')
   const [description, setDescription] = useState(template?.description ?? '')
@@ -51,7 +53,8 @@ export default function TaskFormModal({
 
   const save = async () => {
     setError('')
-    if (!editing && !createdBy) return setError('Pick your name.')
+    if (!editing && !assignedTo) return setError('Pick who this is assigned to.')
+    if (!editing && !createdBy) return setError('Pick who added this task.')
     if (!title.trim()) return setError('Give the task a title.')
     if (recurring && freq === 'weekly' && weekday === null) return setError('Pick a day of the week.')
     if (recurring && freq === 'custom' && customDays.length === 0) return setError('Pick at least one day.')
@@ -73,7 +76,7 @@ export default function TaskFormModal({
         res = await fetch(recurring ? '/api/task-templates' : '/api/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, description, created_by: createdBy, photo_setting: photo, ...recurrenceFields }),
+          body: JSON.stringify({ title, description, assigned_to: assignedTo, created_by: createdBy, photo_setting: photo, ...recurrenceFields }),
         })
       }
       const body = await res.json()
@@ -101,20 +104,35 @@ export default function TaskFormModal({
 
         <div className="flex-1 overflow-y-auto px-6 pb-4 flex flex-col gap-4">
           {!editing && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 font-medium">Your name</label>
-              <select
-                value={createdBy}
-                onChange={(e) => setCreatedBy(e.target.value)}
-                className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
-              >
-                <option value="">Select your name…</option>
-                <option value={EVERYONE}>{EVERYONE}</option>
-                {staff.map((s) => (
-                  <option key={s.id} value={s.name}>{s.name}</option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 font-medium">Assigned to</label>
+                <select
+                  value={assignedTo}
+                  onChange={(e) => setAssignedTo(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
+                >
+                  <option value="">Select a name…</option>
+                  <option value={EVERYONE}>{EVERYONE}</option>
+                  {staff.map((s) => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 font-medium">Added by</label>
+                <select
+                  value={createdBy}
+                  onChange={(e) => setCreatedBy(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
+                >
+                  <option value="">Select a name…</option>
+                  {TASK_CREATORS.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              </div>
+            </>
           )}
 
           <div className="flex flex-col gap-1">
