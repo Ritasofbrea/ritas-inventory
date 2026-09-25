@@ -102,6 +102,18 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
             load()
             onChanged()
           }}
+          // this view is only rendered for owners, so Delete is owner-only
+          onDelete={async () => {
+            const res = await fetch('/api/task-templates', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: editing.id }),
+            })
+            if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not delete. Try again.')
+            setEditing(null)
+            await load()
+            onChanged()
+          }}
         />
       )}
     </div>

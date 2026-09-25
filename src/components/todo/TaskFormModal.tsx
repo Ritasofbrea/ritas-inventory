@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import ConfirmModal from './ConfirmModal'
 import {
   Staff,
   TaskTemplate,
@@ -25,15 +26,20 @@ export default function TaskFormModal({
   template,
   onClose,
   onSaved,
+  onDelete,
 }: {
   staff: Staff[]
   template?: TaskTemplate
   onClose: () => void
   onSaved: (message: string) => void
+  // Only passed by the owner-only Repeating view; when absent no Delete button is shown
+  onDelete?: () => Promise<void>
 }) {
   const editing = !!template
-  const [assignedTo, setAssignedTo] = useState('')
-  const [createdBy, setCreatedBy] = useState('')
+  const [assignedTo, setAssignedTo] = useState(template?.assigned_to ?? '')
+  const [createdBy, setCreatedBy] = useState(template?.created_by ?? '')
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [title, setTitle] = useState(template?.title ?? '')
   const [description, setDescription] = useState(template?.description ?? '')
   const [kind, setKind] = useState<Kind>('one-off')
@@ -47,6 +53,26 @@ export default function TaskFormModal({
   const [error, setError] = useState('')
 
   const recurring = editing || kind === 'recurring'
+
+  // A template's current value may no longer be a choice (e.g. an older "added by" name,
+  // or an assignee who has since been removed) — keep showing it rather than a blank select.
+  const assignedOptions: string[] = [EVERYONE, ...staff.map((s) => s.name)]
+  if (template && !assignedOptions.includes(template.assigned_to)) assignedOptions.push(template.assigned_to)
+  const creatorOptions: string[] = [...TASK_CREATORS]
+  if (template && !creatorOptions.includes(template.created_by)) creatorOptions.push(template.created_by)
+
+  const confirmDelete = async () => {
+    if (!onDelete) return
+    setDeleting(true)
+    try {
+      await onDelete()
+    } catch (e) {
+      setConfirmingDelete(false)
+      setError(e instanceof Error ? e.message : 'Could not delete. Try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const toggleCustomDay = (d: number) =>
     setCustomDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))
@@ -70,7 +96,16 @@ export default function TaskFormModal({
         res = await fetch('/api/task-templates', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: template.id, title, description, photo_setting: photo, ...recurrenceFields }),
+          body: JSON.stringify({
+            id: template.id,
+            title,
+            description,
+            photo_setting: photo,
+            ...recurrenceFields,
+            // only send ownership fields that were actually changed
+            ...(assignedTo !== template.assigned_to ? { assigned_to: assignedTo } : {}),
+            ...(createdBy !== template.created_by ? { created_by: createdBy } : {}),
+          }),
         })
       } else {
         res = await fetch(recurring ? '/api/task-templates' : '/api/tasks', {
@@ -103,37 +138,32 @@ export default function TaskFormModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pb-4 flex flex-col gap-4">
-          {!editing && (
-            <>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 font-medium">Assigned to</label>
-                <select
-                  value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
-                  className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
-                >
-                  <option value="">Select a name…</option>
-                  <option value={EVERYONE}>{EVERYONE}</option>
-                  {staff.map((s) => (
-                    <option key={s.id} value={s.name}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500 font-medium">Added by</label>
-                <select
-                  value={createdBy}
-                  onChange={(e) => setCreatedBy(e.target.value)}
-                  className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
-                >
-                  <option value="">Select a name…</option>
-                  {TASK_CREATORS.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Assigned to</label>
+            <select
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
+            >
+              {!editing && <option value="">Select a name…</option>}
+              {assignedOptions.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Added by</label>
+            <select
+              value={createdBy}
+              onChange={(e) => setCreatedBy(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
+            >
+              {!editing && <option value="">Select a name…</option>}
+              {creatorOptions.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500 font-medium">Task</label>
@@ -210,6 +240,16 @@ export default function TaskFormModal({
           </div>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
+
+          {editing && onDelete && (
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              className="w-full min-h-[48px] bg-red-50 hover:bg-red-100 text-red-600 font-semibold rounded-xl mt-2"
+            >
+              Delete this repeating task
+            </button>
+          )}
         </div>
 
         <div className="px-6 pb-6 pt-2 flex gap-3 flex-shrink-0">
@@ -225,6 +265,15 @@ export default function TaskFormModal({
           </button>
         </div>
       </div>
+
+      {confirmingDelete && template && (
+        <ConfirmModal
+          message={`Permanently delete “${template.title}” and all of its open tasks? Tasks already completed stay in History. This can't be undone.`}
+          busy={deleting}
+          onConfirm={confirmDelete}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
-import { generateInstancesForDate, isActiveStaff, isValidAssignee, isValidCreator, TASK_PHOTO_BUCKET } from '@/lib/task-server'
+import { deleteOneOffTask, generateInstancesForDate, isActiveStaff, isValidAssignee, isValidCreator, TASK_PHOTO_BUCKET } from '@/lib/task-server'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -150,4 +150,13 @@ export async function PATCH(request: NextRequest) {
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+}
+
+// Permanently delete a one-off task (the UI only offers this to owners)
+export async function DELETE(request: NextRequest) {
+  const { id } = await request.json()
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  const result = await deleteOneOffTask(getServerSupabase(), id)
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  return NextResponse.json({ success: true })
 }

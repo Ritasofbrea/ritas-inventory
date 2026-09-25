@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
-import { generateInstancesForDate, isValidAssignee, isValidCreator, normalizeRecurrence } from '@/lib/task-server'
+import {
+  deleteTemplate,
+  generateInstancesForDate,
+  isValidAssignee,
+  isValidCreator,
+  normalizeRecurrence,
+  syncOpenInstanceOwnership,
+} from '@/lib/task-server'
 
 export async function GET() {
   const db = getServerSupabase()
@@ -62,7 +69,22 @@ export async function PATCH(request: NextRequest) {
   const { id } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
+  const db = getServerSupabase()
   const updates: Record<string, string | boolean | number | number[] | null> = {}
+  // Ownership fields also carry over to this template's open (not yet done) tasks below
+  const ownership: Record<string, string> = {}
+  if (body.assigned_to !== undefined) {
+    if (!(await isValidAssignee(db, body.assigned_to))) {
+      return NextResponse.json({ error: 'Pick who this is assigned to' }, { status: 400 })
+    }
+    updates.assigned_to = ownership.assigned_to = body.assigned_to
+  }
+  if (body.created_by !== undefined) {
+    if (!isValidCreator(body.created_by)) {
+      return NextResponse.json({ error: 'Pick who added this task' }, { status: 400 })
+    }
+    updates.created_by = ownership.created_by = body.created_by
+  }
   if (body.title !== undefined) {
     if (typeof body.title !== 'string' || !body.title.trim()) {
       return NextResponse.json({ error: 'Title cannot be empty' }, { status: 400 })
@@ -86,9 +108,14 @@ export async function PATCH(request: NextRequest) {
   }
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
-  const db = getServerSupabase()
   const { data: template, error } = await db.from('task_templates').update(updates).eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Future daily copies pick these up from the template; also update ones already
+  // generated but not done yet (today's / overdue), so the cards match the edit.
+  // Completed tasks are history and stay as they were.
+  const syncError = await syncOpenInstanceOwnership(db, id, ownership)
+  if (syncError) return NextResponse.json({ error: syncError }, { status: 500 })
 
   // Reactivated or rescheduled to today? Make sure today's task exists (idempotent).
   let generated = 0
@@ -100,4 +127,13 @@ export async function PATCH(request: NextRequest) {
     }
   }
   return NextResponse.json({ template, generated })
+}
+
+// Permanently delete a repeating task and its open tasks; completed ones stay in History
+export async function DELETE(request: NextRequest) {
+  const { id } = await request.json()
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  const result = await deleteTemplate(getServerSupabase(), id)
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  return NextResponse.json({ success: true, deletedOpen: result.deletedOpen ?? 0 })
 }

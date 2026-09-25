@@ -2,7 +2,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { templateMatchesDate, TaskTemplate, Recurrence, EVERYONE, TASK_CREATORS } from './tasks'
 
-export { TASK_PHOTO_BUCKET } from './task-constants'
+import { TASK_PHOTO_BUCKET } from './task-constants'
+export { TASK_PHOTO_BUCKET }
 
 // Creates today's task_instances for active templates that match the date.
 // Idempotent: skips templates that already have an instance for that date, and
@@ -71,6 +72,88 @@ export async function isValidAssignee(db: SupabaseClient, name: unknown): Promis
 // created_by ("added by") is limited to the hardcoded list.
 export function isValidCreator(name: unknown): boolean {
   return typeof name === 'string' && (TASK_CREATORS as readonly string[]).includes(name)
+}
+
+// Best-effort cleanup of photo files for tasks that were just deleted.
+export async function removeTaskPhotos(db: SupabaseClient, urls: (string | null | undefined)[]): Promise<void> {
+  const marker = `/object/public/${TASK_PHOTO_BUCKET}/`
+  const paths = urls
+    .filter((u): u is string => !!u)
+    .map((u) => {
+      const i = u.indexOf(marker)
+      return i === -1 ? null : decodeURIComponent(u.slice(i + marker.length))
+    })
+    .filter((p): p is string => !!p)
+  if (paths.length === 0) return
+  try {
+    await db.storage.from(TASK_PHOTO_BUCKET).remove(paths)
+  } catch (e) {
+    console.error('task photo cleanup failed:', e)
+  }
+}
+
+// Carries a template's new assigned_to / created_by onto its tasks that aren't done yet
+// (today's and overdue copies). Completed tasks are history and are left untouched.
+// Returns an error message, or null on success.
+export async function syncOpenInstanceOwnership(
+  db: SupabaseClient,
+  templateId: string,
+  ownership: { assigned_to?: string; created_by?: string }
+): Promise<string | null> {
+  if (Object.keys(ownership).length === 0) return null
+  const { error } = await db.from('task_instances').update(ownership).eq('template_id', templateId).eq('status', 'open')
+  return error ? error.message : null
+}
+
+type DeleteResult = { ok: true; deletedOpen?: number } | { ok: false; error: string; status: number }
+
+// Permanently deletes a one-off task. Instances made from a repeating task are
+// refused: the generator would just recreate today's copy — delete the template instead.
+export async function deleteOneOffTask(db: SupabaseClient, id: string): Promise<DeleteResult> {
+  const { data: task, error: findError } = await db
+    .from('task_instances')
+    .select('id, template_id, photo_url')
+    .eq('id', id)
+    .maybeSingle()
+  if (findError) return { ok: false, error: findError.message, status: 500 }
+  if (!task) return { ok: false, error: 'Task not found', status: 404 }
+  if (task.template_id) {
+    return { ok: false, error: 'This task repeats — delete it from the Repeating tab instead', status: 400 }
+  }
+  const { error } = await db.from('task_instances').delete().eq('id', id)
+  if (error) return { ok: false, error: error.message, status: 500 }
+  await removeTaskPhotos(db, [task.photo_url])
+  return { ok: true }
+}
+
+// Permanently deletes a repeating task (template) and its open instances; completed
+// instances stay in History. task_instances.template_id is a plain foreign key, so the
+// completed rows must be detached (template_id -> null) before the template can go.
+// Order matters: switch the template off first so nothing regenerates mid-delete.
+export async function deleteTemplate(db: SupabaseClient, id: string): Promise<DeleteResult> {
+  const { data: template, error: findError } = await db.from('task_templates').select('id').eq('id', id).maybeSingle()
+  if (findError) return { ok: false, error: findError.message, status: 500 }
+  if (!template) return { ok: false, error: 'Task not found', status: 404 }
+
+  const { error: offError } = await db.from('task_templates').update({ active: false }).eq('id', id)
+  if (offError) return { ok: false, error: offError.message, status: 500 }
+
+  const { data: openRows, error: openError } = await db
+    .from('task_instances')
+    .delete()
+    .eq('template_id', id)
+    .eq('status', 'open')
+    .select('photo_url')
+  if (openError) return { ok: false, error: openError.message, status: 500 }
+
+  const { error: detachError } = await db.from('task_instances').update({ template_id: null }).eq('template_id', id)
+  if (detachError) return { ok: false, error: detachError.message, status: 500 }
+
+  const { error: deleteError } = await db.from('task_templates').delete().eq('id', id)
+  if (deleteError) return { ok: false, error: deleteError.message, status: 500 }
+
+  await removeTaskPhotos(db, (openRows ?? []).map((r: { photo_url: string | null }) => r.photo_url))
+  return { ok: true, deletedOpen: (openRows ?? []).length }
 }
 
 // Validates + normalizes recurrence fields so the DB check constraint never has to reject them.

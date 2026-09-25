@@ -5,6 +5,7 @@ import Navigation from '@/components/Navigation'
 import StaffPicker from '@/components/todo/StaffPicker'
 import PinModal from '@/components/todo/PinModal'
 import TaskFormModal from '@/components/todo/TaskFormModal'
+import ConfirmModal from '@/components/todo/ConfirmModal'
 import HistoryView from '@/components/todo/HistoryView'
 import TemplatesView from '@/components/todo/TemplatesView'
 import StaffView from '@/components/todo/StaffView'
@@ -50,6 +51,8 @@ export default function TodoPage() {
   const [showPin, setShowPin] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<TaskInstance | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
   const [photoNudgeId, setPhotoNudgeId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoTargetRef = useRef<string | null>(null)
@@ -146,6 +149,28 @@ export default function TodoPage() {
       loadTasks()
     } finally {
       setCompletingBusy(false)
+    }
+  }
+
+  const handleDeleteTask = async () => {
+    if (!deleting) return
+    setDeleteBusy(true)
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deleting.id }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not delete. Try again.')
+      setDeleting(null)
+      flash('✓ Task deleted')
+      await loadTasks()
+      notifyTasksChanged()
+    } catch (e) {
+      setDeleting(null)
+      flash(e instanceof Error ? e.message : 'Could not delete. Try again.')
+    } finally {
+      setDeleteBusy(false)
     }
   }
 
@@ -271,6 +296,15 @@ export default function TodoPage() {
                         )}
                         {task.description && <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>}
                         {needsPhoto && <p className="text-xs font-semibold text-amber-700 mt-0.5">📷 Photo required</p>}
+                        {/* Owners only, one-off tasks only (repeating tasks are deleted from the Repeating tab) */}
+                        {isOwner && task.template_id === null && (
+                          <button
+                            onClick={() => setDeleting(task)}
+                            className="text-xs font-semibold text-red-600 hover:text-red-700 -ml-2 mt-1 px-2 py-2"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                       {task.photo_allowed && (
                         <button
@@ -373,6 +407,15 @@ export default function TodoPage() {
             setShowAdd(true)
           }}
           onClose={() => setShowPin(false)}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          message={`Permanently delete “${deleting.title}”? This can't be undone.`}
+          busy={deleteBusy}
+          onConfirm={handleDeleteTask}
+          onCancel={() => setDeleting(null)}
         />
       )}
 
