@@ -23,6 +23,7 @@ export default function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [role, setRole] = useState<Role | null>(null)
+  const [roleLoaded, setRoleLoaded] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [moreTop, setMoreTop] = useState(80)
   const moreRef = useRef<HTMLDivElement>(null)
@@ -32,6 +33,7 @@ export default function Navigation() {
 
   useEffect(() => {
     setRole(getRole())
+    setRoleLoaded(true)
     if (typeof Notification !== 'undefined') {
       if (Notification.permission === 'granted') setNotifStatus('granted')
       else if (Notification.permission === 'denied') setNotifStatus('denied')
@@ -138,14 +140,16 @@ export default function Navigation() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-green-200">
-              {role === 'owner' ? 'Owner' : 'Shift Lead'}
-            </span>
+            {role && (
+              <span className="text-xs text-green-200">
+                {role === 'owner' ? 'Owner' : 'Shift Lead'}
+              </span>
+            )}
             <button
               onClick={handleLogout}
               className="text-xs text-green-200 hover:text-white px-2 py-1 rounded border border-green-700 hover:border-white"
             >
-              Switch
+              {!roleLoaded || role ? 'Switch' : 'Home'}
             </button>
           </div>
         </div>
@@ -157,6 +161,13 @@ export default function Navigation() {
               {navLink('/count', 'Count Entry')}
               {navLink('/receive-order', 'Receive Order')}
               {navLink('/adjust', 'Adjustment')}
+              {navLink('/todo', 'To-Do', todoBadge)}
+            </div>
+          )}
+
+          {/* No role: reached the To-Do List straight from the login screen */}
+          {roleLoaded && role === null && (
+            <div className="flex items-center gap-0.5">
               {navLink('/todo', 'To-Do', todoBadge)}
             </div>
           )}

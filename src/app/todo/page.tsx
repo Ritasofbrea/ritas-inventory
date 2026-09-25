@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import StaffPicker from '@/components/todo/StaffPicker'
 import PinModal from '@/components/todo/PinModal'
@@ -35,7 +34,6 @@ function CameraIcon({ className }: { className?: string }) {
 }
 
 export default function TodoPage() {
-  const router = useRouter()
   const [role, setRole] = useState<Role | null>(null)
   const [view, setView] = useState<View>('today')
   const [today, setToday] = useState(todayInTZ())
@@ -89,12 +87,12 @@ export default function TodoPage() {
   }, [])
 
   useEffect(() => {
-    const r = getRole()
-    if (!r) { router.replace('/login'); return }
-    setRole(r)
+    // To-Do works with no role at all (the login screen's "To-Do List" button);
+    // a role only unlocks the owner views and skips the Add Task PIN.
+    setRole(getRole())
     loadTasks()
     loadStaff()
-  }, [router, loadTasks, loadStaff])
+  }, [loadTasks, loadStaff])
 
   // Shared checklist: pick up other people's changes when the tab regains focus and every minute
   useEffect(() => {
@@ -190,14 +188,6 @@ export default function TodoPage() {
   }
 
   const views: View[] = isOwner ? ['today', 'history', 'templates', 'staff'] : ['today']
-
-  if (!role) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-400 text-lg">Loading…</p>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">

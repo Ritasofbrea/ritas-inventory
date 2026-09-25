@@ -3,31 +3,43 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { setRole } from '@/lib/auth'
+import { setRole, clearRole } from '@/lib/auth'
 
 export default function LoginPage() {
   const router = useRouter()
   const [showPinEntry, setShowPinEntry] = useState(false)
+  const [pinRole, setPinRole] = useState<'owner' | 'shift_lead'>('owner')
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
 
   const handleShiftLead = () => {
-    setRole('shift_lead')
-    router.push('/count')
-  }
-
-  const handleOwnerClick = () => {
+    setPinRole('shift_lead')
     setShowPinEntry(true)
     setError('')
     setPin('')
   }
 
-  const handleOwnerSubmit = (e: React.FormEvent) => {
+  const handleOwnerClick = () => {
+    setPinRole('owner')
+    setShowPinEntry(true)
+    setError('')
+    setPin('')
+  }
+
+  // To-Do is open to everyone: no PIN, and no role is kept (so a previously stored
+  // owner/shift-lead role can't carry over into the role-less To-Do view).
+  const handleTodo = () => {
+    clearRole()
+    router.push('/todo')
+  }
+
+  // Shift lead and owner share the same PIN (NEXT_PUBLIC_OWNER_PIN)
+  const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const ownerPin = process.env.NEXT_PUBLIC_OWNER_PIN || '1234'
     if (pin === ownerPin) {
-      setRole('owner')
-      router.push('/dashboard')
+      setRole(pinRole)
+      router.push(pinRole === 'owner' ? '/dashboard' : '/count')
     } else {
       setError('Wrong PIN. Try again.')
       setPin('')
@@ -62,11 +74,18 @@ export default function LoginPage() {
             >
               I&apos;m an Owner
             </button>
+
+            <button
+              onClick={handleTodo}
+              className="w-full bg-transparent hover:bg-[#155f2f] active:bg-[#0f4a24] text-white text-xl font-semibold py-5 rounded-2xl border-2 border-green-200 transition-colors"
+            >
+              To-Do List
+            </button>
           </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-xl p-6">
-            <h2 className="text-xl font-bold text-[#1a7a3c] mb-4">Owner PIN</h2>
-            <form onSubmit={handleOwnerSubmit} className="flex flex-col gap-4">
+            <h2 className="text-xl font-bold text-[#1a7a3c] mb-4">{pinRole === 'owner' ? 'Owner PIN' : 'Shift Lead PIN'}</h2>
+            <form onSubmit={handlePinSubmit} className="flex flex-col gap-4">
               <input
                 type="password"
                 inputMode="numeric"
