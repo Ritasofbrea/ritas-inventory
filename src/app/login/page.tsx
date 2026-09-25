@@ -33,11 +33,14 @@ export default function LoginPage() {
     router.push('/todo')
   }
 
-  // Shift lead and owner share the same PIN (NEXT_PUBLIC_OWNER_PIN)
+  // Shift lead and owner each have their own PIN
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const ownerPin = process.env.NEXT_PUBLIC_OWNER_PIN || '1234'
-    if (pin === ownerPin) {
+    const expectedPin =
+      pinRole === 'owner'
+        ? process.env.NEXT_PUBLIC_OWNER_PIN || '1234'
+        : process.env.NEXT_PUBLIC_SHIFT_LEAD_PIN || '1234'
+    if (pin === expectedPin) {
       setRole(pinRole)
       router.push(pinRole === 'owner' ? '/dashboard' : '/count')
     } else {
