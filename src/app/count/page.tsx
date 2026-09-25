@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import { getRole } from '@/lib/auth'
-import { Item, CATEGORIES, Category } from '@/lib/types'
+import { Item, InventoryCount, CATEGORIES, Category } from '@/lib/types'
 
 interface CountDraft {
   [itemId: string]: string
@@ -36,6 +36,54 @@ const toDraftData = (d: ServerDraft): CountDraftData => ({
   savedAt: new Date(d.updated_at).getTime(),
 })
 
+// Count summary screen shown after a successful submit — see buildAndShowSummary.
+interface SubmittedEntry {
+  item: Item
+  primary: string
+  secondary: string
+}
+
+interface SummaryEntry extends SubmittedEntry {
+  flagged: boolean
+  reasons: string[]
+}
+
+const FLAG_HIGH = 'Much higher than last count'
+const FLAG_LOW = 'Much lower than last count'
+const FLAG_PAR = 'Well above par'
+
+const computeFlags = (item: Item, primaryVal: number, secondaryVal: number, previousCount: number | null): string[] => {
+  const reasons: string[] = []
+  if (previousCount !== null && previousCount > 0) {
+    if (primaryVal > previousCount * 2) reasons.push(FLAG_HIGH)
+    else if (primaryVal < previousCount / 2) reasons.push(FLAG_LOW)
+  }
+  if (item.par_level > 0) {
+    const combinedTotal = item.units_per_sub_unit && item.units_per_sub_unit > 0
+      ? primaryVal + secondaryVal / item.units_per_sub_unit
+      : primaryVal
+    if (combinedTotal > item.par_level * 2) reasons.push(FLAG_PAR)
+  }
+  return reasons
+}
+
+// Looks up the count entered before this submission, using the same
+// /api/counts endpoint the History page uses (already excludes test data).
+// A non-test submission's own row is the newest match, so its "previous"
+// count is the second row back; a test submission's row is filtered out
+// entirely (is_test_data=false), so its "previous" count is the first row.
+const fetchPreviousCount = async (itemId: string, wasTest: boolean): Promise<number | null> => {
+  try {
+    const res = await fetch(`/api/counts?item_id=${itemId}&limit=2`)
+    if (!res.ok) return null
+    const data: InventoryCount[] = await res.json()
+    const row = wasTest ? data[0] : data[1]
+    return row ? Number(row.count) : null
+  } catch {
+    return null
+  }
+}
+
 export default function CountPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
@@ -58,6 +106,10 @@ export default function CountPage() {
   const [isTestCount, setIsTestCount] = useState(false)
   const [confirmedItems, setConfirmedItems] = useState<Set<string>>(new Set())
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
+  const [summaryData, setSummaryData] = useState<SummaryEntry[] | null>(null)
+  const [showSummary, setShowSummary] = useState(false)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [recountFilterIds, setRecountFilterIds] = useState<Set<string> | null>(null)
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blurTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
@@ -239,6 +291,58 @@ export default function CountPage() {
     })
   }
 
+  // Fetches previous counts and par levels needed for the flag comparisons,
+  // then shows the summary — run only after submit has already succeeded so
+  // a slow/failed lookup here can never block or affect the save itself.
+  const buildAndShowSummary = async (entries: SubmittedEntry[], wasTest: boolean) => {
+    if (entries.length === 0) return
+    setSummaryLoading(true)
+    try {
+      const withFlags = await Promise.all(
+        entries.map(async ({ item, primary, secondary }) => {
+          const primaryVal = primary !== '' ? parseFloat(primary) : 0
+          const secondaryVal = secondary !== '' ? parseFloat(secondary) : 0
+          const previousCount = await fetchPreviousCount(item.id, wasTest)
+          const reasons = computeFlags(item, primaryVal, secondaryVal, previousCount)
+          return { item, primary, secondary, flagged: reasons.length > 0, reasons }
+        })
+      )
+      // Preserve existing category/sort_order (the order `items` already
+      // comes in), just grouped flagged-first.
+      const idxMap = new Map(items.map((it, i) => [it.id, i]))
+      withFlags.sort((a, b) => (idxMap.get(a.item.id) ?? 0) - (idxMap.get(b.item.id) ?? 0))
+      const flagged = withFlags.filter((e) => e.flagged)
+      const normal = withFlags.filter((e) => !e.flagged)
+      setSummaryData([...flagged, ...normal])
+      setShowSummary(true)
+    } catch {
+      // Best-effort — the count itself already saved successfully.
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
+
+  const handleRecountFlagged = () => {
+    if (!summaryData) return
+    const flaggedEntries = summaryData.filter((e) => e.flagged)
+    const flaggedIds = new Set(flaggedEntries.map((e) => e.item.id))
+    setRecountFilterIds(flaggedIds)
+    setSearch('')
+    setExpandedCategories((prev) => {
+      const next = new Set(prev)
+      flaggedEntries.forEach((e) => next.add(`still:${e.item.category}`))
+      return next
+    })
+    setShowSummary(false)
+    setSummaryData(null)
+  }
+
+  const handleSummaryDismiss = () => {
+    setShowSummary(false)
+    setSummaryData(null)
+    setRecountFilterIds(null)
+  }
+
   const handleSubmit = async () => {
     if (role !== 'owner' && !countedBy.trim()) {
       setNameError('Please enter your name before saving.')
@@ -249,16 +353,22 @@ export default function CountPage() {
     setSaving(true)
     setError('')
     try {
-      const payload = items
+      const submittedEntries: SubmittedEntry[] = items
         .filter((item) => {
           const hasPrimary = counts[item.id] !== undefined && counts[item.id] !== ''
           const hasSecondary = secondaryCounts[item.id] !== undefined && secondaryCounts[item.id] !== ''
           return hasPrimary || hasSecondary
         })
         .map((item) => ({
-          item_id: item.id,
-          count: counts[item.id] !== undefined && counts[item.id] !== '' ? parseFloat(counts[item.id]) : 0,
+          item,
+          primary: counts[item.id] ?? '',
+          secondary: secondaryCounts[item.id] ?? '',
         }))
+
+      const payload = submittedEntries.map(({ item, primary }) => ({
+        item_id: item.id,
+        count: primary !== '' ? parseFloat(primary) : 0,
+      }))
 
       const res = await fetch('/api/counts', {
         method: 'POST',
@@ -290,10 +400,12 @@ export default function CountPage() {
       setSecondaryCounts({})
       setConfirmedItems(new Set())
       setIsTestCount(false)
+      setRecountFilterIds(null)
       if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
       fetch('/api/count-draft', { method: 'DELETE' }).catch(() => {})
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
+      buildAndShowSummary(submittedEntries, wasTestCount)
       if (!wasTestCount) {
         const name = countedBy.trim() || 'Someone'
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -359,7 +471,8 @@ export default function CountPage() {
   }
 
   const searchTerm = search.trim().toLowerCase()
-  const visibleItems = searchTerm ? items.filter((i) => i.name.toLowerCase().includes(searchTerm)) : items
+  const searchedItems = searchTerm ? items.filter((i) => i.name.toLowerCase().includes(searchTerm)) : items
+  const visibleItems = recountFilterIds ? searchedItems.filter((i) => recountFilterIds.has(i.id)) : searchedItems
   const stillCountingItems = visibleItems.filter((i) => !confirmedItems.has(i.id))
   const countedItems = visibleItems.filter((i) => confirmedItems.has(i.id))
   const stillCountingByCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
@@ -504,6 +617,21 @@ export default function CountPage() {
             )}
           </div>
         </div>
+
+        {/* Recount-flagged-only filter, set by the "Recount flagged items" summary button */}
+        {recountFilterIds && (
+          <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-amber-800">
+              ⚠️ Showing {recountFilterIds.size} flagged item{recountFilterIds.size === 1 ? '' : 's'} to recount
+            </p>
+            <button
+              onClick={() => setRecountFilterIds(null)}
+              className="flex-shrink-0 text-xs font-semibold text-amber-700 underline"
+            >
+              Show all items
+            </button>
+          </div>
+        )}
 
         {/* Draft restore prompt */}
         {draftToRestore && (
@@ -808,6 +936,90 @@ export default function CountPage() {
           </div>
         </div>
       )}
+
+      {/* Preparing summary… (brief gap between submit succeeding and the summary being ready) */}
+      {summaryLoading && !showSummary && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl px-6 py-5 flex items-center gap-3">
+            <span className="w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+            <p className="text-gray-600 font-medium">Preparing summary…</p>
+          </div>
+        </div>
+      )}
+
+      {/* Count summary — shown after a successful submit in place of a generic success message */}
+      {showSummary && summaryData && (() => {
+        const flaggedCount = summaryData.filter((e) => e.flagged).length
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md flex flex-col max-h-[85vh]">
+              <div className="px-6 pt-6 pb-4 flex-shrink-0 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-900">✓ Count Submitted</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {summaryData.length} item{summaryData.length === 1 ? '' : 's'} counted
+                  {flaggedCount > 0 && (
+                    <span className="text-amber-600 font-semibold"> · {flaggedCount} flagged for review</span>
+                  )}
+                </p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-2">
+                {summaryData.map(({ item, primary, secondary, flagged, reasons }) => {
+                  const primaryDisplay = primary !== '' ? primary : '0'
+                  const secondaryVal = secondary !== '' ? parseFloat(secondary) : 0
+                  const showSecondary = item.secondary_unit && secondaryVal > 0
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-xl border px-4 py-3 ${
+                        flagged ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-100'
+                      }`}
+                    >
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {item.name}
+                        <span className="font-normal text-gray-600">
+                          : {primaryDisplay} {item.unit}
+                          {showSecondary && ` · ${secondary} ${item.secondary_unit}`}
+                        </span>
+                      </p>
+                      {flagged && (
+                        <div className="mt-1 flex flex-col gap-0.5">
+                          {reasons.map((reason) => (
+                            <p key={reason} className="text-xs font-semibold text-amber-700">
+                              ⚠️ {reason}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="px-6 pb-6 pt-2 flex-shrink-0 flex flex-col gap-2">
+                {flaggedCount > 0 && (
+                  <button
+                    onClick={handleRecountFlagged}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold py-3 rounded-xl transition-colors"
+                  >
+                    Recount flagged items ({flaggedCount})
+                  </button>
+                )}
+                <button
+                  onClick={handleSummaryDismiss}
+                  className={`w-full font-semibold py-3 rounded-xl transition-colors ${
+                    flaggedCount > 0
+                      ? 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                      : 'bg-green-600 hover:bg-green-700 text-white'
+                  }`}
+                >
+                  Looks good
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
