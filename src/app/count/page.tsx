@@ -399,7 +399,6 @@ export default function CountPage() {
       setCounts({})
       setSecondaryCounts({})
       setConfirmedItems(new Set())
-      setIsTestCount(false)
       setRecountFilterIds(null)
       if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
       fetch('/api/count-draft', { method: 'DELETE' }).catch(() => {})
