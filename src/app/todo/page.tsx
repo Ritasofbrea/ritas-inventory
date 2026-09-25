@@ -115,8 +115,10 @@ export default function TodoPage() {
 
   const isOwner = role === 'owner'
 
+  // Owners and shift leads already entered a PIN at login; only role-less visitors
+  // (who came in through the login screen's "To-Do List" button) are asked for it here.
   const handleAddClick = () => {
-    if (isOwner || pinUnlocked) setShowAdd(true)
+    if (role !== null || pinUnlocked) setShowAdd(true)
     else setShowPin(true)
   }
 
