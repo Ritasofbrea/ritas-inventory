@@ -7,6 +7,9 @@ export const TASK_TZ = 'America/Los_Angeles'
 export const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export const WEEKDAY_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+// created_by value for tasks that aren't assigned to one person
+export const EVERYONE = 'Everyone'
+
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'custom'
 export type PhotoSetting = 'off' | 'optional' | 'required'
 

@@ -1,6 +1,6 @@
 // Server-only helpers for the To-Do feature.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { templateMatchesDate, TaskTemplate, Recurrence } from './tasks'
+import { templateMatchesDate, TaskTemplate, Recurrence, EVERYONE } from './tasks'
 
 export { TASK_PHOTO_BUCKET } from './task-constants'
 
@@ -59,6 +59,12 @@ export async function isActiveStaff(db: SupabaseClient, name: unknown): Promise<
   if (typeof name !== 'string' || !name.trim()) return false
   const { data } = await db.from('staff').select('id').eq('name', name).eq('active', true).maybeSingle()
   return !!data
+}
+
+// created_by may be an active staff member or "Everyone" (unassigned task).
+// completed_by keeps using isActiveStaff — whoever finishes a task must pick their own name.
+export async function isValidCreator(db: SupabaseClient, name: unknown): Promise<boolean> {
+  return name === EVERYONE || isActiveStaff(db, name)
 }
 
 // Validates + normalizes recurrence fields so the DB check constraint never has to reject them.

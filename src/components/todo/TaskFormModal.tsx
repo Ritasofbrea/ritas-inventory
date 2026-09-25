@@ -6,6 +6,7 @@ import {
   TaskTemplate,
   PhotoSetting,
   WEEKDAY_LABELS,
+  EVERYONE,
   photoSettingOf,
 } from '@/lib/tasks'
 
@@ -108,6 +109,7 @@ export default function TaskFormModal({
                 className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
               >
                 <option value="">Select your name…</option>
+                <option value={EVERYONE}>{EVERYONE}</option>
                 {staff.map((s) => (
                   <option key={s.id} value={s.name}>{s.name}</option>
                 ))}

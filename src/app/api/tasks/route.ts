@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
-import { generateInstancesForDate, isActiveStaff, TASK_PHOTO_BUCKET } from '@/lib/task-server'
+import { generateInstancesForDate, isActiveStaff, isValidCreator, TASK_PHOTO_BUCKET } from '@/lib/task-server'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
 
   const db = getServerSupabase()
-  if (!(await isActiveStaff(db, created_by))) {
+  if (!(await isValidCreator(db, created_by))) {
     return NextResponse.json({ error: 'Pick your name from the list' }, { status: 400 })
   }
 
