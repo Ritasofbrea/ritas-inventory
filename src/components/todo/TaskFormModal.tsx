@@ -54,12 +54,13 @@ export default function TaskFormModal({
 
   const recurring = editing || kind === 'recurring'
 
-  // A template's current value may no longer be a choice (e.g. an older "added by" name,
-  // or an assignee who has since been removed) — keep showing it rather than a blank select.
+  // An assignee may no longer be a choice (e.g. someone who has since been removed from
+  // staff) — keep showing it rather than a blank select. "Added by" has no such fallback:
+  // it's a fixed, short list (Josh/Gina/Valerie) and must never show anything else, even
+  // for an older template whose created_by predates that list.
   const assignedOptions: string[] = [EVERYONE, ...staff.map((s) => s.name)]
   if (template && !assignedOptions.includes(template.assigned_to)) assignedOptions.push(template.assigned_to)
   const creatorOptions: string[] = [...TASK_CREATORS]
-  if (template && !creatorOptions.includes(template.created_by)) creatorOptions.push(template.created_by)
 
   const confirmDelete = async () => {
     if (!onDelete) return
