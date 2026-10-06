@@ -12,7 +12,7 @@ import StaffView from '@/components/todo/StaffView'
 import { getRole } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
 import { Role } from '@/lib/types'
-import { Staff, TaskInstance, formatDateShort, formatTime, todayInTZ } from '@/lib/tasks'
+import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatTime, todayInTZ } from '@/lib/tasks'
 
 type View = 'today' | 'history' | 'templates' | 'staff'
 
@@ -54,6 +54,7 @@ export default function TodoPage() {
   const [deleting, setDeleting] = useState<TaskInstance | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [photoNudgeId, setPhotoNudgeId] = useState<string | null>(null)
+  const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoTargetRef = useRef<string | null>(null)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -214,12 +215,104 @@ export default function TodoPage() {
     }
   }
 
+  const toggleChecklist = (name: string) => {
+    setExpandedChecklists((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
   const afterTaskSaved = (message: string) => {
     setShowAdd(false)
     flash(`✓ ${message}`)
     loadTasks()
     notifyTasksChanged()
   }
+
+  // Same card markup whether a task sits in a named checklist's section or in the
+  // flat standalone list below — one definition, used in both places.
+  const renderOpenCard = (task: TaskInstance) => {
+    const overdue = task.due_date < today
+    const needsPhoto = task.photo_required && !task.photo_url
+    return (
+      <div
+        key={task.id}
+        className={`rounded-2xl shadow-sm border px-4 py-3 flex items-center gap-3 ${
+          overdue ? 'bg-red-50 border-red-300' : 'bg-white border-gray-100'
+        }`}
+      >
+        <button
+          onClick={() => handleCheckboxTap(task)}
+          aria-label={`Mark "${task.title}" done`}
+          className="flex-shrink-0 w-11 h-11 flex items-center justify-center"
+        >
+          <span className={`w-8 h-8 rounded-full border-2 bg-white ${overdue ? 'border-red-400' : 'border-gray-300'}`} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 leading-tight">{task.title}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Assigned to {task.assigned_to}</p>
+          {overdue && (
+            <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Overdue — was due {formatDateShort(task.due_date)}</p>
+          )}
+          {task.description && <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>}
+          {needsPhoto && <p className="text-xs font-semibold text-amber-700 mt-0.5">📷 Photo required</p>}
+          {/* Owners only, one-off tasks only (repeating tasks are deleted from the Repeating tab) */}
+          {isOwner && task.template_id === null && (
+            <button
+              onClick={() => setDeleting(task)}
+              className="text-xs font-semibold text-red-600 hover:text-red-700 -ml-2 mt-1 px-2 py-2"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+        {task.photo_allowed && (
+          <button
+            onClick={() => openPhotoPicker(task.id)}
+            disabled={uploadingId === task.id}
+            aria-label={task.photo_url ? 'Replace photo' : 'Add photo'}
+            className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border-2 overflow-hidden disabled:opacity-50 ${
+              photoNudgeId === task.id ? 'border-amber-400 bg-amber-50 animate-pulse' : 'border-gray-200 bg-gray-50'
+            }`}
+          >
+            {uploadingId === task.id ? (
+              <span className="w-5 h-5 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
+            ) : task.photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={task.photo_url} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <CameraIcon className="w-6 h-6 text-gray-500" />
+            )}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const renderDoneCard = (task: TaskInstance) => (
+    <div key={task.id} className="bg-gray-100 rounded-2xl border border-gray-200 px-4 py-3 flex items-center gap-3 opacity-80">
+      <span className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center font-bold">✓</span>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-gray-500 line-through leading-tight">{task.title}</p>
+        <p className="text-xs text-gray-500 mt-0.5">
+          {task.completed_by}
+          {task.completed_at ? ` · ${formatTime(task.completed_at)}` : ''}
+        </p>
+      </div>
+      {task.photo_url && (
+        <a href={task.photo_url} target="_blank" rel="noreferrer" className="flex-shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={task.photo_url} alt="Task photo" className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+        </a>
+      )}
+    </div>
+  )
+
+  const checklistGroups = buildChecklistGroups(open, done)
+  const standaloneOpen = open.filter((t) => t.checklist_name === null)
+  const standaloneDone = done.filter((t) => t.checklist_name === null)
 
   const views: View[] = isOwner ? ['today', 'history', 'templates', 'staff'] : ['today']
 
@@ -273,70 +366,70 @@ export default function TodoPage() {
 
             {loading ? (
               <p className="text-gray-400 text-center py-10">Loading…</p>
-            ) : open.length === 0 ? (
+            ) : open.length === 0 && checklistGroups.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10 text-center">
                 <p className="text-2xl mb-1">🎉</p>
                 <p className="text-gray-500 font-medium">All done for today!</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
-                {open.map((task) => {
-                  const overdue = task.due_date < today
-                  const needsPhoto = task.photo_required && !task.photo_url
+              <div className="flex flex-col gap-4">
+                {/* Named checklists (Opening, Closing, Time to Lean, …), in a fixed order.
+                    Completed items stay in place within their section, checked and greyed,
+                    so a checklist still reads top-to-bottom like the paper form — they don't
+                    move down to Completed Today, which only covers the standalone list below. */}
+                {checklistGroups.map((group) => {
+                  const expanded = expandedChecklists.has(group.name)
                   return (
-                    <div
-                      key={task.id}
-                      className={`rounded-2xl shadow-sm border px-4 py-3 flex items-center gap-3 ${
-                        overdue ? 'bg-red-50 border-red-300' : 'bg-white border-gray-100'
-                      }`}
-                    >
+                    <section key={group.name}>
                       <button
-                        onClick={() => handleCheckboxTap(task)}
-                        aria-label={`Mark "${task.title}" done`}
-                        className="flex-shrink-0 w-11 h-11 flex items-center justify-center"
+                        type="button"
+                        onClick={() => toggleChecklist(group.name)}
+                        aria-expanded={expanded}
+                        className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-3 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
                       >
-                        <span className={`w-8 h-8 rounded-full border-2 bg-white ${overdue ? 'border-red-400' : 'border-gray-300'}`} />
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 leading-tight">{task.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">Assigned to {task.assigned_to}</p>
-                        {overdue && (
-                          <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Overdue — was due {formatDateShort(task.due_date)}</p>
-                        )}
-                        {task.description && <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>}
-                        {needsPhoto && <p className="text-xs font-semibold text-amber-700 mt-0.5">📷 Photo required</p>}
-                        {/* Owners only, one-off tasks only (repeating tasks are deleted from the Repeating tab) */}
-                        {isOwner && task.template_id === null && (
-                          <button
-                            onClick={() => setDeleting(task)}
-                            className="text-xs font-semibold text-red-600 hover:text-red-700 -ml-2 mt-1 px-2 py-2"
+                        <span className="text-sm font-bold text-gray-900">{group.name}</span>
+                        <span className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs font-semibold text-gray-400">{group.done} / {group.total} done</span>
+                          <svg
+                            className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
                           >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                      {task.photo_allowed && (
-                        <button
-                          onClick={() => openPhotoPicker(task.id)}
-                          disabled={uploadingId === task.id}
-                          aria-label={task.photo_url ? 'Replace photo' : 'Add photo'}
-                          className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border-2 overflow-hidden disabled:opacity-50 ${
-                            photoNudgeId === task.id ? 'border-amber-400 bg-amber-50 animate-pulse' : 'border-gray-200 bg-gray-50'
-                          }`}
-                        >
-                          {uploadingId === task.id ? (
-                            <span className="w-5 h-5 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
-                          ) : task.photo_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={task.photo_url} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <CameraIcon className="w-6 h-6 text-gray-500" />
-                          )}
-                        </button>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </span>
+                      </button>
+                      {expanded && (
+                        <div className="flex flex-col gap-4">
+                          {group.sections.map((section) => (
+                            <div key={section.name}>
+                              {section.name && (
+                                <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">{section.name}</p>
+                              )}
+                              <div className="flex flex-col gap-2">
+                                {section.items.map((task) => (task.status === 'done' ? renderDoneCard(task) : renderOpenCard(task)))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
-                    </div>
+                    </section>
                   )
                 })}
+
+                {/* Standalone items (one-offs and anything not part of a named checklist) */}
+                {standaloneOpen.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    {checklistGroups.length > 0 && (
+                      <p className="text-xs font-bold uppercase tracking-widest text-gray-400 -mb-2">To-Do</p>
+                    )}
+                    {standaloneOpen.map(renderOpenCard)}
+                  </div>
+                )}
+                {checklistGroups.length > 0 && standaloneOpen.length === 0 && (
+                  <p className="text-gray-400 text-sm text-center">Nothing else to do today.</p>
+                )}
               </div>
             )}
 
@@ -347,7 +440,7 @@ export default function TodoPage() {
                 className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 bg-white rounded-xl border border-gray-100 shadow-sm"
               >
                 <span className="text-xs font-bold uppercase tracking-widest text-gray-500">
-                  Completed Today ({done.length})
+                  Completed Today ({standaloneDone.length})
                 </span>
                 <svg
                   className={`w-4 h-4 text-gray-400 transition-transform ${showDone ? 'rotate-180' : ''}`}
@@ -360,25 +453,8 @@ export default function TodoPage() {
               </button>
               {showDone && (
                 <div className="mt-2 flex flex-col gap-2">
-                  {done.length === 0 && <p className="text-gray-400 text-sm text-center py-4">Nothing completed yet today.</p>}
-                  {done.map((task) => (
-                    <div key={task.id} className="bg-gray-100 rounded-2xl border border-gray-200 px-4 py-3 flex items-center gap-3 opacity-80">
-                      <span className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center font-bold">✓</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-500 line-through leading-tight">{task.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {task.completed_by}
-                          {task.completed_at ? ` · ${formatTime(task.completed_at)}` : ''}
-                        </p>
-                      </div>
-                      {task.photo_url && (
-                        <a href={task.photo_url} target="_blank" rel="noreferrer" className="flex-shrink-0">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={task.photo_url} alt="Task photo" className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
-                        </a>
-                      )}
-                    </div>
-                  ))}
+                  {standaloneDone.length === 0 && <p className="text-gray-400 text-sm text-center py-4">Nothing completed yet today.</p>}
+                  {standaloneDone.map(renderDoneCard)}
                 </div>
               )}
             </div>

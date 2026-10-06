@@ -36,6 +36,9 @@ export interface TaskTemplate {
   assigned_to: string
   created_by: string
   created_at: string
+  checklist_name: string | null
+  section: string | null
+  sort_order: number
 }
 
 export interface TaskInstance {
@@ -53,6 +56,9 @@ export interface TaskInstance {
   photo_required: boolean
   photo_allowed: boolean
   created_at: string
+  checklist_name: string | null
+  section: string | null
+  sort_order: number
 }
 
 export const photoFlags = (setting: PhotoSetting) => ({
@@ -130,5 +136,65 @@ export function formatDateTime(iso: string): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+  })
+}
+
+// Fixed display order for known named checklists; anything else (future checklists
+// added as data) sorts alphabetically after these, so the order stays stable run to run.
+const CHECKLIST_ORDER = ['Opening Checklist', 'Closing Checklist', 'Time to Lean, Time to Clean']
+
+export function sortChecklistNames(names: string[]): string[] {
+  const known = CHECKLIST_ORDER.filter((n) => names.includes(n))
+  const rest = names.filter((n) => !CHECKLIST_ORDER.includes(n)).sort((a, b) => a.localeCompare(b))
+  return [...known, ...rest]
+}
+
+export interface ChecklistSection {
+  name: string
+  items: TaskInstance[]
+}
+
+export interface ChecklistGroup {
+  name: string
+  sections: ChecklistSection[]
+  total: number
+  done: number
+}
+
+// Groups a checklist's items (open + done combined) into ordered sections.
+// Section order is derived from sort_order — not from `section` text or DB row
+// order — since sort_order is the only column that reliably encodes position
+// (it counts continuously across the whole checklist; see
+// supabase/corporate-checklists-seed.sql for why it must NOT reset per section).
+// Items that tie on sort_order (e.g. today's copy and an older, still-open
+// overdue copy of the same checklist item) sort oldest due_date first.
+function groupSections(items: TaskInstance[]): ChecklistSection[] {
+  const sorted = [...items].sort(
+    (a, b) => a.sort_order - b.sort_order || a.due_date.localeCompare(b.due_date)
+  )
+  const sections: ChecklistSection[] = []
+  for (const item of sorted) {
+    const name = item.section ?? ''
+    const last = sections[sections.length - 1]
+    if (last && last.name === name) last.items.push(item)
+    else sections.push({ name, items: [item] })
+  }
+  return sections
+}
+
+// Builds the named-checklist groups for Today's Tasks from the open + done lists
+// the API already returns. Items with no checklist_name are the caller's concern
+// (they render in the existing flat "To-Do" block, unchanged).
+export function buildChecklistGroups(open: TaskInstance[], done: TaskInstance[]): ChecklistGroup[] {
+  const all = [...open, ...done].filter((t) => t.checklist_name !== null)
+  const names = sortChecklistNames(Array.from(new Set(all.map((t) => t.checklist_name as string))))
+  return names.map((name) => {
+    const items = all.filter((t) => t.checklist_name === name)
+    return {
+      name,
+      sections: groupSections(items),
+      total: items.length,
+      done: items.filter((t) => t.status === 'done').length,
+    }
   })
 }

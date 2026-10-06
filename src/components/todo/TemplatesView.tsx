@@ -70,6 +70,9 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
             <p className="text-sm text-gray-500 mt-0.5">
               {describeRecurrence(t)} · photo {photoSettingOf(t)} · assigned to {t.assigned_to}
             </p>
+            {t.checklist_name && (
+              <p className="text-xs text-gray-400 mt-0.5">{t.checklist_name} · {t.section}</p>
+            )}
             {t.description && <p className="text-sm text-gray-400 mt-0.5">{t.description}</p>}
             <div className="flex gap-2 mt-3">
               <button

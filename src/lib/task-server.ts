@@ -39,6 +39,9 @@ export async function generateInstancesForDate(
       created_by: t.created_by,
       photo_required: t.photo_required,
       photo_allowed: t.photo_allowed,
+      checklist_name: t.checklist_name,
+      section: t.section,
+      sort_order: t.sort_order,
       ...(t.description ? { description: t.description } : {}),
     }))
   if (rows.length === 0) return { matched: matching.length, created: 0 }
