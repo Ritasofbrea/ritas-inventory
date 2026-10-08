@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
-import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
-import { deleteOneOffTask, generateInstancesForDate, isActiveStaff, isValidAssignee, isValidCreator, TASK_PHOTO_BUCKET } from '@/lib/task-server'
+import { todayInTZ, photoFlags, PhotoSetting, Priority } from '@/lib/tasks'
+import {
+  deleteOneOffTask,
+  generateInstancesForDate,
+  isActiveStaff,
+  isValidAssignee,
+  isValidCreator,
+  moveStandaloneItem,
+  nextStandaloneInstanceSortOrder,
+  setInstancePriority,
+  TASK_PHOTO_BUCKET,
+} from '@/lib/task-server'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -77,12 +87,13 @@ export async function GET(request: NextRequest) {
 // Create a one-off task (due today, no template)
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { title, description, assigned_to, created_by, photo_setting } = body
+  const { title, description, assigned_to, created_by, photo_setting, priority } = body
 
   if (typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 })
   }
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
+  const prio: Priority = priority === 'high' ? 'high' : 'normal'
 
   const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
@@ -92,12 +103,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Pick who added this task' }, { status: 400 })
   }
 
-  const row: Record<string, string | boolean | null> = {
+  const row: Record<string, string | boolean | null | number> = {
     template_id: null,
     title: title.trim(),
     due_date: todayInTZ(),
     assigned_to,
     created_by,
+    priority: prio,
+    sort_order: await nextStandaloneInstanceSortOrder(db, prio),
     ...photoFlags(setting),
   }
   if (typeof description === 'string' && description.trim()) row.description = description.trim()
@@ -108,6 +121,7 @@ export async function POST(request: NextRequest) {
 }
 
 // action 'complete': { id, completed_by }   action 'photo': { id, photo_url }
+// action 'move': { id, direction }           action 'priority': { id, priority }  (standalone tasks only)
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
   const { id, action } = body
@@ -136,6 +150,24 @@ export async function PATCH(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data) return NextResponse.json({ error: 'Already completed' }, { status: 409 })
     return NextResponse.json(data)
+  }
+
+  if (action === 'move') {
+    if (body.direction !== 'up' && body.direction !== 'down') {
+      return NextResponse.json({ error: 'direction must be "up" or "down"' }, { status: 400 })
+    }
+    const result = await moveStandaloneItem(db, id, body.direction)
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ success: true })
+  }
+
+  if (action === 'priority') {
+    if (body.priority !== 'normal' && body.priority !== 'high') {
+      return NextResponse.json({ error: 'priority must be "normal" or "high"' }, { status: 400 })
+    }
+    const result = await setInstancePriority(db, id, body.priority)
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ success: true })
   }
 
   if (action === 'photo') {

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
-import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
+import { todayInTZ, photoFlags, PhotoSetting, Priority } from '@/lib/tasks'
 import {
   deleteTemplate,
   generateInstancesForDate,
   isValidAssignee,
   isValidCreator,
+  nextStandaloneTemplateSortOrder,
   normalizeRecurrence,
   syncOpenInstanceOwnership,
 } from '@/lib/task-server'
@@ -23,7 +24,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { title, description, assigned_to, created_by, photo_setting } = body
+  const { title, description, assigned_to, created_by, photo_setting, priority } = body
 
   if (typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 })
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
   const recurrence = normalizeRecurrence(body)
   if ('error' in recurrence) return NextResponse.json({ error: recurrence.error }, { status: 400 })
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
+  const prio: Priority = priority === 'high' ? 'high' : 'normal'
 
   const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
@@ -49,6 +51,8 @@ export async function POST(request: NextRequest) {
       ...photoFlags(setting),
       assigned_to,
       created_by,
+      priority: prio,
+      sort_order: await nextStandaloneTemplateSortOrder(db, prio),
     })
     .select()
     .single()
@@ -105,6 +109,24 @@ export async function PATCH(request: NextRequest) {
     const recurrence = normalizeRecurrence(body)
     if ('error' in recurrence) return NextResponse.json({ error: recurrence.error }, { status: 400 })
     Object.assign(updates, recurrence)
+  }
+  if (body.priority !== undefined) {
+    if (body.priority !== 'normal' && body.priority !== 'high') {
+      return NextResponse.json({ error: 'priority must be "normal" or "high"' }, { status: 400 })
+    }
+    const { data: current, error: currentError } = await db
+      .from('task_templates')
+      .select('checklist_name, priority')
+      .eq('id', id)
+      .maybeSingle()
+    if (currentError) return NextResponse.json({ error: currentError.message }, { status: 500 })
+    if (!current) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    updates.priority = body.priority
+    // Checklist items ignore priority entirely — never touch their sort_order,
+    // that's governed by the checklist-contiguity invariant, not priority tiers.
+    if (current.checklist_name === null && current.priority !== body.priority) {
+      updates.sort_order = await nextStandaloneTemplateSortOrder(db, body.priority)
+    }
   }
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 

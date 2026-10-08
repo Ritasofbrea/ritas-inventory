@@ -12,7 +12,7 @@ import StaffView from '@/components/todo/StaffView'
 import { getRole } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
 import { Role } from '@/lib/types'
-import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatTime, todayInTZ } from '@/lib/tasks'
+import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatTime, sortStandalone, todayInTZ } from '@/lib/tasks'
 
 type View = 'today' | 'history' | 'templates' | 'staff'
 
@@ -55,6 +55,7 @@ export default function TodoPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [photoNudgeId, setPhotoNudgeId] = useState<string | null>(null)
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
+  const [standaloneBusyId, setStandaloneBusyId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoTargetRef = useRef<string | null>(null)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -231,9 +232,48 @@ export default function TodoPage() {
     notifyTasksChanged()
   }
 
+  // Owner-only: reorder within the standalone list's priority tier, or flip a
+  // task's priority tier. Both are day-scoped (today's card only) — see
+  // moveStandaloneItem / setInstancePriority in task-server.ts for why.
+  const handleMoveStandalone = async (id: string, direction: 'up' | 'down') => {
+    setStandaloneBusyId(id)
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action: 'move', direction }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not reorder. Try again.')
+      await loadTasks()
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Could not reorder. Try again.')
+    } finally {
+      setStandaloneBusyId(null)
+    }
+  }
+
+  const handleTogglePriority = async (task: TaskInstance) => {
+    const next = task.priority === 'high' ? 'normal' : 'high'
+    setStandaloneBusyId(task.id)
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: task.id, action: 'priority', priority: next }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not update priority. Try again.')
+      await loadTasks()
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Could not update priority. Try again.')
+    } finally {
+      setStandaloneBusyId(null)
+    }
+  }
+
   // Same card markup whether a task sits in a named checklist's section or in the
-  // flat standalone list below — one definition, used in both places.
-  const renderOpenCard = (task: TaskInstance) => {
+  // flat standalone list below — `standalonePos` (only passed in the standalone
+  // list) adds the priority star and, for owners, reorder arrows + priority toggle.
+  const renderOpenCard = (task: TaskInstance, standalonePos?: { isFirst: boolean; isLast: boolean }) => {
     const overdue = task.due_date < today
     const needsPhoto = task.photo_required && !task.photo_url
     return (
@@ -258,6 +298,38 @@ export default function TodoPage() {
           )}
           {task.description && <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>}
           {needsPhoto && <p className="text-xs font-semibold text-amber-700 mt-0.5">📷 Photo required</p>}
+          {/* Priority badge — visible to everyone, standalone tasks only */}
+          {standalonePos && task.priority === 'high' && (
+            <p className="text-xs font-bold text-amber-600 mt-0.5">⭐ High priority</p>
+          )}
+          {/* Reorder (within the same priority tier) + priority toggle — owner-only */}
+          {standalonePos && isOwner && (
+            <div className="flex items-center gap-1.5 mt-1.5 -ml-1">
+              <button
+                onClick={() => handleMoveStandalone(task.id, 'up')}
+                disabled={standalonePos.isFirst || standaloneBusyId === task.id}
+                aria-label={`Move "${task.title}" up`}
+                className="w-9 h-9 flex-shrink-0 bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 font-bold rounded-lg text-sm"
+              >
+                ↑
+              </button>
+              <button
+                onClick={() => handleMoveStandalone(task.id, 'down')}
+                disabled={standalonePos.isLast || standaloneBusyId === task.id}
+                aria-label={`Move "${task.title}" down`}
+                className="w-9 h-9 flex-shrink-0 bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 font-bold rounded-lg text-sm"
+              >
+                ↓
+              </button>
+              <button
+                onClick={() => handleTogglePriority(task)}
+                disabled={standaloneBusyId === task.id}
+                className="h-9 flex-shrink-0 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-600 font-semibold rounded-lg text-xs px-2.5"
+              >
+                {task.priority === 'high' ? 'Make normal' : '⭐ Make high'}
+              </button>
+            </div>
+          )}
           {/* Owners only, one-off tasks only (repeating tasks are deleted from the Repeating tab) */}
           {isOwner && task.template_id === null && (
             <button
@@ -311,7 +383,7 @@ export default function TodoPage() {
   )
 
   const checklistGroups = buildChecklistGroups(open, done)
-  const standaloneOpen = open.filter((t) => t.checklist_name === null)
+  const standaloneOpen = sortStandalone(open.filter((t) => t.checklist_name === null))
   const standaloneDone = done.filter((t) => t.checklist_name === null)
 
   const views: View[] = isOwner ? ['today', 'history', 'templates', 'staff'] : ['today']
@@ -424,7 +496,9 @@ export default function TodoPage() {
                     {checklistGroups.length > 0 && (
                       <p className="text-xs font-bold uppercase tracking-widest text-gray-400 -mb-2">To-Do</p>
                     )}
-                    {standaloneOpen.map(renderOpenCard)}
+                    {standaloneOpen.map((task, i) =>
+                      renderOpenCard(task, { isFirst: i === 0 || task.priority !== standaloneOpen[i - 1].priority, isLast: i === standaloneOpen.length - 1 || task.priority !== standaloneOpen[i + 1].priority })
+                    )}
                   </div>
                 )}
                 {checklistGroups.length > 0 && standaloneOpen.length === 0 && (

@@ -15,6 +15,8 @@ export const TASK_CREATORS = ['Josh', 'Gina', 'Valerie'] as const
 
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'custom'
 export type PhotoSetting = 'off' | 'optional' | 'required'
+// Standalone (non-checklist) tasks only — named-checklist items ignore this.
+export type Priority = 'normal' | 'high'
 
 export interface Staff {
   id: string
@@ -39,6 +41,7 @@ export interface TaskTemplate {
   checklist_name: string | null
   section: string | null
   sort_order: number
+  priority: Priority
 }
 
 export interface TaskInstance {
@@ -59,6 +62,7 @@ export interface TaskInstance {
   checklist_name: string | null
   section: string | null
   sort_order: number
+  priority: Priority
 }
 
 export const photoFlags = (setting: PhotoSetting) => ({
@@ -217,4 +221,11 @@ export function buildChecklistGroups(open: TaskInstance[], done: TaskInstance[])
 // unique per checklist by the server helpers) break by title.
 export function buildTemplateChecklistGroups(templates: TaskTemplate[]): ChecklistGroup<TaskTemplate>[] {
   return buildGroups(templates, (a, b) => a.title.localeCompare(b.title))
+}
+
+// Standalone (non-checklist) task display order: high priority above normal,
+// then sort_order within each tier. Used for Today's Tasks' flat "To-Do" list.
+export function sortStandalone<T extends { priority: Priority; sort_order: number }>(items: T[]): T[] {
+  const tierRank = (p: Priority) => (p === 'high' ? 0 : 1)
+  return [...items].sort((a, b) => tierRank(a.priority) - tierRank(b.priority) || a.sort_order - b.sort_order)
 }

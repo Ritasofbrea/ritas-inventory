@@ -6,6 +6,7 @@ import {
   Staff,
   TaskTemplate,
   PhotoSetting,
+  Priority,
   WEEKDAY_LABELS,
   EVERYONE,
   TASK_CREATORS,
@@ -44,6 +45,10 @@ export default function TaskFormModal({
   const [description, setDescription] = useState(template?.description ?? '')
   const [kind, setKind] = useState<Kind>('one-off')
   const [photo, setPhoto] = useState<PhotoSetting>(template ? photoSettingOf(template) : 'optional')
+  const [priority, setPriority] = useState<Priority>(template?.priority ?? 'normal')
+  // Named-checklist items ignore priority entirely — this form is never used to
+  // CREATE one (that's AddChecklistItemModal), but it IS used to edit one.
+  const showPriority = !template || !template.checklist_name
   const [freq, setFreq] = useState<Freq>(
     template && template.recurrence !== 'none' ? (template.recurrence as Freq) : 'daily'
   )
@@ -103,16 +108,17 @@ export default function TaskFormModal({
             description,
             photo_setting: photo,
             ...recurrenceFields,
-            // only send ownership fields that were actually changed
+            // only send fields that were actually changed
             ...(assignedTo !== template.assigned_to ? { assigned_to: assignedTo } : {}),
             ...(createdBy !== template.created_by ? { created_by: createdBy } : {}),
+            ...(showPriority && priority !== template.priority ? { priority } : {}),
           }),
         })
       } else {
         res = await fetch(recurring ? '/api/task-templates' : '/api/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, description, assigned_to: assignedTo, created_by: createdBy, photo_setting: photo, ...recurrenceFields }),
+          body: JSON.stringify({ title, description, assigned_to: assignedTo, created_by: createdBy, photo_setting: photo, priority, ...recurrenceFields }),
         })
       }
       const body = await res.json()
@@ -239,6 +245,16 @@ export default function TaskFormModal({
               <button type="button" className={segBtn(photo === 'required')} onClick={() => setPhoto('required')}>Required</button>
             </div>
           </div>
+
+          {showPriority && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Priority</label>
+              <div className="flex gap-2">
+                <button type="button" className={segBtn(priority === 'normal')} onClick={() => setPriority('normal')}>Normal</button>
+                <button type="button" className={segBtn(priority === 'high')} onClick={() => setPriority('high')}>⭐ High</button>
+              </div>
+            </div>
+          )}
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
 

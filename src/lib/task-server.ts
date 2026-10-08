@@ -1,6 +1,6 @@
 // Server-only helpers for the To-Do feature.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { templateMatchesDate, TaskTemplate, Recurrence, EVERYONE, TASK_CREATORS } from './tasks'
+import { templateMatchesDate, todayInTZ, TaskTemplate, TaskInstance, Recurrence, Priority, EVERYONE, TASK_CREATORS } from './tasks'
 
 import { TASK_PHOTO_BUCKET } from './task-constants'
 export { TASK_PHOTO_BUCKET }
@@ -42,6 +42,7 @@ export async function generateInstancesForDate(
       checklist_name: t.checklist_name,
       section: t.section,
       sort_order: t.sort_order,
+      priority: t.priority,
       ...(t.description ? { description: t.description } : {}),
     }))
   if (rows.length === 0) return { matched: matching.length, created: 0 }
@@ -228,7 +229,7 @@ async function renumberChecklist(db: SupabaseClient, orderedIds: string[]): Prom
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-type ChecklistWriteResult<T = {}> = ({ ok: true } & T) | { ok: false; error: string; status: number }
+type TaskWriteResult<T = {}> = ({ ok: true } & T) | { ok: false; error: string; status: number }
 
 // Adds a new line item to an existing (checklist_name, section). Copies
 // recurrence/weekday/custom_days from an existing sibling in that section — all
@@ -246,7 +247,7 @@ export async function addChecklistItem(
     photo_required: boolean
     photo_allowed: boolean
   }
-): Promise<ChecklistWriteResult<{ template: TaskTemplate }>> {
+): Promise<TaskWriteResult<{ template: TaskTemplate }>> {
   const { data: siblingsRaw, error: fetchError } = await db
     .from('task_templates')
     .select('*')
@@ -299,7 +300,7 @@ export async function moveChecklistItem(
   db: SupabaseClient,
   templateId: string,
   direction: 'up' | 'down'
-): Promise<ChecklistWriteResult> {
+): Promise<TaskWriteResult> {
   const { data: target, error: targetError } = await db.from('task_templates').select('*').eq('id', templateId).maybeSingle()
   if (targetError) return { ok: false, error: targetError.message, status: 500 }
   if (!target) return { ok: false, error: 'Task not found', status: 404 }
@@ -350,7 +351,7 @@ export async function renameChecklistSection(
   checklistName: string,
   oldSection: string,
   newSection: string
-): Promise<ChecklistWriteResult> {
+): Promise<TaskWriteResult> {
   const trimmed = newSection.trim()
   if (!trimmed) return { ok: false, error: 'Section name cannot be empty', status: 400 }
   if (trimmed === oldSection) return { ok: true }
@@ -375,5 +376,102 @@ export async function renameChecklistSection(
   const ordered = canonicalOrder((allRaw ?? []) as TaskTemplate[])
   const renumberError = await renumberChecklist(db, ordered.map((t) => t.id))
   if (renumberError) return { ok: false, error: renumberError, status: 500 }
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Standalone (non-checklist) tasks: priority + reorder.
+//
+// Unlike checklist items, these are day-scoped: reordering and the per-card
+// priority toggle only affect today's/overdue open instances, not the
+// template a recurring standalone task may have come from. A recurring
+// standalone task's priority set at creation (or via editing its template)
+// still carries onto every future day's instance through generateInstancesForDate
+// — this only covers tweaking what's already on today's list.
+// ---------------------------------------------------------------------------
+
+// Where a newly created standalone task should slot in: after all existing
+// open standalone instances in the same priority tier, so a fresh task
+// appends at the bottom of its tier instead of defaulting to sort_order 0
+// (which would sort it ahead of everything already there).
+export async function nextStandaloneInstanceSortOrder(db: SupabaseClient, priority: Priority): Promise<number> {
+  const { data } = await db
+    .from('task_instances')
+    .select('sort_order')
+    .is('checklist_name', null)
+    .eq('status', 'open')
+    .eq('priority', priority)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+  return (data?.[0]?.sort_order ?? 0) + 1
+}
+
+// Same idea for a new standalone (non-checklist) recurring template.
+export async function nextStandaloneTemplateSortOrder(db: SupabaseClient, priority: Priority): Promise<number> {
+  const { data } = await db
+    .from('task_templates')
+    .select('sort_order')
+    .is('checklist_name', null)
+    .eq('priority', priority)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+  return (data?.[0]?.sort_order ?? 0) + 1
+}
+
+// Swaps a standalone task with its neighbor within the same priority tier
+// (today's + overdue open standalone instances only) — never crosses tiers;
+// use setInstancePriority for that. Renumbers the whole tier afterward, same
+// reasoning as moveChecklistItem: simpler and more robust than incremental
+// shifting, and self-heals the common case where everything still shares the
+// sort_order=0 default from before anyone ever reordered.
+export async function moveStandaloneItem(db: SupabaseClient, instanceId: string, direction: 'up' | 'down'): Promise<TaskWriteResult> {
+  const { data: target, error: targetError } = await db.from('task_instances').select('*').eq('id', instanceId).maybeSingle()
+  if (targetError) return { ok: false, error: targetError.message, status: 500 }
+  if (!target) return { ok: false, error: 'Task not found', status: 404 }
+  if (target.checklist_name !== null) {
+    return { ok: false, error: 'This task is part of a checklist — reorder it from the Repeating tab instead', status: 400 }
+  }
+  if (target.status !== 'open') return { ok: false, error: 'Only open tasks can be reordered', status: 400 }
+
+  const today = todayInTZ()
+  const { data: tierRaw, error: fetchError } = await db
+    .from('task_instances')
+    .select('*')
+    .is('checklist_name', null)
+    .eq('status', 'open')
+    .eq('priority', target.priority)
+    .lte('due_date', today)
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+
+  const tier = ((tierRaw ?? []) as TaskInstance[]).sort(
+    (a, b) => a.sort_order - b.sort_order || a.due_date.localeCompare(b.due_date) || a.created_at.localeCompare(b.created_at)
+  )
+  const index = tier.findIndex((t) => t.id === instanceId)
+  if (index === -1) return { ok: false, error: "Task not found in today's list", status: 404 }
+  const swapWith = direction === 'up' ? index - 1 : index + 1
+  if (swapWith < 0 || swapWith >= tier.length) {
+    return { ok: false, error: direction === 'up' ? 'Already at the top' : 'Already at the bottom', status: 400 }
+  }
+  ;[tier[index], tier[swapWith]] = [tier[swapWith], tier[index]]
+
+  const results = await Promise.all(tier.map((t, i) => db.from('task_instances').update({ sort_order: i + 1 }).eq('id', t.id)))
+  const failed = results.find((r) => r.error)
+  if (failed?.error) return { ok: false, error: failed.error.message, status: 500 }
+  return { ok: true }
+}
+
+// Changes a single standalone instance's priority (today's card only — see note
+// above). Appends it to the end of its new tier so it doesn't land at a stale
+// numeric position left over from its old tier.
+export async function setInstancePriority(db: SupabaseClient, instanceId: string, priority: Priority): Promise<TaskWriteResult> {
+  const { data: task, error: fetchError } = await db.from('task_instances').select('*').eq('id', instanceId).maybeSingle()
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  if (!task) return { ok: false, error: 'Task not found', status: 404 }
+  if (task.checklist_name !== null) return { ok: false, error: 'Checklist items do not use priority', status: 400 }
+  if (task.status !== 'open') return { ok: false, error: 'Only open tasks can have their priority changed', status: 400 }
+
+  const sortOrder = await nextStandaloneInstanceSortOrder(db, priority)
+  const { error } = await db.from('task_instances').update({ priority, sort_order: sortOrder }).eq('id', instanceId)
+  if (error) return { ok: false, error: error.message, status: 500 }
   return { ok: true }
 }
