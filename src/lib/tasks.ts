@@ -229,3 +229,21 @@ export function sortStandalone<T extends { priority: Priority; sort_order: numbe
   const tierRank = (p: Priority) => (p === 'high' ? 0 : 1)
   return [...items].sort((a, b) => tierRank(a.priority) - tierRank(b.priority) || a.sort_order - b.sort_order)
 }
+
+export interface HistoryDayGroup {
+  date: string
+  items: TaskInstance[]
+}
+
+// Groups History rows by due_date, most recent day first. Rows already come
+// sorted by due_date desc (then created_at desc) from the API, so a single
+// pass preserves both the day order and each day's internal order.
+export function groupHistoryByDay(rows: TaskInstance[]): HistoryDayGroup[] {
+  const groups: HistoryDayGroup[] = []
+  for (const row of rows) {
+    const last = groups[groups.length - 1]
+    if (last && last.date === row.due_date) last.items.push(row)
+    else groups.push({ date: row.due_date, items: [row] })
+  }
+  return groups
+}
