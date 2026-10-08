@@ -80,7 +80,7 @@ export default function LoginPage() {
 
             <button
               onClick={handleTodo}
-              className="w-full bg-transparent hover:bg-[#155f2f] active:bg-[#0f4a24] text-white text-xl font-semibold py-5 rounded-2xl border-2 border-green-200 transition-colors"
+              className="w-full bg-yellow-400 hover:bg-yellow-300 active:bg-yellow-500 text-[#1a7a3c] text-xl font-semibold py-5 rounded-2xl shadow-lg transition-colors"
             >
               To-Do List
             </button>
