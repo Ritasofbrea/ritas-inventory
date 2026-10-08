@@ -1,28 +1,43 @@
 'use client'
 
 import { useState } from 'react'
+import ConfirmModal from './ConfirmModal'
 
 // Renaming to a name that already exists elsewhere in the same checklist merges
-// the two sections (server-side) — allowed, since nothing stops that from being
-// intentional, but worth knowing before confirming.
+// the two sections (server-side, see renameChecklistSection) — allowed, since
+// nothing stops that from being intentional, but guarded here with a confirm
+// so a typo can't silently combine two sections.
 export default function RenameSectionModal({
   checklistName,
   currentSection,
+  otherSections,
   onClose,
   onSaved,
 }: {
   checklistName: string
   currentSection: string
+  otherSections: string[]
   onClose: () => void
   onSaved: () => void
 }) {
   const [name, setName] = useState(currentSection)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [confirmingMerge, setConfirmingMerge] = useState(false)
 
-  const save = async () => {
+  const attemptSave = () => {
     setError('')
-    if (!name.trim()) return setError('Section name cannot be empty.')
+    const trimmed = name.trim()
+    if (!trimmed) return setError('Section name cannot be empty.')
+    if (trimmed !== currentSection && otherSections.includes(trimmed)) {
+      setConfirmingMerge(true)
+      return
+    }
+    doSave()
+  }
+
+  const doSave = async () => {
+    setConfirmingMerge(false)
     setSaving(true)
     try {
       const res = await fetch('/api/task-templates/rename-section', {
@@ -64,7 +79,7 @@ export default function RenameSectionModal({
             Cancel
           </button>
           <button
-            onClick={save}
+            onClick={attemptSave}
             disabled={saving}
             className="flex-1 bg-[#1a7a3c] hover:bg-[#155f2f] disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold py-3 rounded-xl"
           >
@@ -72,6 +87,16 @@ export default function RenameSectionModal({
           </button>
         </div>
       </div>
+
+      {confirmingMerge && (
+        <ConfirmModal
+          message={`A section named "${name.trim()}" already exists in this checklist. Renaming will merge these sections together. Continue?`}
+          confirmLabel="Merge"
+          busy={saving}
+          onConfirm={doSave}
+          onCancel={() => setConfirmingMerge(false)}
+        />
+      )}
     </div>
   )
 }

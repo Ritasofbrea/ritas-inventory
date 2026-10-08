@@ -18,7 +18,7 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   const [moveBusyId, setMoveBusyId] = useState<string | null>(null)
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const [addingTo, setAddingTo] = useState<{ checklistName: string; sections: string[] } | null>(null)
-  const [renaming, setRenaming] = useState<{ checklistName: string; section: string } | null>(null)
+  const [renaming, setRenaming] = useState<{ checklistName: string; section: string; otherSections: string[] } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -177,7 +177,13 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                       <div className="flex items-center justify-between gap-3 mb-2">
                         <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{section.name}</p>
                         <button
-                          onClick={() => setRenaming({ checklistName: group.name, section: section.name })}
+                          onClick={() =>
+                            setRenaming({
+                              checklistName: group.name,
+                              section: section.name,
+                              otherSections: sectionNames.filter((n) => n !== section.name),
+                            })
+                          }
                           className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex-shrink-0"
                         >
                           Rename
@@ -255,6 +261,7 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
         <RenameSectionModal
           checklistName={renaming.checklistName}
           currentSection={renaming.section}
+          otherSections={renaming.otherSections}
           onClose={() => setRenaming(null)}
           onSaved={() => {
             setRenaming(null)
