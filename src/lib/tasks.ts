@@ -149,30 +149,35 @@ export function sortChecklistNames(names: string[]): string[] {
   return [...known, ...rest]
 }
 
-export interface ChecklistSection {
-  name: string
-  items: TaskInstance[]
+interface ChecklistShaped {
+  checklist_name: string | null
+  section: string | null
+  sort_order: number
 }
 
-export interface ChecklistGroup {
+export interface ChecklistSection<T> {
   name: string
-  sections: ChecklistSection[]
-  total: number
-  done: number
+  items: T[]
 }
 
-// Groups a checklist's items (open + done combined) into ordered sections.
-// Section order is derived from sort_order — not from `section` text or DB row
-// order — since sort_order is the only column that reliably encodes position
-// (it counts continuously across the whole checklist; see
-// supabase/corporate-checklists-seed.sql for why it must NOT reset per section).
-// Items that tie on sort_order (e.g. today's copy and an older, still-open
-// overdue copy of the same checklist item) sort oldest due_date first.
-function groupSections(items: TaskInstance[]): ChecklistSection[] {
-  const sorted = [...items].sort(
-    (a, b) => a.sort_order - b.sort_order || a.due_date.localeCompare(b.due_date)
-  )
-  const sections: ChecklistSection[] = []
+export interface ChecklistGroup<T> {
+  name: string
+  sections: ChecklistSection<T>[]
+}
+
+// Groups a checklist's items into ordered sections. Section order is derived
+// from sort_order — not from `section` text or DB row order — since sort_order
+// is the only column that reliably encodes position (it counts continuously
+// across the whole checklist; see supabase/corporate-checklists-seed.sql, and
+// the add/reorder/rename server helpers in task-server.ts that preserve this).
+// `tiebreak` resolves items that land on the same sort_order (e.g. an instance's
+// today copy and an older, still-open overdue copy of the same checklist item).
+function groupSections<T extends ChecklistShaped>(
+  items: T[],
+  tiebreak: (a: T, b: T) => number = () => 0
+): ChecklistSection<T>[] {
+  const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order || tiebreak(a, b))
+  const sections: ChecklistSection<T>[] = []
   for (const item of sorted) {
     const name = item.section ?? ''
     const last = sections[sections.length - 1]
@@ -182,19 +187,34 @@ function groupSections(items: TaskInstance[]): ChecklistSection[] {
   return sections
 }
 
+function buildGroups<T extends ChecklistShaped>(items: T[], tiebreak?: (a: T, b: T) => number): ChecklistGroup<T>[] {
+  const named = items.filter((t) => t.checklist_name !== null)
+  const names = sortChecklistNames(Array.from(new Set(named.map((t) => t.checklist_name as string))))
+  return names.map((name) => ({
+    name,
+    sections: groupSections(named.filter((t) => t.checklist_name === name), tiebreak),
+  }))
+}
+
+export interface TaskInstanceChecklistGroup extends ChecklistGroup<TaskInstance> {
+  total: number
+  done: number
+}
+
 // Builds the named-checklist groups for Today's Tasks from the open + done lists
 // the API already returns. Items with no checklist_name are the caller's concern
 // (they render in the existing flat "To-Do" block, unchanged).
-export function buildChecklistGroups(open: TaskInstance[], done: TaskInstance[]): ChecklistGroup[] {
-  const all = [...open, ...done].filter((t) => t.checklist_name !== null)
-  const names = sortChecklistNames(Array.from(new Set(all.map((t) => t.checklist_name as string))))
-  return names.map((name) => {
-    const items = all.filter((t) => t.checklist_name === name)
-    return {
-      name,
-      sections: groupSections(items),
-      total: items.length,
-      done: items.filter((t) => t.status === 'done').length,
-    }
+export function buildChecklistGroups(open: TaskInstance[], done: TaskInstance[]): TaskInstanceChecklistGroup[] {
+  const groups = buildGroups([...open, ...done], (a, b) => a.due_date.localeCompare(b.due_date))
+  return groups.map((g) => {
+    const items = g.sections.flatMap((s) => s.items)
+    return { ...g, total: items.length, done: items.filter((t) => t.status === 'done').length }
   })
+}
+
+// Same grouping for the Repeating (owner) view — one entry per template, no
+// open/done concept. Ties (shouldn't normally happen; sort_order is kept
+// unique per checklist by the server helpers) break by title.
+export function buildTemplateChecklistGroups(templates: TaskTemplate[]): ChecklistGroup<TaskTemplate>[] {
+  return buildGroups(templates, (a, b) => a.title.localeCompare(b.title))
 }

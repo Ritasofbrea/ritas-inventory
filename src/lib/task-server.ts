@@ -186,3 +186,194 @@ export function normalizeRecurrence(body: {
   }
   return { error: 'Recurrence must be daily, weekly, or custom' }
 }
+
+// ---------------------------------------------------------------------------
+// Checklist editing: add item / reorder within a section / rename a section.
+//
+// Today's Tasks derives section order purely from sort_order counting
+// continuously across a whole checklist (see groupSections in tasks.ts) — there
+// is no separate section-order column. So every write here recomputes the
+// checklist's full desired order explicitly and renumbers it 1..N, rather than
+// trying to shift individual values — that keeps each section's rows
+// contiguous by construction instead of by careful incremental arithmetic,
+// which is exactly the kind of thing that goes quietly wrong later.
+// ---------------------------------------------------------------------------
+
+// Reconstructs a checklist's canonical item order from its current rows: groups
+// by `section` value (not just adjacent sort_order runs), first-occurrence order,
+// preserving each section's existing relative item order. Used by renameSection,
+// where two previously-separate sections can end up sharing a name and need
+// merging into one contiguous run.
+function canonicalOrder(items: TaskTemplate[]): TaskTemplate[] {
+  const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order)
+  const order: string[] = []
+  const buckets = new Map<string, TaskTemplate[]>()
+  for (const item of sorted) {
+    const key = item.section ?? ''
+    if (!buckets.has(key)) {
+      buckets.set(key, [])
+      order.push(key)
+    }
+    buckets.get(key)!.push(item)
+  }
+  return order.flatMap((key) => buckets.get(key)!)
+}
+
+async function renumberChecklist(db: SupabaseClient, orderedIds: string[]): Promise<string | null> {
+  const results = await Promise.all(
+    orderedIds.map((id, i) => db.from('task_templates').update({ sort_order: i + 1 }).eq('id', id))
+  )
+  const failed = results.find((r) => r.error)
+  return failed?.error ? failed.error.message : null
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type ChecklistWriteResult<T = {}> = ({ ok: true } & T) | { ok: false; error: string; status: number }
+
+// Adds a new line item to an existing (checklist_name, section). Copies
+// recurrence/weekday/custom_days from an existing sibling in that section — all
+// items in a section share the same cadence, so the owner never has to re-pick
+// it. Placed at the end of its section, everything renumbered to stay contiguous.
+export async function addChecklistItem(
+  db: SupabaseClient,
+  params: {
+    checklist_name: string
+    section: string
+    title: string
+    description: string | null
+    assigned_to: string
+    created_by: string
+    photo_required: boolean
+    photo_allowed: boolean
+  }
+): Promise<ChecklistWriteResult<{ template: TaskTemplate }>> {
+  const { data: siblingsRaw, error: fetchError } = await db
+    .from('task_templates')
+    .select('*')
+    .eq('checklist_name', params.checklist_name)
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  const siblings = (siblingsRaw ?? []) as TaskTemplate[]
+  const sibling = siblings.find((t) => t.section === params.section)
+  if (!sibling) return { ok: false, error: 'That checklist/section was not found', status: 400 }
+
+  const { data: inserted, error: insertError } = await db
+    .from('task_templates')
+    .insert({
+      title: params.title,
+      description: params.description,
+      recurrence: sibling.recurrence,
+      weekday: sibling.weekday,
+      custom_days: sibling.custom_days,
+      checklist_name: params.checklist_name,
+      section: params.section,
+      sort_order: 0, // placeholder — overwritten by the renumber below
+      assigned_to: params.assigned_to,
+      created_by: params.created_by,
+      photo_required: params.photo_required,
+      photo_allowed: params.photo_allowed,
+    })
+    .select()
+    .single()
+  if (insertError) return { ok: false, error: insertError.message, status: 500 }
+
+  const existingOrdered = canonicalOrder(siblings)
+  let insertAt = existingOrdered.length
+  for (let i = existingOrdered.length - 1; i >= 0; i--) {
+    if (existingOrdered[i].section === params.section) {
+      insertAt = i + 1
+      break
+    }
+  }
+  const ordered = [...existingOrdered.slice(0, insertAt), inserted as TaskTemplate, ...existingOrdered.slice(insertAt)]
+  const renumberError = await renumberChecklist(db, ordered.map((t) => t.id))
+  if (renumberError) return { ok: false, error: renumberError, status: 500 }
+
+  const { data: final, error: finalError } = await db.from('task_templates').select('*').eq('id', inserted.id).single()
+  if (finalError) return { ok: false, error: finalError.message, status: 500 }
+  return { ok: true, template: final }
+}
+
+// Swaps a template with its neighbor within its own section (never crosses
+// into another section — that's a rename/merge concern, not a reorder one).
+export async function moveChecklistItem(
+  db: SupabaseClient,
+  templateId: string,
+  direction: 'up' | 'down'
+): Promise<ChecklistWriteResult> {
+  const { data: target, error: targetError } = await db.from('task_templates').select('*').eq('id', templateId).maybeSingle()
+  if (targetError) return { ok: false, error: targetError.message, status: 500 }
+  if (!target) return { ok: false, error: 'Task not found', status: 404 }
+  if (!target.checklist_name) return { ok: false, error: 'This task is not part of a checklist', status: 400 }
+
+  const { data: siblingsRaw, error: fetchError } = await db
+    .from('task_templates')
+    .select('*')
+    .eq('checklist_name', target.checklist_name)
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+
+  const full = canonicalOrder((siblingsRaw ?? []) as TaskTemplate[])
+  const fullIds = full.map((t) => t.id)
+  const sectionPositions = full.reduce<number[]>((acc, t, i) => {
+    if (t.section === target.section) acc.push(i)
+    return acc
+  }, [])
+  const localIndex = sectionPositions.findIndex((i) => fullIds[i] === templateId)
+  if (localIndex === -1) return { ok: false, error: 'Task not found in its section', status: 404 }
+
+  const swapLocal = direction === 'up' ? localIndex - 1 : localIndex + 1
+  if (swapLocal < 0 || swapLocal >= sectionPositions.length) {
+    return {
+      ok: false,
+      error: direction === 'up' ? 'Already at the top of this section' : 'Already at the bottom of this section',
+      status: 400,
+    }
+  }
+
+  const globalA = sectionPositions[localIndex]
+  const globalB = sectionPositions[swapLocal]
+  const orderedIds = [...fullIds]
+  ;[orderedIds[globalA], orderedIds[globalB]] = [orderedIds[globalB], orderedIds[globalA]]
+
+  const renumberError = await renumberChecklist(db, orderedIds)
+  if (renumberError) return { ok: false, error: renumberError, status: 500 }
+  return { ok: true }
+}
+
+// Renames a section's label across every template that has it, and across
+// already-generated, not-yet-done instances (so today's/overdue cards update
+// immediately rather than waiting for tomorrow's regeneration — completed
+// instances are history and are left as they were). If the new name collides
+// with a different, already-existing section elsewhere in the same checklist,
+// they're merged (treated as intentional) and renumbered into one contiguous run.
+export async function renameChecklistSection(
+  db: SupabaseClient,
+  checklistName: string,
+  oldSection: string,
+  newSection: string
+): Promise<ChecklistWriteResult> {
+  const trimmed = newSection.trim()
+  if (!trimmed) return { ok: false, error: 'Section name cannot be empty', status: 400 }
+  if (trimmed === oldSection) return { ok: true }
+
+  const { error: templatesError } = await db
+    .from('task_templates')
+    .update({ section: trimmed })
+    .eq('checklist_name', checklistName)
+    .eq('section', oldSection)
+  if (templatesError) return { ok: false, error: templatesError.message, status: 500 }
+
+  const { error: instancesError } = await db
+    .from('task_instances')
+    .update({ section: trimmed })
+    .eq('checklist_name', checklistName)
+    .eq('section', oldSection)
+    .eq('status', 'open')
+  if (instancesError) return { ok: false, error: instancesError.message, status: 500 }
+
+  const { data: allRaw, error: fetchError } = await db.from('task_templates').select('*').eq('checklist_name', checklistName)
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  const ordered = canonicalOrder((allRaw ?? []) as TaskTemplate[])
+  const renumberError = await renumberChecklist(db, ordered.map((t) => t.id))
+  if (renumberError) return { ok: false, error: renumberError, status: 500 }
+  return { ok: true }
+}
