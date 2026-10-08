@@ -9,18 +9,20 @@ import ConfirmModal from '@/components/todo/ConfirmModal'
 import HistoryView from '@/components/todo/HistoryView'
 import TemplatesView from '@/components/todo/TemplatesView'
 import StaffView from '@/components/todo/StaffView'
+import PinManagementView from '@/components/todo/PinManagementView'
 import { getRole } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
 import { Role } from '@/lib/types'
 import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatTime, sortStandalone, todayInTZ } from '@/lib/tasks'
 
-type View = 'today' | 'history' | 'templates' | 'staff'
+type View = 'today' | 'history' | 'templates' | 'staff' | 'pins'
 
 const VIEW_LABELS: Record<View, string> = {
   today: 'Today',
   history: 'History',
   templates: 'Repeating',
   staff: 'Staff',
+  pins: 'PINs',
 }
 
 const notifyTasksChanged = () => window.dispatchEvent(new Event('tasks-changed'))
@@ -420,7 +422,7 @@ export default function TodoPage() {
   const standaloneOpen = sortStandalone(open.filter((t) => t.checklist_name === null))
   const standaloneDone = done.filter((t) => t.checklist_name === null)
 
-  const views: View[] = isOwner ? ['today', 'history', 'templates', 'staff'] : ['today']
+  const views: View[] = isOwner ? ['today', 'history', 'templates', 'staff', 'pins'] : ['today']
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
@@ -578,6 +580,7 @@ export default function TodoPage() {
             }}
           />
         )}
+        {view === 'pins' && isOwner && <PinManagementView />}
       </main>
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />

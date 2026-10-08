@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [pinRole, setPinRole] = useState<'owner' | 'shift_lead'>('owner')
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
+  const [verifying, setVerifying] = useState(false)
 
   const handleShiftLead = () => {
     setPinRole('shift_lead')
@@ -33,19 +34,31 @@ export default function LoginPage() {
     router.push('/todo')
   }
 
-  // Shift lead and owner each have their own PIN
-  const handlePinSubmit = (e: React.FormEvent) => {
+  // Shift lead and owner each have their own PIN, stored in Supabase (the
+  // `pins` table) so they can be changed in-app instead of via Vercel env vars.
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const expectedPin =
-      pinRole === 'owner'
-        ? process.env.NEXT_PUBLIC_OWNER_PIN || '1234'
-        : process.env.NEXT_PUBLIC_SHIFT_LEAD_PIN || '1234'
-    if (pin === expectedPin) {
-      setRole(pinRole)
-      router.push(pinRole === 'owner' ? '/dashboard' : '/count')
-    } else {
-      setError('Wrong PIN. Try again.')
-      setPin('')
+    setError('')
+    setVerifying(true)
+    try {
+      const res = await fetch('/api/pins/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: pinRole, pin }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || 'Could not verify PIN')
+      if (body.valid) {
+        setRole(pinRole)
+        router.push(pinRole === 'owner' ? '/dashboard' : '/count')
+      } else {
+        setError('Wrong PIN. Try again.')
+        setPin('')
+      }
+    } catch {
+      setError('Could not check the PIN. Check your connection and try again.')
+    } finally {
+      setVerifying(false)
     }
   }
 
@@ -97,21 +110,24 @@ export default function LoginPage() {
                 onChange={(e) => setPin(e.target.value)}
                 placeholder="Enter PIN"
                 autoFocus
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-2xl text-center tracking-widest focus:outline-none focus:border-[#1a7a3c]"
+                disabled={verifying}
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-2xl text-center tracking-widest focus:outline-none focus:border-[#1a7a3c] disabled:opacity-50"
               />
               {error && (
                 <p className="text-[#c8102e] text-center font-medium">{error}</p>
               )}
               <button
                 type="submit"
-                className="w-full bg-[#c8102e] hover:bg-[#a50d26] text-white text-lg font-semibold py-4 rounded-xl"
+                disabled={verifying || !pin}
+                className="w-full bg-[#c8102e] hover:bg-[#a50d26] disabled:bg-red-200 text-white text-lg font-semibold py-4 rounded-xl"
               >
-                Sign In
+                {verifying ? 'Checking…' : 'Sign In'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowPinEntry(false)}
-                className="text-gray-400 hover:text-gray-600 text-sm"
+                disabled={verifying}
+                className="text-gray-400 hover:text-gray-600 disabled:opacity-50 text-sm"
               >
                 ← Back
               </button>
