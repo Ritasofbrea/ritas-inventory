@@ -11,6 +11,7 @@ import {
   nextStandaloneInstanceSortOrder,
   setInstancePriority,
   TASK_PHOTO_BUCKET,
+  undoCompletion,
 } from '@/lib/task-server'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest) {
 }
 
 // action 'complete': { id, completed_by }   action 'photo': { id, photo_url }
+// action 'undo': { id }  (same calendar day only)
 // action 'move': { id, direction }           action 'priority': { id, priority }  (standalone tasks only)
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
@@ -150,6 +152,12 @@ export async function PATCH(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data) return NextResponse.json({ error: 'Already completed' }, { status: 409 })
     return NextResponse.json(data)
+  }
+
+  if (action === 'undo') {
+    const result = await undoCompletion(db, id)
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ success: true })
   }
 
   if (action === 'move') {

@@ -475,3 +475,27 @@ export async function setInstancePriority(db: SupabaseClient, instanceId: string
   if (error) return { ok: false, error: error.message, status: 500 }
   return { ok: true }
 }
+
+// Undoes a completion — same calendar day (Pacific) only, enforced server-side
+// as a data-integrity rule, not a permission check (who's allowed to click the
+// button is a client-side UI concern, same trust model as the rest of the app).
+// Clears status/completed_by/completed_at and the photo (file included).
+export async function undoCompletion(db: SupabaseClient, instanceId: string): Promise<TaskWriteResult> {
+  const { data: task, error: fetchError } = await db.from('task_instances').select('*').eq('id', instanceId).maybeSingle()
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  if (!task) return { ok: false, error: 'Task not found', status: 404 }
+  if (task.status !== 'done') return { ok: false, error: 'This task is not completed', status: 400 }
+  if (!task.completed_at || todayInTZ(new Date(task.completed_at)) !== todayInTZ()) {
+    return { ok: false, error: 'Can only undo on the same day it was completed', status: 400 }
+  }
+
+  const { error } = await db
+    .from('task_instances')
+    .update({ status: 'open', completed_by: null, completed_at: null, photo_url: null })
+    .eq('id', instanceId)
+    .eq('status', 'done')
+  if (error) return { ok: false, error: error.message, status: 500 }
+
+  await removeTaskPhotos(db, [task.photo_url])
+  return { ok: true }
+}

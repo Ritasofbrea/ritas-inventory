@@ -56,6 +56,7 @@ export default function TodoPage() {
   const [photoNudgeId, setPhotoNudgeId] = useState<string | null>(null)
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const [standaloneBusyId, setStandaloneBusyId] = useState<string | null>(null)
+  const [undoingId, setUndoingId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoTargetRef = useRef<string | null>(null)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -116,11 +117,13 @@ export default function TodoPage() {
   }, [])
 
   const isOwner = role === 'owner'
+  // Owners and shift leads already entered a PIN at login; a role-less visitor
+  // (who came in through the login screen's "To-Do List" button) needs to clear
+  // the + Add Task PIN gate first. Same condition gates Undo, below.
+  const canManage = role !== null || pinUnlocked
 
-  // Owners and shift leads already entered a PIN at login; only role-less visitors
-  // (who came in through the login screen's "To-Do List" button) are asked for it here.
   const handleAddClick = () => {
-    if (role !== null || pinUnlocked) setShowAdd(true)
+    if (canManage) setShowAdd(true)
     else setShowPin(true)
   }
 
@@ -230,6 +233,25 @@ export default function TodoPage() {
     flash(`✓ ${message}`)
     loadTasks()
     notifyTasksChanged()
+  }
+
+  const handleUndo = async (task: TaskInstance) => {
+    setUndoingId(task.id)
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: task.id, action: 'undo' }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not undo. Try again.')
+      flash('✓ Marked not done')
+      await loadTasks()
+      notifyTasksChanged()
+    } catch (e) {
+      flash(e instanceof Error ? e.message : 'Could not undo. Try again.')
+    } finally {
+      setUndoingId(null)
+    }
   }
 
   // Owner-only: reorder within the standalone list's priority tier, or flip a
@@ -372,6 +394,18 @@ export default function TodoPage() {
           {task.completed_by}
           {task.completed_at ? ` · ${formatTime(task.completed_at)}` : ''}
         </p>
+        {/* The API only ever returns today's completions here, so every card shown
+            is same-day by construction — no extra date check needed client-side.
+            History (a separate view, separate query) never renders this card. */}
+        {canManage && (
+          <button
+            onClick={() => handleUndo(task)}
+            disabled={undoingId === task.id}
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50 -ml-2 mt-1 px-2 py-2"
+          >
+            {undoingId === task.id ? 'Undoing…' : 'Undo'}
+          </button>
+        )}
       </div>
       {task.photo_url && (
         <a href={task.photo_url} target="_blank" rel="noreferrer" className="flex-shrink-0">
