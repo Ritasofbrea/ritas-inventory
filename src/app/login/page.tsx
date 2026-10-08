@@ -78,17 +78,17 @@ export default function LoginPage() {
             <p className="text-center text-green-100 font-medium mb-2">Who are you?</p>
 
             <button
-              onClick={handleShiftLead}
-              className="w-full bg-[#c8102e] hover:bg-[#a50d26] active:bg-[#8a0b1f] text-white text-xl font-semibold py-5 rounded-2xl shadow-lg transition-colors"
-            >
-              I&apos;m a Shift Lead
-            </button>
-
-            <button
               onClick={handleOwnerClick}
               className="w-full bg-white hover:bg-green-50 active:bg-green-100 text-[#1a7a3c] text-xl font-semibold py-5 rounded-2xl shadow-lg border-2 border-white transition-colors"
             >
               I&apos;m an Owner
+            </button>
+
+            <button
+              onClick={handleShiftLead}
+              className="w-full bg-[#c8102e] hover:bg-[#a50d26] active:bg-[#8a0b1f] text-white text-xl font-semibold py-5 rounded-2xl shadow-lg transition-colors"
+            >
+              I&apos;m a Shift Lead
             </button>
 
             <button
