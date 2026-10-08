@@ -13,7 +13,7 @@ import PinManagementView from '@/components/todo/PinManagementView'
 import { getRole } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
 import { Role } from '@/lib/types'
-import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatTime, sortStandalone, todayInTZ } from '@/lib/tasks'
+import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatDueTime, formatTime, isOverdue, sortStandalone, todayInTZ } from '@/lib/tasks'
 
 type View = 'today' | 'history' | 'templates' | 'staff' | 'pins'
 
@@ -298,7 +298,7 @@ export default function TodoPage() {
   // flat standalone list below — `standalonePos` (only passed in the standalone
   // list) adds the priority star and, for owners, reorder arrows + priority toggle.
   const renderOpenCard = (task: TaskInstance, standalonePos?: { isFirst: boolean; isLast: boolean }) => {
-    const overdue = task.due_date < today
+    const overdue = isOverdue(task, today)
     const needsPhoto = task.photo_required && !task.photo_url
     return (
       <div
@@ -317,6 +317,7 @@ export default function TodoPage() {
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 leading-tight">{task.title}</p>
           <p className="text-xs text-gray-500 mt-0.5">Assigned to {task.assigned_to}</p>
+          {task.due_time && <p className="text-xs text-gray-500 mt-0.5">Due by {formatDueTime(task.due_time)}</p>}
           {overdue && (
             <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Overdue — was due {formatDateShort(task.due_date)}</p>
           )}
@@ -396,6 +397,7 @@ export default function TodoPage() {
           {task.completed_by}
           {task.completed_at ? ` · ${formatTime(task.completed_at)}` : ''}
         </p>
+        {task.due_time && <p className="text-xs text-gray-400 mt-0.5">Due by {formatDueTime(task.due_time)}</p>}
         {/* The API only ever returns today's completions here, so every card shown
             is same-day by construction — no extra date check needed client-side.
             History (a separate view, separate query) never renders this card. */}

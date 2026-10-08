@@ -11,6 +11,7 @@ import {
   EVERYONE,
   TASK_CREATORS,
   photoSettingOf,
+  toHM,
 } from '@/lib/tasks'
 
 type Kind = 'one-off' | 'recurring'
@@ -49,6 +50,12 @@ export default function TaskFormModal({
   // Named-checklist items ignore priority entirely — this form is never used to
   // CREATE one (that's AddChecklistItemModal), but it IS used to edit one.
   const showPriority = !template || !template.checklist_name
+  const [dueTime, setDueTime] = useState(toHM(template?.due_time) ?? '')
+  // Checklist items can inherit their checklist's default due time, so the
+  // label makes that explicit; standalone tasks have no checklist to inherit from.
+  const dueTimeLabel = template?.checklist_name
+    ? "Due time (optional — leave blank to use the checklist's default)"
+    : 'Due time (optional)'
   const [freq, setFreq] = useState<Freq>(
     template && template.recurrence !== 'none' ? (template.recurrence as Freq) : 'daily'
   )
@@ -112,13 +119,23 @@ export default function TaskFormModal({
             ...(assignedTo !== template.assigned_to ? { assigned_to: assignedTo } : {}),
             ...(createdBy !== template.created_by ? { created_by: createdBy } : {}),
             ...(showPriority && priority !== template.priority ? { priority } : {}),
+            ...(dueTime !== (toHM(template.due_time) ?? '') ? { due_time: dueTime || null } : {}),
           }),
         })
       } else {
         res = await fetch(recurring ? '/api/task-templates' : '/api/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, description, assigned_to: assignedTo, created_by: createdBy, photo_setting: photo, priority, ...recurrenceFields }),
+          body: JSON.stringify({
+            title,
+            description,
+            assigned_to: assignedTo,
+            created_by: createdBy,
+            photo_setting: photo,
+            priority,
+            due_time: dueTime || null,
+            ...recurrenceFields,
+          }),
         })
       }
       const body = await res.json()
@@ -244,6 +261,16 @@ export default function TaskFormModal({
               <button type="button" className={segBtn(photo === 'optional')} onClick={() => setPhoto('optional')}>Optional</button>
               <button type="button" className={segBtn(photo === 'required')} onClick={() => setPhoto('required')}>Required</button>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">{dueTimeLabel}</label>
+            <input
+              type="time"
+              value={dueTime}
+              onChange={(e) => setDueTime(e.target.value)}
+              className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 focus:outline-none focus:border-green-500"
+            />
           </div>
 
           {showPriority && (

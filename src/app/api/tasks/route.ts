@@ -9,6 +9,7 @@ import {
   isValidCreator,
   moveStandaloneItem,
   nextStandaloneInstanceSortOrder,
+  parseDueTime,
   setInstancePriority,
   TASK_PHOTO_BUCKET,
   undoCompletion,
@@ -88,13 +89,15 @@ export async function GET(request: NextRequest) {
 // Create a one-off task (due today, no template)
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { title, description, assigned_to, created_by, photo_setting, priority } = body
+  const { title, description, assigned_to, created_by, photo_setting, priority, due_time } = body
 
   if (typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 })
   }
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
   const prio: Priority = priority === 'high' ? 'high' : 'normal'
+  const dueTimeResult = parseDueTime(due_time)
+  if (!dueTimeResult.ok) return NextResponse.json({ error: dueTimeResult.error }, { status: 400 })
 
   const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
@@ -112,6 +115,7 @@ export async function POST(request: NextRequest) {
     created_by,
     priority: prio,
     sort_order: await nextStandaloneInstanceSortOrder(db, prio),
+    due_time: dueTimeResult.value,
     ...photoFlags(setting),
   }
   if (typeof description === 'string' && description.trim()) row.description = description.trim()

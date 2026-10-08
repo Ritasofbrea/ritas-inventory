@@ -8,6 +8,7 @@ import {
   isValidCreator,
   nextStandaloneTemplateSortOrder,
   normalizeRecurrence,
+  parseDueTime,
   syncOpenInstanceOwnership,
 } from '@/lib/task-server'
 
@@ -24,7 +25,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { title, description, assigned_to, created_by, photo_setting, priority } = body
+  const { title, description, assigned_to, created_by, photo_setting, priority, due_time } = body
 
   if (typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 })
@@ -33,6 +34,8 @@ export async function POST(request: NextRequest) {
   if ('error' in recurrence) return NextResponse.json({ error: recurrence.error }, { status: 400 })
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
   const prio: Priority = priority === 'high' ? 'high' : 'normal'
+  const dueTimeResult = parseDueTime(due_time)
+  if (!dueTimeResult.ok) return NextResponse.json({ error: dueTimeResult.error }, { status: 400 })
 
   const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
@@ -53,6 +56,7 @@ export async function POST(request: NextRequest) {
       created_by,
       priority: prio,
       sort_order: await nextStandaloneTemplateSortOrder(db, prio),
+      due_time: dueTimeResult.value,
     })
     .select()
     .single()
@@ -76,7 +80,7 @@ export async function PATCH(request: NextRequest) {
   const db = getServerSupabase()
   const updates: Record<string, string | boolean | number | number[] | null> = {}
   // Ownership fields also carry over to this template's open (not yet done) tasks below
-  const ownership: Record<string, string> = {}
+  const ownership: Record<string, string | null> = {}
   if (body.assigned_to !== undefined) {
     if (!(await isValidAssignee(db, body.assigned_to))) {
       return NextResponse.json({ error: 'Pick who this is assigned to' }, { status: 400 })
@@ -97,6 +101,11 @@ export async function PATCH(request: NextRequest) {
   }
   if (body.description !== undefined) {
     updates.description = typeof body.description === 'string' && body.description.trim() ? body.description.trim() : null
+  }
+  if (body.due_time !== undefined) {
+    const dueTimeResult = parseDueTime(body.due_time)
+    if (!dueTimeResult.ok) return NextResponse.json({ error: dueTimeResult.error }, { status: 400 })
+    updates.due_time = ownership.due_time = dueTimeResult.value
   }
   if (typeof body.active === 'boolean') updates.active = body.active
   if (body.photo_setting !== undefined) {

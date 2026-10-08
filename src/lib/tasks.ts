@@ -42,6 +42,7 @@ export interface TaskTemplate {
   section: string | null
   sort_order: number
   priority: Priority
+  due_time: string | null
 }
 
 export interface TaskInstance {
@@ -63,6 +64,13 @@ export interface TaskInstance {
   section: string | null
   sort_order: number
   priority: Priority
+  due_time: string | null
+}
+
+// One row per named checklist, holding its default due time (null = none set).
+export interface Checklist {
+  name: string
+  due_time: string | null
 }
 
 export const photoFlags = (setting: PhotoSetting) => ({
@@ -141,6 +149,54 @@ export function formatDateTime(iso: string): string {
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+// "HH:MM" for the given moment in Pacific time — same wall-clock convention as
+// todayInTZ(). hourCycle: 'h23' pins the range to 00-23 (some engines emit "24"
+// for midnight with other hour settings), so this never needs a special case.
+export function nowTimeInTZ(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TASK_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  return `${get('hour')}:${get('minute')}`
+}
+
+// Postgres `time` round-trips as "HH:MM:SS"; a native <input type="time"> only
+// ever gives/accepts "HH:MM". Normalize to minute precision everywhere a
+// due_time is compared or displayed, so the two formats never get compared
+// against each other directly (a naive string compare would treat "14:30" as
+// less than "14:30:00" even though they're the same moment).
+export function toHM(time: string | null | undefined): string | null {
+  return time ? time.slice(0, 5) : null
+}
+
+// "12:00 PM" from a due_time ("HH:MM" or "HH:MM:SS") — no Date/timezone
+// involved, it's already a plain wall-clock value.
+export function formatDueTime(due_time: string): string {
+  const [hStr, mStr] = due_time.split(':')
+  const h = parseInt(hStr, 10)
+  const period = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${mStr} ${period}`
+}
+
+// Date-only overdue (due_date in the past) stays unchanged; a task with a
+// due_time additionally goes overdue same-day once the current Pacific time
+// passes it. A task with no due_time keeps the old date-only behavior.
+export function isOverdue(
+  task: { due_date: string; due_time: string | null },
+  today: string,
+  nowTime: string = nowTimeInTZ()
+): boolean {
+  if (task.due_date < today) return true
+  if (task.due_date === today && task.due_time) {
+    return nowTime > (toHM(task.due_time) as string)
+  }
+  return false
 }
 
 // Fixed display order for known named checklists; anything else (future checklists

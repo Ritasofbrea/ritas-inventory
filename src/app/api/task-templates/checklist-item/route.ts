@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
-import { addChecklistItem, generateInstancesForDate, isValidAssignee, isValidCreator, moveChecklistItem } from '@/lib/task-server'
+import { addChecklistItem, generateInstancesForDate, isValidAssignee, isValidCreator, moveChecklistItem, parseDueTime } from '@/lib/task-server'
 
 // Adds a new line item to an existing named checklist + section (e.g. a new
 // row under "Opening Checklist / Shop Readiness"). Does not create brand-new
 // checklists or sections — only existing (checklist_name, section) pairs.
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { checklist_name, section, title, description, assigned_to, created_by, photo_setting } = body
+  const { checklist_name, section, title, description, assigned_to, created_by, photo_setting, due_time } = body
 
   if (typeof checklist_name !== 'string' || !checklist_name.trim()) {
     return NextResponse.json({ error: 'Missing checklist' }, { status: 400 })
@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 })
   }
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
+  const dueTimeResult = parseDueTime(due_time)
+  if (!dueTimeResult.ok) return NextResponse.json({ error: dueTimeResult.error }, { status: 400 })
 
   const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
     description: typeof description === 'string' && description.trim() ? description.trim() : null,
     assigned_to,
     created_by,
+    due_time: dueTimeResult.value,
     ...photoFlags(setting),
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })

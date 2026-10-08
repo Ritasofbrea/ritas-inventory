@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { TaskInstance, todayInTZ, addDays, formatDateShort, formatDateTime, groupHistoryByDay } from '@/lib/tasks'
+import { TaskInstance, todayInTZ, addDays, formatDateShort, formatDateTime, formatDueTime, groupHistoryByDay } from '@/lib/tasks'
 
 // Fixed default range — browsing the default shows day-grouped sections;
 // any other range (the owner changed a date and clicked Update) flattens
@@ -61,7 +61,9 @@ export default function HistoryView() {
             {t.status === 'done' ? 'DONE' : 'OPEN'}
           </span>
         </div>
-        <p className="text-sm text-gray-500 mt-0.5">Due {formatDateShort(t.due_date)} · assigned to {t.assigned_to} · added by {t.created_by}</p>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Due {formatDateShort(t.due_date)}{t.due_time ? ` at ${formatDueTime(t.due_time)}` : ''} · assigned to {t.assigned_to} · added by {t.created_by}
+        </p>
         {t.status === 'done' && t.completed_by && t.completed_at && (
           <p className="text-sm text-gray-500">Done by {t.completed_by} · {formatDateTime(t.completed_at)}</p>
         )}

@@ -1,30 +1,37 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Staff, TaskTemplate, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf } from '@/lib/tasks'
+import { Staff, TaskTemplate, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf, formatDueTime, toHM } from '@/lib/tasks'
 import TaskFormModal from './TaskFormModal'
 import AddChecklistItemModal from './AddChecklistItemModal'
 import RenameSectionModal from './RenameSectionModal'
 
 // Owner-only: edit or deactivate recurring task templates (never hard-deleted),
 // plus — for the three named checklists — add a new line item to an existing
-// section, reorder items within a section, and rename a section's label.
+// section, reorder items within a section, rename a section's label, and set
+// the checklist's default due time.
 export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; onChanged: () => void }) {
   const [templates, setTemplates] = useState<TaskTemplate[]>([])
+  const [checklistDefaults, setChecklistDefaults] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<TaskTemplate | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [moveBusyId, setMoveBusyId] = useState<string | null>(null)
+  const [savingDefault, setSavingDefault] = useState<string | null>(null)
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const [addingTo, setAddingTo] = useState<{ checklistName: string; sections: string[] } | null>(null)
   const [renaming, setRenaming] = useState<{ checklistName: string; section: string; otherSections: string[] } | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/task-templates')
-      if (!res.ok) throw new Error()
-      setTemplates(await res.json())
+      const [templatesRes, checklistsRes] = await Promise.all([fetch('/api/task-templates'), fetch('/api/checklists')])
+      if (!templatesRes.ok) throw new Error()
+      setTemplates(await templatesRes.json())
+      if (checklistsRes.ok) {
+        const rows: { name: string; due_time: string | null }[] = await checklistsRes.json()
+        setChecklistDefaults(Object.fromEntries(rows.map((r) => [r.name, r.due_time])))
+      }
       setError('')
     } catch {
       setError('Could not load recurring tasks. Try again.')
@@ -36,6 +43,24 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   useEffect(() => {
     load()
   }, [load])
+
+  const saveDefaultDueTime = async (name: string, due_time: string | null) => {
+    setSavingDefault(name)
+    try {
+      const res = await fetch('/api/checklists', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, due_time }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not save. Try again.')
+      setChecklistDefaults((prev) => ({ ...prev, [name]: due_time }))
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save. Try again.')
+    } finally {
+      setSavingDefault(null)
+    }
+  }
 
   const toggleActive = async (t: TaskTemplate) => {
     setBusyId(t.id)
@@ -98,6 +123,7 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
       <p className="text-sm text-gray-500 mt-0.5">
         {describeRecurrence(t)} · photo {photoSettingOf(t)} · assigned to {t.assigned_to}
       </p>
+      {t.due_time && <p className="text-sm text-gray-400 mt-0.5">Due by {formatDueTime(t.due_time)}</p>}
       {t.description && <p className="text-sm text-gray-400 mt-0.5">{t.description}</p>}
       <div className="flex gap-2 mt-3">
         {pos && (
@@ -172,6 +198,26 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
               </button>
               {expanded && (
                 <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
+                    <label className="text-xs font-semibold text-gray-500 flex-1">Default due time</label>
+                    <input
+                      type="time"
+                      value={toHM(checklistDefaults[group.name] ?? null) ?? ''}
+                      onChange={(e) => saveDefaultDueTime(group.name, e.target.value || null)}
+                      disabled={savingDefault === group.name}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-green-500 disabled:opacity-50"
+                    />
+                    {checklistDefaults[group.name] && (
+                      <button
+                        type="button"
+                        onClick={() => saveDefaultDueTime(group.name, null)}
+                        disabled={savingDefault === group.name}
+                        className="text-xs font-semibold text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                   {group.sections.map((section) => (
                     <div key={section.name}>
                       <div className="flex items-center justify-between gap-3 mb-2">

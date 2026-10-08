@@ -1,9 +1,19 @@
 // Server-only helpers for the To-Do feature.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { templateMatchesDate, todayInTZ, TaskTemplate, TaskInstance, Recurrence, Priority, EVERYONE, TASK_CREATORS } from './tasks'
+import { templateMatchesDate, todayInTZ, TaskTemplate, TaskInstance, Checklist, Recurrence, Priority, EVERYONE, TASK_CREATORS } from './tasks'
 
 import { TASK_PHOTO_BUCKET } from './task-constants'
 export { TASK_PHOTO_BUCKET }
+
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)(:([0-5]\d))?$/
+
+// Validates an optional due_time field from a request body. null/undefined/''
+// all mean "no due time" (clears an existing override, or sets none for a new row).
+export function parseDueTime(value: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (value === null || value === undefined || value === '') return { ok: true, value: null }
+  if (typeof value !== 'string' || !TIME_RE.test(value)) return { ok: false, error: 'Invalid due time' }
+  return { ok: true, value }
+}
 
 // Creates today's task_instances for active templates that match the date.
 // Idempotent: skips templates that already have an instance for that date, and
@@ -21,12 +31,17 @@ export async function generateInstancesForDate(
   const matching = ((data ?? []) as TaskTemplate[]).filter((t) => templateMatchesDate(t, dateStr))
   if (matching.length === 0) return { matched: 0, created: 0 }
 
-  const { data: existing, error: existingError } = await db
-    .from('task_instances')
-    .select('template_id')
-    .eq('due_date', dateStr)
-    .in('template_id', matching.map((t) => t.id))
+  const [{ data: existing, error: existingError }, { data: checklistsRaw, error: checklistsError }] = await Promise.all([
+    db.from('task_instances').select('template_id').eq('due_date', dateStr).in('template_id', matching.map((t) => t.id)),
+    db.from('checklists').select('name, due_time'),
+  ])
   if (existingError) throw new Error(existingError.message)
+  if (checklistsError) throw new Error(checklistsError.message)
+
+  // Effective due time = the item's own due_time, else its checklist's current
+  // default, else none — resolved now and copied onto the instance, so a later
+  // change to the checklist default doesn't retroactively change this instance.
+  const checklistDueTimes = new Map(((checklistsRaw ?? []) as Checklist[]).map((c) => [c.name, c.due_time]))
 
   const have = new Set((existing ?? []).map((r: { template_id: string }) => r.template_id))
   const rows = matching
@@ -43,6 +58,7 @@ export async function generateInstancesForDate(
       section: t.section,
       sort_order: t.sort_order,
       priority: t.priority,
+      due_time: t.due_time ?? (t.checklist_name ? checklistDueTimes.get(t.checklist_name) ?? null : null),
       ...(t.description ? { description: t.description } : {}),
     }))
   if (rows.length === 0) return { matched: matching.length, created: 0 }
@@ -96,13 +112,13 @@ export async function removeTaskPhotos(db: SupabaseClient, urls: (string | null 
   }
 }
 
-// Carries a template's new assigned_to / created_by onto its tasks that aren't done yet
-// (today's and overdue copies). Completed tasks are history and are left untouched.
-// Returns an error message, or null on success.
+// Carries a template's new assigned_to / created_by / due_time onto its tasks
+// that aren't done yet (today's and overdue copies). Completed tasks are
+// history and are left untouched. Returns an error message, or null on success.
 export async function syncOpenInstanceOwnership(
   db: SupabaseClient,
   templateId: string,
-  ownership: { assigned_to?: string; created_by?: string }
+  ownership: Record<string, string | null>
 ): Promise<string | null> {
   if (Object.keys(ownership).length === 0) return null
   const { error } = await db.from('task_instances').update(ownership).eq('template_id', templateId).eq('status', 'open')
@@ -246,6 +262,7 @@ export async function addChecklistItem(
     created_by: string
     photo_required: boolean
     photo_allowed: boolean
+    due_time?: string | null
   }
 ): Promise<TaskWriteResult<{ template: TaskTemplate }>> {
   const { data: siblingsRaw, error: fetchError } = await db
@@ -272,6 +289,7 @@ export async function addChecklistItem(
       created_by: params.created_by,
       photo_required: params.photo_required,
       photo_allowed: params.photo_allowed,
+      due_time: params.due_time ?? null,
     })
     .select()
     .single()
