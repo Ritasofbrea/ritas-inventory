@@ -19,6 +19,7 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   const [busyId, setBusyId] = useState<string | null>(null)
   const [moveBusyId, setMoveBusyId] = useState<string | null>(null)
   const [savingDefault, setSavingDefault] = useState<string | null>(null)
+  const [draftDefaultTime, setDraftDefaultTime] = useState<Record<string, string>>({})
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const [addingTo, setAddingTo] = useState<{ checklistName: string; sections: string[] } | null>(null)
   const [renaming, setRenaming] = useState<{ checklistName: string; section: string; otherSections: string[] } | null>(null)
@@ -43,6 +44,14 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   useEffect(() => {
     load()
   }, [load])
+
+  const clearDraftDefaultTime = (name: string) => {
+    setDraftDefaultTime((prev) => {
+      const next = { ...prev }
+      delete next[name]
+      return next
+    })
+  }
 
   const saveDefaultDueTime = async (name: string, due_time: string | null) => {
     setSavingDefault(name)
@@ -202,15 +211,21 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                     <label className="text-xs font-semibold text-gray-500 flex-1">Default due time</label>
                     <input
                       type="time"
-                      value={toHM(checklistDefaults[group.name] ?? null) ?? ''}
-                      onChange={(e) => saveDefaultDueTime(group.name, e.target.value || null)}
+                      value={draftDefaultTime[group.name] ?? toHM(checklistDefaults[group.name] ?? null) ?? ''}
+                      onChange={(e) => setDraftDefaultTime((prev) => ({ ...prev, [group.name]: e.target.value }))}
+                      onBlur={async (e) => {
+                        const value = e.target.value || null
+                        const committed = toHM(checklistDefaults[group.name] ?? null) ?? null
+                        if (value !== committed) await saveDefaultDueTime(group.name, value)
+                        clearDraftDefaultTime(group.name)
+                      }}
                       disabled={savingDefault === group.name}
                       className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-green-500 disabled:opacity-50"
                     />
                     {checklistDefaults[group.name] && (
                       <button
                         type="button"
-                        onClick={() => saveDefaultDueTime(group.name, null)}
+                        onClick={() => { clearDraftDefaultTime(group.name); saveDefaultDueTime(group.name, null) }}
                         disabled={savingDefault === group.name}
                         className="text-xs font-semibold text-gray-400 hover:text-gray-600 disabled:opacity-50"
                       >
