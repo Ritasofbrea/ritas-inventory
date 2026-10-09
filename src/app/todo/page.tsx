@@ -7,6 +7,7 @@ import PinModal from '@/components/todo/PinModal'
 import TaskFormModal from '@/components/todo/TaskFormModal'
 import ConfirmModal from '@/components/todo/ConfirmModal'
 import HistoryView from '@/components/todo/HistoryView'
+import MissedView from '@/components/todo/MissedView'
 import TemplatesView from '@/components/todo/TemplatesView'
 import StaffView from '@/components/todo/StaffView'
 import PinManagementView from '@/components/todo/PinManagementView'
@@ -15,11 +16,12 @@ import { uploadTaskPhoto } from '@/lib/photo'
 import { Role } from '@/lib/types'
 import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatDueTime, formatTime, isOverdue, sortStandalone, todayInTZ } from '@/lib/tasks'
 
-type View = 'today' | 'history' | 'templates' | 'staff' | 'pins'
+type View = 'today' | 'history' | 'missed' | 'templates' | 'staff' | 'pins'
 
 const VIEW_LABELS: Record<View, string> = {
   today: 'Today',
   history: 'History',
+  missed: 'Missed',
   templates: 'Repeating',
   staff: 'Staff',
   pins: 'PINs',
@@ -42,6 +44,7 @@ export default function TodoPage() {
   const [today, setToday] = useState(todayInTZ())
   const [open, setOpen] = useState<TaskInstance[]>([])
   const [done, setDone] = useState<TaskInstance[]>([])
+  const [missedCount, setMissedCount] = useState(0)
   const [staff, setStaff] = useState<Staff[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -77,6 +80,7 @@ export default function TodoPage() {
       setToday(data.today)
       setOpen(data.open)
       setDone(data.done)
+      setMissedCount(data.missedCount ?? 0)
       setError('')
     } catch {
       setError('Could not load tasks. Check your connection.')
@@ -398,9 +402,10 @@ export default function TodoPage() {
           {task.completed_at ? ` · ${formatTime(task.completed_at)}` : ''}
         </p>
         {task.due_time && <p className="text-xs text-gray-400 mt-0.5">Due by {formatDueTime(task.due_time)}</p>}
-        {/* The API only ever returns today's completions here, so every card shown
-            is same-day by construction — no extra date check needed client-side.
-            History (a separate view, separate query) never renders this card. */}
+        {/* The API only ever returns tasks due today (and done) here, so every
+            card shown is same-day by construction — no extra date check needed
+            client-side. History (a separate view, separate query) never renders
+            this card. */}
         {canManage && (
           <button
             onClick={() => handleUndo(task)}
@@ -424,7 +429,7 @@ export default function TodoPage() {
   const standaloneOpen = sortStandalone(open.filter((t) => t.checklist_name === null))
   const standaloneDone = done.filter((t) => t.checklist_name === null)
 
-  const views: View[] = isOwner ? ['today', 'history', 'templates', 'staff', 'pins'] : ['today']
+  const views: View[] = isOwner ? ['today', 'history', 'missed', 'templates', 'staff', 'pins'] : ['today']
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
@@ -454,7 +459,7 @@ export default function TodoPage() {
                   view === v ? 'bg-[#1a7a3c] text-white' : 'text-gray-500'
                 }`}
               >
-                {VIEW_LABELS[v]}
+                {VIEW_LABELS[v]}{v === 'missed' && missedCount > 0 ? ` (${missedCount})` : ''}
               </button>
             ))}
           </div>
@@ -574,6 +579,7 @@ export default function TodoPage() {
         )}
 
         {view === 'history' && isOwner && <HistoryView />}
+        {view === 'missed' && isOwner && <MissedView />}
         {view === 'templates' && isOwner && <TemplatesView staff={staff} onChanged={notifyTasksChanged} />}
         {view === 'staff' && isOwner && (
           <StaffView

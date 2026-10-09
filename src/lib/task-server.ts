@@ -15,6 +15,20 @@ export function parseDueTime(value: unknown): { ok: true; value: string | null }
   return { ok: true, value }
 }
 
+// Flips any task_instances row still 'open' with a due_date before today to
+// 'missed' — run before generating anything new, so an old open instance never
+// lingers in Today's Tasks once its day has passed. Returns the number swept.
+export async function sweepMissedInstances(db: SupabaseClient, today: string): Promise<number> {
+  const { data, error } = await db
+    .from('task_instances')
+    .update({ status: 'missed' })
+    .eq('status', 'open')
+    .lt('due_date', today)
+    .select('id')
+  if (error) throw new Error(error.message)
+  return (data ?? []).length
+}
+
 // Creates today's task_instances for active templates that match the date.
 // Idempotent: skips templates that already have an instance for that date, and
 // the unique index on (template_id, due_date) backstops concurrent calls.
@@ -418,6 +432,7 @@ export async function nextStandaloneInstanceSortOrder(db: SupabaseClient, priori
     .select('sort_order')
     .is('checklist_name', null)
     .eq('status', 'open')
+    .eq('due_date', todayInTZ())
     .eq('priority', priority)
     .order('sort_order', { ascending: false })
     .limit(1)
@@ -437,8 +452,8 @@ export async function nextStandaloneTemplateSortOrder(db: SupabaseClient, priori
 }
 
 // Swaps a standalone task with its neighbor within the same priority tier
-// (today's + overdue open standalone instances only) — never crosses tiers;
-// use setInstancePriority for that. Renumbers the whole tier afterward, same
+// (today's open standalone instances only) — never crosses tiers; use
+// setInstancePriority for that. Renumbers the whole tier afterward, same
 // reasoning as moveChecklistItem: simpler and more robust than incremental
 // shifting, and self-heals the common case where everything still shares the
 // sort_order=0 default from before anyone ever reordered.
@@ -458,7 +473,7 @@ export async function moveStandaloneItem(db: SupabaseClient, instanceId: string,
     .is('checklist_name', null)
     .eq('status', 'open')
     .eq('priority', target.priority)
-    .lte('due_date', today)
+    .eq('due_date', today)
   if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
 
   const tier = ((tierRaw ?? []) as TaskInstance[]).sort(

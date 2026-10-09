@@ -40,8 +40,9 @@ export default function Navigation() {
     }
   }, [])
 
-  // To-Do tab badge: open tasks due today + overdue. Refreshes on navigation and
-  // whenever the To-Do page changes something (it fires 'tasks-changed').
+  // To-Do tab badge: open tasks due today (past-due ones become 'missed' and
+  // drop out of this count). Refreshes on navigation and whenever the To-Do
+  // page changes something (it fires 'tasks-changed').
   useEffect(() => {
     let cancelled = false
     const loadBadge = () => {

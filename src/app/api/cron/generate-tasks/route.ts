@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ } from '@/lib/tasks'
-import { generateInstancesForDate } from '@/lib/task-server'
+import { generateInstancesForDate, sweepMissedInstances } from '@/lib/task-server'
 
 // Hit daily by Vercel Cron (see vercel.json). Safe to call repeatedly — never creates duplicates.
 // Vercel automatically sends `Authorization: Bearer $CRON_SECRET` on cron invocations when
@@ -14,9 +14,11 @@ export async function GET(request: NextRequest) {
   }
 
   const date = todayInTZ()
+  const db = getServerSupabase()
   try {
-    const result = await generateInstancesForDate(getServerSupabase(), date)
-    return NextResponse.json({ date, ...result })
+    const missed = await sweepMissedInstances(db, date)
+    const result = await generateInstancesForDate(db, date)
+    return NextResponse.json({ date, missed, ...result })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Generation failed' }, { status: 500 })
   }

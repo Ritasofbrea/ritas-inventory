@@ -51,7 +51,7 @@ export interface TaskInstance {
   title: string
   description: string | null
   due_date: string
-  status: 'open' | 'done'
+  status: 'open' | 'done' | 'missed'
   assigned_to: string
   created_by: string
   completed_by: string | null

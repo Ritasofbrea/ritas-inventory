@@ -11,6 +11,7 @@ import {
   nextStandaloneInstanceSortOrder,
   parseDueTime,
   setInstancePriority,
+  sweepMissedInstances,
   TASK_PHOTO_BUCKET,
   undoCompletion,
 } from '@/lib/task-server'
@@ -23,17 +24,20 @@ export async function GET(request: NextRequest) {
   const today = todayInTZ()
   const db = getServerSupabase()
 
-  // Nav badge: open tasks due today plus anything overdue
+  // Nav badge: open tasks due today. Missed (past-due, never completed) tasks
+  // are a separate bucket now and intentionally excluded from this count.
   if (view === 'badge') {
     const { count, error } = await db
       .from('task_instances')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'open')
-      .lte('due_date', today)
+      .eq('due_date', today)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ count: count ?? 0 })
   }
 
+  // History is the full "done" record — missed tasks have their own dedicated
+  // view below, so they're excluded here rather than needing a third badge state.
   if (view === 'history') {
     const start = searchParams.get('start') || ''
     const end = searchParams.get('end') || ''
@@ -43,6 +47,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await db
       .from('task_instances')
       .select('*')
+      .neq('status', 'missed')
       .gte('due_date', start)
       .lte('due_date', end)
       .order('due_date', { ascending: false })
@@ -52,38 +57,60 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data)
   }
 
+  // Owner-only (client-side gated, same trust model as History/Templates/Staff):
+  // every task that aged out of Today's Tasks without being completed.
+  if (view === 'missed') {
+    const { data, error } = await db
+      .from('task_instances')
+      .select('*')
+      .eq('status', 'missed')
+      .order('due_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1000)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  }
+
   // Today view. Best-effort self-heal: if the daily cron was late or missed,
-  // opening the tab still creates today's recurring tasks (idempotent).
+  // opening the tab still sweeps yesterday's leftovers to 'missed' and creates
+  // today's recurring tasks (both idempotent).
+  try {
+    await sweepMissedInstances(db, today)
+  } catch (e) {
+    console.error('missed sweep on load failed:', e)
+  }
   try {
     await generateInstancesForDate(db, today)
   } catch (e) {
     console.error('task generation on load failed:', e)
   }
 
-  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()
-  const [openRes, doneRes] = await Promise.all([
+  const [openRes, doneRes, missedCountRes] = await Promise.all([
     db
       .from('task_instances')
       .select('*')
       .eq('status', 'open')
-      .lte('due_date', today)
+      .eq('due_date', today)
       .order('due_date', { ascending: true })
       .order('created_at', { ascending: true }),
     db
       .from('task_instances')
       .select('*')
       .eq('status', 'done')
-      .gte('completed_at', cutoff)
+      .eq('due_date', today)
       .order('completed_at', { ascending: false }),
+    db.from('task_instances').select('id', { count: 'exact', head: true }).eq('status', 'missed'),
   ])
   if (openRes.error) return NextResponse.json({ error: openRes.error.message }, { status: 500 })
   if (doneRes.error) return NextResponse.json({ error: doneRes.error.message }, { status: 500 })
+  if (missedCountRes.error) return NextResponse.json({ error: missedCountRes.error.message }, { status: 500 })
 
-  // "Completed today" = completed_at falls on today's Pacific date
-  const doneToday = (doneRes.data ?? []).filter(
-    (t: { completed_at: string }) => todayInTZ(new Date(t.completed_at)) === today
-  )
-  return NextResponse.json({ today, open: openRes.data ?? [], done: doneToday })
+  return NextResponse.json({
+    today,
+    open: openRes.data ?? [],
+    done: doneRes.data ?? [],
+    missedCount: missedCountRes.count ?? 0,
+  })
 }
 
 // Create a one-off task (due today, no template)
