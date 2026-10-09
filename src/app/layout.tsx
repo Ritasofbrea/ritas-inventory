@@ -11,10 +11,6 @@ export const metadata: Metadata = {
     statusBarStyle: 'black-translucent',
     title: "Brea's Inventory",
   },
-  icons: {
-    icon: '/icon-192.png',
-    apple: '/apple-touch-icon.png',
-  },
 }
 
 export const viewport: Viewport = {
