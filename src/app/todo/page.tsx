@@ -104,12 +104,27 @@ export default function TodoPage() {
     loadStaff()
   }, [loadTasks, loadStaff])
 
-  // Shared checklist: pick up other people's changes when the tab regains focus and every minute
+  // A background refetch would yank the task list out from under someone
+  // mid-action (staff name picker open, a photo mid-upload, a delete/add
+  // modal open, a reorder or undo in flight) — skip the tick rather than
+  // interrupt, it'll just catch up on the next one.
+  const midInteractionRef = useRef(false)
+  useEffect(() => {
+    midInteractionRef.current =
+      completing !== null || uploadingId !== null || deleting !== null || showAdd ||
+      standaloneBusyId !== null || undoingId !== null
+  })
+
+  // Shared checklist: pick up other people's changes when the tab regains focus,
+  // and every 5 minutes in the background otherwise (a device left open at the
+  // store should see new tasks/completions without anyone reloading).
   useEffect(() => {
     if (view !== 'today') return
-    const refresh = () => { if (document.visibilityState === 'visible') loadTasks() }
+    const refresh = () => {
+      if (document.visibilityState === 'visible' && !midInteractionRef.current) loadTasks()
+    }
     document.addEventListener('visibilitychange', refresh)
-    const interval = setInterval(refresh, 60000)
+    const interval = setInterval(refresh, 5 * 60 * 1000)
     return () => {
       document.removeEventListener('visibilitychange', refresh)
       clearInterval(interval)
