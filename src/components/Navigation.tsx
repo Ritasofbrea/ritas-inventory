@@ -17,6 +17,7 @@ const MORE_LINKS = [
   { href: '/manage-items', label: 'Manage Items' },
   { href: '/reports', label: 'Reports' },
   { href: '/clover-mapping', label: 'Clover Mapping' },
+  { href: '/pin-settings', label: 'Change PIN' },
 ]
 
 export default function Navigation() {

@@ -10,13 +10,12 @@ import HistoryView from '@/components/todo/HistoryView'
 import MissedView from '@/components/todo/MissedView'
 import TemplatesView from '@/components/todo/TemplatesView'
 import StaffView from '@/components/todo/StaffView'
-import PinManagementView from '@/components/todo/PinManagementView'
 import { getRole } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
 import { Role } from '@/lib/types'
 import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatDueTime, formatTime, isOverdue, sortStandalone, todayInTZ } from '@/lib/tasks'
 
-type View = 'today' | 'history' | 'missed' | 'templates' | 'staff' | 'pins'
+type View = 'today' | 'history' | 'missed' | 'templates' | 'staff'
 
 const VIEW_LABELS: Record<View, string> = {
   today: 'Today',
@@ -24,7 +23,6 @@ const VIEW_LABELS: Record<View, string> = {
   missed: 'Missed',
   templates: 'Repeating',
   staff: 'Staff',
-  pins: 'PINs',
 }
 
 const notifyTasksChanged = () => window.dispatchEvent(new Event('tasks-changed'))
@@ -429,7 +427,7 @@ export default function TodoPage() {
   const standaloneOpen = sortStandalone(open.filter((t) => t.checklist_name === null))
   const standaloneDone = done.filter((t) => t.checklist_name === null)
 
-  const views: View[] = isOwner ? ['today', 'history', 'missed', 'templates', 'staff', 'pins'] : ['today']
+  const views: View[] = isOwner ? ['today', 'history', 'missed', 'templates', 'staff'] : ['today']
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
@@ -588,7 +586,6 @@ export default function TodoPage() {
             }}
           />
         )}
-        {view === 'pins' && isOwner && <PinManagementView />}
       </main>
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
