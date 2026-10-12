@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting, Priority } from '@/lib/tasks'
 import {
   deleteOneOffTask,
+  editOneOffTask,
   generateInstancesForDate,
   isActiveStaff,
   isValidAssignee,
@@ -155,6 +156,8 @@ export async function POST(request: NextRequest) {
 // action 'complete': { id, completed_by }   action 'photo': { id, photo_url }
 // action 'undo': { id }  (same calendar day only)
 // action 'move': { id, direction }           action 'priority': { id, priority }  (standalone tasks only)
+// action 'edit': { id, title?, description?, assigned_to?, created_by?, photo_setting?, due_time?, priority? }
+//   (standalone, still-open tasks only — owner-only in the UI, not gated by who created it)
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
   const { id, action } = body
@@ -207,6 +210,12 @@ export async function PATCH(request: NextRequest) {
     const result = await setInstancePriority(db, id, body.priority)
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
     return NextResponse.json({ success: true })
+  }
+
+  if (action === 'edit') {
+    const result = await editOneOffTask(db, id, body)
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json(result.task)
   }
 
   if (action === 'photo') {

@@ -5,6 +5,7 @@ import ConfirmModal from './ConfirmModal'
 import {
   Staff,
   TaskTemplate,
+  TaskInstance,
   PhotoSetting,
   Priority,
   WEEKDAY_LABELS,
@@ -22,38 +23,43 @@ const segBtn = (active: boolean) =>
     active ? 'bg-[#1a7a3c] text-white border-[#1a7a3c]' : 'bg-white text-gray-600 border-gray-200'
   }`
 
-// Add-task form (one-off or recurring) and, when `template` is given, the template edit form.
+// Add-task form (one-off or recurring); when `template` is given, the template
+// edit form; when `instance` is given, a full edit of a single standalone
+// (one-off, still-open) task — same fields, but there's no recurrence to set.
 export default function TaskFormModal({
   staff,
   template,
+  instance,
   onClose,
   onSaved,
   onDelete,
 }: {
   staff: Staff[]
   template?: TaskTemplate
+  instance?: TaskInstance
   onClose: () => void
   onSaved: (message: string) => void
   // Only passed by the owner-only Repeating view; when absent no Delete button is shown
   onDelete?: () => Promise<void>
 }) {
-  const editing = !!template
-  const [assignedTo, setAssignedTo] = useState(template?.assigned_to ?? '')
-  const [createdBy, setCreatedBy] = useState(template?.created_by ?? '')
+  const source = template ?? instance
+  const editing = !!source
+  const [assignedTo, setAssignedTo] = useState(source?.assigned_to ?? '')
+  const [createdBy, setCreatedBy] = useState(source?.created_by ?? '')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [title, setTitle] = useState(template?.title ?? '')
-  const [description, setDescription] = useState(template?.description ?? '')
+  const [title, setTitle] = useState(source?.title ?? '')
+  const [description, setDescription] = useState(source?.description ?? '')
   const [kind, setKind] = useState<Kind>('one-off')
-  const [photo, setPhoto] = useState<PhotoSetting>(template ? photoSettingOf(template) : 'optional')
-  const [priority, setPriority] = useState<Priority>(template?.priority ?? 'normal')
+  const [photo, setPhoto] = useState<PhotoSetting>(source ? photoSettingOf(source) : 'optional')
+  const [priority, setPriority] = useState<Priority>(source?.priority ?? 'normal')
   // Named-checklist items ignore priority entirely — this form is never used to
   // CREATE one (that's AddChecklistItemModal), but it IS used to edit one.
-  const showPriority = !template || !template.checklist_name
-  const [dueTime, setDueTime] = useState(toHM(template?.due_time) ?? '')
+  const showPriority = !source || !source.checklist_name
+  const [dueTime, setDueTime] = useState(toHM(source?.due_time) ?? '')
   // Checklist items can inherit their checklist's default due time, so the
   // label makes that explicit; standalone tasks have no checklist to inherit from.
-  const dueTimeLabel = template?.checklist_name
+  const dueTimeLabel = source?.checklist_name
     ? "Due time (optional — leave blank to use the checklist's default)"
     : 'Due time (optional)'
   const [freq, setFreq] = useState<Freq>(
@@ -64,14 +70,17 @@ export default function TaskFormModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const recurring = editing || kind === 'recurring'
+  // Editing a one-off instance never offers recurrence — it's a single already-
+  // created task, not a template; "repeating" only applies when adding new or
+  // editing a template.
+  const recurring = !instance && (editing || kind === 'recurring')
 
   // An assignee may no longer be a choice (e.g. someone who has since been removed from
   // staff) — keep showing it rather than a blank select. "Added by" has no such fallback:
   // it's a fixed, short list (Josh/Gina/Valerie) and must never show anything else, even
   // for an older template whose created_by predates that list.
   const assignedOptions: string[] = [EVERYONE, ...staff.map((s) => s.name)]
-  if (template && !assignedOptions.includes(template.assigned_to)) assignedOptions.push(template.assigned_to)
+  if (source && !assignedOptions.includes(source.assigned_to)) assignedOptions.push(source.assigned_to)
   const creatorOptions: string[] = [...TASK_CREATORS]
 
   const confirmDelete = async () => {
@@ -105,7 +114,7 @@ export default function TaskFormModal({
     setSaving(true)
     try {
       let res: Response
-      if (editing) {
+      if (template) {
         res = await fetch('/api/task-templates', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -120,6 +129,23 @@ export default function TaskFormModal({
             ...(createdBy !== template.created_by ? { created_by: createdBy } : {}),
             ...(showPriority && priority !== template.priority ? { priority } : {}),
             ...(dueTime !== (toHM(template.due_time) ?? '') ? { due_time: dueTime || null } : {}),
+          }),
+        })
+      } else if (instance) {
+        res = await fetch('/api/tasks', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: instance.id,
+            action: 'edit',
+            title,
+            description,
+            photo_setting: photo,
+            // only send fields that were actually changed
+            ...(assignedTo !== instance.assigned_to ? { assigned_to: assignedTo } : {}),
+            ...(createdBy !== instance.created_by ? { created_by: createdBy } : {}),
+            ...(showPriority && priority !== instance.priority ? { priority } : {}),
+            ...(dueTime !== (toHM(instance.due_time) ?? '') ? { due_time: dueTime || null } : {}),
           }),
         })
       } else {

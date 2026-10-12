@@ -56,6 +56,7 @@ export default function TodoPage() {
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<TaskInstance | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [editingTask, setEditingTask] = useState<TaskInstance | null>(null)
   const [photoNudgeId, setPhotoNudgeId] = useState<string | null>(null)
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const [standaloneBusyId, setStandaloneBusyId] = useState<string | null>(null)
@@ -112,7 +113,7 @@ export default function TodoPage() {
   useEffect(() => {
     midInteractionRef.current =
       completing !== null || uploadingId !== null || deleting !== null || showAdd ||
-      standaloneBusyId !== null || undoingId !== null
+      standaloneBusyId !== null || undoingId !== null || editingTask !== null
   })
 
   // Shared checklist: pick up other people's changes when the tab regains focus,
@@ -249,6 +250,7 @@ export default function TodoPage() {
 
   const afterTaskSaved = (message: string) => {
     setShowAdd(false)
+    setEditingTask(null)
     flash(`✓ ${message}`)
     loadTasks()
     notifyTasksChanged()
@@ -372,14 +374,22 @@ export default function TodoPage() {
               </button>
             </div>
           )}
-          {/* Owners only, one-off tasks only (repeating tasks are deleted from the Repeating tab) */}
+          {/* Owners only, one-off tasks only (repeating tasks are edited/deleted from the Repeating tab) */}
           {isOwner && task.template_id === null && (
-            <button
-              onClick={() => setDeleting(task)}
-              className="text-xs font-semibold text-red-600 hover:text-red-700 -ml-2 mt-1 px-2 py-2"
-            >
-              Delete
-            </button>
+            <div className="flex items-center -ml-2 mt-1">
+              <button
+                onClick={() => setEditingTask(task)}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-2"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => setDeleting(task)}
+                className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-2"
+              >
+                Delete
+              </button>
+            </div>
           )}
         </div>
         {task.photo_allowed && (
@@ -636,6 +646,15 @@ export default function TodoPage() {
       )}
 
       {showAdd && <TaskFormModal staff={staff} onClose={() => setShowAdd(false)} onSaved={afterTaskSaved} />}
+
+      {editingTask && (
+        <TaskFormModal
+          staff={staff}
+          instance={editingTask}
+          onClose={() => setEditingTask(null)}
+          onSaved={afterTaskSaved}
+        />
+      )}
     </div>
   )
 }

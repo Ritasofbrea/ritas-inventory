@@ -1,6 +1,18 @@
 // Server-only helpers for the To-Do feature.
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { templateMatchesDate, todayInTZ, TaskTemplate, TaskInstance, Checklist, Recurrence, Priority, EVERYONE, TASK_CREATORS } from './tasks'
+import {
+  templateMatchesDate,
+  todayInTZ,
+  TaskTemplate,
+  TaskInstance,
+  Checklist,
+  Recurrence,
+  Priority,
+  PhotoSetting,
+  photoFlags,
+  EVERYONE,
+  TASK_CREATORS,
+} from './tasks'
 
 import { TASK_PHOTO_BUCKET } from './task-constants'
 export { TASK_PHOTO_BUCKET }
@@ -507,6 +519,84 @@ export async function setInstancePriority(db: SupabaseClient, instanceId: string
   const { error } = await db.from('task_instances').update({ priority, sort_order: sortOrder }).eq('id', instanceId)
   if (error) return { ok: false, error: error.message, status: 500 }
   return { ok: true }
+}
+
+// Full edit of a one-off standalone task (today's card only — same scope as
+// move/priority above). Checklist items and copies of a repeating template
+// are edited through their template instead (Repeating tab); this never
+// checks who added the task — owner access is the only gate, enforced
+// client-side same as the rest of the app, and it applies no matter who
+// created it.
+export async function editOneOffTask(
+  db: SupabaseClient,
+  instanceId: string,
+  body: {
+    title?: unknown
+    description?: unknown
+    assigned_to?: unknown
+    created_by?: unknown
+    photo_setting?: unknown
+    due_time?: unknown
+    priority?: unknown
+  }
+): Promise<TaskWriteResult<{ task: TaskInstance }>> {
+  const { data: task, error: fetchError } = await db.from('task_instances').select('*').eq('id', instanceId).maybeSingle()
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  if (!task) return { ok: false, error: 'Task not found', status: 404 }
+  if (task.template_id !== null) {
+    return { ok: false, error: 'This task is part of a checklist or repeating task — edit it from the Repeating tab instead', status: 400 }
+  }
+  if (task.status !== 'open') return { ok: false, error: 'Only open tasks can be edited', status: 400 }
+
+  const updates: Record<string, string | boolean | number | null> = {}
+
+  if (body.title !== undefined) {
+    if (typeof body.title !== 'string' || !body.title.trim()) {
+      return { ok: false, error: 'Title cannot be empty', status: 400 }
+    }
+    updates.title = body.title.trim()
+  }
+  if (body.description !== undefined) {
+    updates.description = typeof body.description === 'string' && body.description.trim() ? body.description.trim() : null
+  }
+  if (body.assigned_to !== undefined) {
+    if (!(await isValidAssignee(db, body.assigned_to))) {
+      return { ok: false, error: 'Pick who this is assigned to', status: 400 }
+    }
+    updates.assigned_to = body.assigned_to as string
+  }
+  if (body.created_by !== undefined) {
+    if (!isValidCreator(body.created_by)) {
+      return { ok: false, error: 'Pick who added this task', status: 400 }
+    }
+    updates.created_by = body.created_by as string
+  }
+  if (body.due_time !== undefined) {
+    const dueTimeResult = parseDueTime(body.due_time)
+    if (!dueTimeResult.ok) return { ok: false, error: dueTimeResult.error, status: 400 }
+    updates.due_time = dueTimeResult.value
+  }
+  if (body.photo_setting !== undefined) {
+    if (typeof body.photo_setting !== 'string' || !['off', 'optional', 'required'].includes(body.photo_setting)) {
+      return { ok: false, error: 'Invalid photo setting', status: 400 }
+    }
+    Object.assign(updates, photoFlags(body.photo_setting as PhotoSetting))
+  }
+  if (body.priority !== undefined) {
+    if (body.priority !== 'normal' && body.priority !== 'high') {
+      return { ok: false, error: 'priority must be "normal" or "high"', status: 400 }
+    }
+    if (body.priority !== task.priority) {
+      updates.priority = body.priority
+      updates.sort_order = await nextStandaloneInstanceSortOrder(db, body.priority as Priority)
+    }
+  }
+
+  if (Object.keys(updates).length === 0) return { ok: false, error: 'Nothing to update', status: 400 }
+
+  const { data, error } = await db.from('task_instances').update(updates).eq('id', instanceId).select().single()
+  if (error) return { ok: false, error: error.message, status: 500 }
+  return { ok: true, task: data as TaskInstance }
 }
 
 // Undoes a completion — same calendar day (Pacific) only, enforced server-side
