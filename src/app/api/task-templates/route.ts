@@ -9,6 +9,7 @@ import {
   nextStandaloneTemplateSortOrder,
   normalizeRecurrence,
   parseDueTime,
+  removeOpenInstanceForDeactivatedTemplate,
   syncOpenInstanceOwnership,
 } from '@/lib/task-server'
 
@@ -147,6 +148,14 @@ export async function PATCH(request: NextRequest) {
   // Completed tasks are history and stay as they were.
   const syncError = await syncOpenInstanceOwnership(db, id, ownership)
   if (syncError) return NextResponse.json({ error: syncError }, { status: 500 })
+
+  // Turned off just now? Make it disappear today too, not just going forward —
+  // a still-open instance already generated for today shouldn't linger until
+  // it ages into Missed tomorrow. A completed instance is left alone.
+  if (body.active === false) {
+    const removeError = await removeOpenInstanceForDeactivatedTemplate(db, id)
+    if (removeError) return NextResponse.json({ error: removeError }, { status: 500 })
+  }
 
   // Reactivated or rescheduled to today? Make sure today's task exists (idempotent).
   let generated = 0

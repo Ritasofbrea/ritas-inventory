@@ -151,6 +151,33 @@ export async function syncOpenInstanceOwnership(
   return error ? error.message : null
 }
 
+// Deactivating a template is supposed to make it disappear immediately, not
+// linger for the rest of the day and then show up in Missed tomorrow looking
+// like it "came back" — so remove today's still-open instance (if one was
+// already generated) the moment the template goes inactive. A completed
+// instance is left alone; it's already history. Reactivating later just
+// resumes normal generation going forward — nothing skipped gets backfilled.
+export async function removeOpenInstanceForDeactivatedTemplate(db: SupabaseClient, templateId: string): Promise<string | null> {
+  const { data, error: fetchError } = await db
+    .from('task_instances')
+    .select('id, photo_url')
+    .eq('template_id', templateId)
+    .eq('status', 'open')
+    .eq('due_date', todayInTZ())
+  if (fetchError) return fetchError.message
+  if (!data || data.length === 0) return null
+
+  const { error } = await db
+    .from('task_instances')
+    .delete()
+    .eq('template_id', templateId)
+    .eq('status', 'open')
+    .eq('due_date', todayInTZ())
+  if (error) return error.message
+  await removeTaskPhotos(db, data.map((row) => row.photo_url))
+  return null
+}
+
 type DeleteResult = { ok: true; deletedOpen?: number } | { ok: false; error: string; status: number }
 
 // Permanently deletes a one-off task. Instances made from a repeating task are

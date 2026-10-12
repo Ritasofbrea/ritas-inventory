@@ -214,9 +214,20 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                       value={draftDefaultTime[group.name] ?? toHM(checklistDefaults[group.name] ?? null) ?? ''}
                       onChange={(e) => setDraftDefaultTime((prev) => ({ ...prev, [group.name]: e.target.value }))}
                       onBlur={async (e) => {
-                        const value = e.target.value || null
-                        const committed = toHM(checklistDefaults[group.name] ?? null) ?? null
-                        if (value !== committed) await saveDefaultDueTime(group.name, value)
+                        // A native time input reports "" both when genuinely incomplete
+                        // (e.g. only the hour segment has been picked so far) and when
+                        // explicitly cleared — those are indistinguishable from the value
+                        // alone. Explicit clearing already has its own "Clear" button
+                        // below, so an empty/incomplete value here just discards the
+                        // in-progress edit (falls back to the last saved time) instead of
+                        // ever saving null — that used to wipe out a working due time
+                        // whenever a tap-away (tab switch, collapsing the section)
+                        // interrupted the picker before all three segments were set.
+                        const value = e.target.value
+                        if (value) {
+                          const committed = toHM(checklistDefaults[group.name] ?? null) ?? ''
+                          if (value !== committed) await saveDefaultDueTime(group.name, value)
+                        }
                         clearDraftDefaultTime(group.name)
                       }}
                       disabled={savingDefault === group.name}
