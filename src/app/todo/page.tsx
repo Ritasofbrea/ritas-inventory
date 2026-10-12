@@ -5,6 +5,7 @@ import Navigation from '@/components/Navigation'
 import StaffPicker from '@/components/todo/StaffPicker'
 import PinModal from '@/components/todo/PinModal'
 import TaskFormModal from '@/components/todo/TaskFormModal'
+import NotesBoard from '@/components/todo/NotesBoard'
 import ConfirmModal from '@/components/todo/ConfirmModal'
 import HistoryView from '@/components/todo/HistoryView'
 import MissedView from '@/components/todo/MissedView'
@@ -497,6 +498,8 @@ export default function TodoPage() {
         {view === 'today' && (
           <>
             {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">{error}</div>}
+
+            <NotesBoard staff={staff} canManage={canManage} />
 
             <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">
               Today&apos;s Tasks{open.length > 0 ? ` (${open.length})` : ''}
