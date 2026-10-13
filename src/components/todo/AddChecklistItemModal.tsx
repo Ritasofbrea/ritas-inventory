@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { getOwnerName } from '@/lib/auth'
 import { Staff, EVERYONE, TASK_CREATORS, PhotoSetting } from '@/lib/tasks'
 
 const segBtn = (active: boolean) =>
@@ -28,7 +29,10 @@ export default function AddChecklistItemModal({
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [assignedTo, setAssignedTo] = useState('')
-  const [createdBy, setCreatedBy] = useState('')
+  // Default "Added by" to whichever owner is currently logged in (still
+  // changeable) — this modal is only ever reached from the owner-only
+  // Repeating tab, so an owner identity is normally available.
+  const [createdBy, setCreatedBy] = useState(getOwnerName() ?? '')
   const [photo, setPhoto] = useState<PhotoSetting>('optional')
   const [dueTime, setDueTime] = useState('')
   const [saving, setSaving] = useState(false)

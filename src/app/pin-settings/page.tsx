@@ -32,7 +32,7 @@ export default function PinSettingsPage() {
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Change PIN</h1>
-          <p className="text-gray-500 mt-1">Set the Owner or Shift Lead login PIN.</p>
+          <p className="text-gray-500 mt-1">Set Josh&apos;s, Gina&apos;s, or the Shift Lead login PIN.</p>
         </div>
 
         <PinManagementView />

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import ConfirmModal from './ConfirmModal'
+import { getOwnerName } from '@/lib/auth'
 import {
   Staff,
   TaskTemplate,
@@ -45,7 +46,10 @@ export default function TaskFormModal({
   const source = template ?? instance
   const editing = !!source
   const [assignedTo, setAssignedTo] = useState(source?.assigned_to ?? '')
-  const [createdBy, setCreatedBy] = useState(source?.created_by ?? '')
+  // New task/template: default "Added by" to whichever owner is currently
+  // logged in (still changeable) instead of requiring a manual pick every
+  // time. Editing an existing one keeps its own created_by untouched.
+  const [createdBy, setCreatedBy] = useState(source?.created_by ?? getOwnerName() ?? '')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [title, setTitle] = useState(source?.title ?? '')

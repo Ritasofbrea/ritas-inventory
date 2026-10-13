@@ -3,28 +3,30 @@
 import { useCallback, useEffect, useState } from 'react'
 import { formatDateTime } from '@/lib/tasks'
 
-type PinName = 'owner' | 'shift_lead'
-const PIN_LABELS: Record<PinName, string> = { owner: 'Owner PIN', shift_lead: 'Shift Lead PIN' }
+type PinName = 'Josh' | 'Gina' | 'shift_lead'
+const PIN_NAMES: PinName[] = ['Josh', 'Gina', 'shift_lead']
+const PIN_LABELS: Record<PinName, string> = { Josh: "Josh's PIN", Gina: "Gina's PIN", shift_lead: 'Shift Lead PIN' }
 
 const segBtn = (active: boolean) =>
   `flex-1 min-h-[44px] rounded-xl text-sm font-semibold border transition-colors ${
     active ? 'bg-[#1a7a3c] text-white border-[#1a7a3c]' : 'bg-white text-gray-600 border-gray-200'
   }`
 
-// Owner-only: change the Owner or Shift Lead login PIN, stored in Supabase
-// (the `pins` table) rather than the NEXT_PUBLIC_OWNER_PIN / _SHIFT_LEAD_PIN
-// env vars — this is the only place those PINs can be changed without a
+// Owner-only: change Josh's, Gina's, or the Shift Lead login PIN — three
+// independent PINs (Josh and Gina each only need their own current PIN, not
+// each other's), stored in Supabase (the `owners` / `pins` tables) rather
+// than env vars — this is the only place these PINs can be changed without a
 // Vercel redeploy. Same trust model as everywhere else in the app: a correct
 // PIN check gates the form, not real server-side auth.
 export default function PinManagementView() {
-  const [which, setWhich] = useState<PinName>('owner')
+  const [which, setWhich] = useState<PinName>('Josh')
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [lastChanged, setLastChanged] = useState<Record<PinName, string | null>>({ owner: null, shift_lead: null })
+  const [lastChanged, setLastChanged] = useState<Record<PinName, string | null>>({ Josh: null, Gina: null, shift_lead: null })
   const [loading, setLoading] = useState(true)
 
   const loadLastChanged = useCallback(async () => {
@@ -32,7 +34,7 @@ export default function PinManagementView() {
       const res = await fetch('/api/pins')
       if (!res.ok) throw new Error()
       const rows: { name: PinName; updated_at: string }[] = await res.json()
-      const next: Record<PinName, string | null> = { owner: null, shift_lead: null }
+      const next: Record<PinName, string | null> = { Josh: null, Gina: null, shift_lead: null }
       rows.forEach((r) => { next[r.name] = r.updated_at })
       setLastChanged(next)
     } catch {
@@ -80,8 +82,16 @@ export default function PinManagementView() {
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500 font-medium">Which PIN?</label>
           <div className="flex gap-2">
-            <button type="button" className={segBtn(which === 'owner')} onClick={() => { setWhich('owner'); setError(''); setNotice('') }}>Owner</button>
-            <button type="button" className={segBtn(which === 'shift_lead')} onClick={() => { setWhich('shift_lead'); setError(''); setNotice('') }}>Shift Lead</button>
+            {PIN_NAMES.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={segBtn(which === name)}
+                onClick={() => { setWhich(name); setError(''); setNotice('') }}
+              >
+                {name === 'shift_lead' ? 'Shift Lead' : name}
+              </button>
+            ))}
           </div>
           {!loading && (
             <p className="text-xs text-gray-400 mt-1">
