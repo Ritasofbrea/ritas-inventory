@@ -138,6 +138,38 @@ export async function removeTaskPhotos(db: SupabaseClient, urls: (string | null 
   }
 }
 
+// Clears photo_url (and deletes the file from storage) for any task whose
+// completion is more than 90 days old — hit nightly by the cleanup-photos
+// cron. Everything else on the row (title, completed_by, completed_at, …)
+// is left exactly as it was; the task stays in History, just without its
+// photo. `completed_at` is only ever set by actually completing a task, so
+// filtering on it already excludes still-open tasks that merely have a
+// photo attached (photo_url can be set before completion too) — no separate
+// status check needed. The cutoff is a plain 90*24h-ago instant rather than
+// a Pacific calendar-day boundary (unlike due_date/weekday logic elsewhere)
+// since being off by an hour across a twice-a-year DST shift doesn't matter
+// for a 90-day retention window. Returns how many rows were cleaned up.
+export async function cleanupOldTaskPhotos(db: SupabaseClient): Promise<number> {
+  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await db
+    .from('task_instances')
+    .select('id, photo_url')
+    .not('photo_url', 'is', null)
+    .lt('completed_at', cutoff)
+  if (error) throw new Error(error.message)
+  if (!data || data.length === 0) return 0
+
+  await removeTaskPhotos(db, data.map((row) => row.photo_url))
+
+  const { error: updateError } = await db
+    .from('task_instances')
+    .update({ photo_url: null })
+    .in('id', data.map((row) => row.id))
+  if (updateError) throw new Error(updateError.message)
+
+  return data.length
+}
+
 // Carries a template's new assigned_to / created_by / due_time onto its tasks
 // that aren't done yet (today's and overdue copies). Completed tasks are
 // history and are left untouched. Returns an error message, or null on success.

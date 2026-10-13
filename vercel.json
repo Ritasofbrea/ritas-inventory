@@ -1,6 +1,7 @@
 {
   "framework": "nextjs",
   "crons": [
-    { "path": "/api/cron/generate-tasks", "schedule": "0 9 * * *" }
+    { "path": "/api/cron/generate-tasks", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/cleanup-photos", "schedule": "15 9 * * *" }
   ]
 }
