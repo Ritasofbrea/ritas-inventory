@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import type { RealtimePostgresInsertPayload, RealtimePostgresDeletePayload } from '@supabase/realtime-js'
+import type { RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload, RealtimePostgresDeletePayload } from '@supabase/realtime-js'
 import AddNoteModal from './AddNoteModal'
 import ConfirmModal from './ConfirmModal'
 import { supabase } from '@/lib/supabase'
@@ -22,6 +22,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
   const [showAdd, setShowAdd] = useState(false)
   const [deleting, setDeleting] = useState<Note | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [handledBusyId, setHandledBusyId] = useState<string | null>(null)
   // Tap a note's timestamp to flip it to the full date/time (hover does the
   // same via the title attribute, but this is a touch-first PWA).
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -52,6 +53,9 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes' }, (payload: RealtimePostgresInsertPayload<Note>) => {
         setNotes((prev) => (prev.some((n) => n.id === payload.new.id) ? prev : [payload.new, ...prev]))
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresUpdatePayload<Note>) => {
+        setNotes((prev) => prev.map((n) => (n.id === payload.new.id ? payload.new : n)))
+      })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresDeletePayload<Note>) => {
         const deletedId = payload.old.id
         if (deletedId) setNotes((prev) => prev.filter((n) => n.id !== deletedId))
@@ -75,6 +79,27 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
   const afterSaved = () => {
     setShowAdd(false)
     load()
+  }
+
+  // No PIN gate, same as adding a note — a plain visual signal anyone can
+  // flip, not a gate on anything (Delete stays owner/shift-lead-only, below).
+  const toggleHandled = async (note: Note) => {
+    setHandledBusyId(note.id)
+    const next = !note.handled
+    setNotes((prev) => prev.map((n) => (n.id === note.id ? { ...n, handled: next } : n)))
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: note.id, handled: next }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      // revert the optimistic flip on failure
+      setNotes((prev) => prev.map((n) => (n.id === note.id ? { ...n, handled: note.handled } : n)))
+    } finally {
+      setHandledBusyId(null)
+    }
   }
 
   const handleDelete = async () => {
@@ -111,7 +136,19 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
         <div className="flex flex-col gap-2">
           {notes.map((n) => (
             <div key={n.id} className="bg-yellow-50 border border-yellow-200 rounded-2xl shadow-sm px-4 py-3">
-              <p className="text-gray-900 whitespace-pre-wrap">{n.content}</p>
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={n.handled}
+                  onChange={() => toggleHandled(n)}
+                  disabled={handledBusyId === n.id}
+                  aria-label={n.handled ? 'Mark not handled' : 'Mark handled'}
+                  className="mt-1 w-4 h-4 flex-shrink-0 accent-[#1a7a3c] disabled:opacity-50"
+                />
+                <p className={`text-gray-900 whitespace-pre-wrap ${n.handled ? 'line-through text-gray-400' : ''}`}>
+                  {n.content}
+                </p>
+              </div>
               <div className="flex items-center justify-between gap-2 mt-2">
                 <button
                   type="button"

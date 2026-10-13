@@ -5,6 +5,7 @@ export interface Note {
   content: string
   created_by: string
   created_at: string
+  handled: boolean
 }
 
 // "just now" / "5 min ago" / "3 hr ago" / "2 days ago" / "3 weeks ago" / "4 months ago" —

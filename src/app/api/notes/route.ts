@@ -31,6 +31,19 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(data)
 }
 
+// Toggling "handled" is open to everyone, same no-PIN trust level as adding
+// a note — it's a plain visual signal, not a gate on anything (deleting
+// stays owner/shift-lead-only, enforced client-side same as everywhere else).
+export async function PATCH(request: NextRequest) {
+  const { id, handled } = await request.json()
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  if (typeof handled !== 'boolean') return NextResponse.json({ error: 'handled must be a boolean' }, { status: 400 })
+  const db = getServerSupabase()
+  const { data, error } = await db.from('notes').update({ handled }).eq('id', id).select().single()
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data)
+}
+
 // Owner/shift-lead gating is enforced client-side only (the Delete button is
 // hidden otherwise) — same as every other owner-only action in this app (e.g.
 // task delete), there's no server-side role check anywhere in this codebase.
