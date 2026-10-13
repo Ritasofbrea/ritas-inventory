@@ -1,14 +1,21 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import type { RealtimePostgresInsertPayload, RealtimePostgresDeletePayload } from '@supabase/realtime-js'
 import AddNoteModal from './AddNoteModal'
 import ConfirmModal from './ConfirmModal'
+import { supabase } from '@/lib/supabase'
 import { Staff, formatDateTime } from '@/lib/tasks'
 import { Note, formatRelativeTime } from '@/lib/notes'
 
 // Shared sticky-notes board on the To-Do screen, above Today's Tasks. Anyone
 // can add a note (no PIN); only owners/shift leads (canManage, same gate as
 // + Add Task) can delete one.
+//
+// Live updates come from Supabase Realtime (postgres_changes on `notes`),
+// not polling — separate from Today's Tasks' own 5-minute poll, which stays
+// untouched. Requires `notes` to be added to the supabase_realtime
+// publication; see supabase/enable-notes-realtime.sql.
 export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canManage: boolean }) {
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,19 +42,26 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
     load()
   }, [load])
 
-  // Same "pick up other people's changes" idea as the task list: a shared
-  // board, so refresh on focus and periodically in the background.
+  // Push, not poll: every connected client (including an anonymous visitor
+  // who added no note themselves) sees an add/delete the instant it happens.
+  // Own adds/deletes already update local state via load()/filter below, so
+  // these handlers de-dupe by id rather than assuming they're the only source.
   useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState === 'visible') load()
-    }
-    document.addEventListener('visibilitychange', refresh)
-    const interval = setInterval(refresh, 5 * 60 * 1000)
+    const channel = supabase
+      .channel('notes-board')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes' }, (payload: RealtimePostgresInsertPayload<Note>) => {
+        setNotes((prev) => (prev.some((n) => n.id === payload.new.id) ? prev : [payload.new, ...prev]))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresDeletePayload<Note>) => {
+        const deletedId = payload.old.id
+        if (deletedId) setNotes((prev) => prev.filter((n) => n.id !== deletedId))
+      })
+      .subscribe()
+
     return () => {
-      document.removeEventListener('visibilitychange', refresh)
-      clearInterval(interval)
+      supabase.removeChannel(channel)
     }
-  }, [load])
+  }, [])
 
   const toggleExpanded = (id: string) => {
     setExpanded((prev) => {
