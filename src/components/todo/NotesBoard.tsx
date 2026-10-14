@@ -5,6 +5,7 @@ import type { RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload, Real
 import AddNoteModal from './AddNoteModal'
 import ConfirmModal from './ConfirmModal'
 import StaffName from '@/components/StaffName'
+import { staffColorFor, pastelTint } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
 import { Staff, formatDateTime } from '@/lib/tasks'
 import { Note, formatRelativeTime } from '@/lib/notes'
@@ -135,41 +136,51 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
 
       {notes.length > 0 && (
         <div className="flex flex-col gap-2">
-          {notes.map((n) => (
-            <div key={n.id} className="bg-yellow-50 border border-yellow-200 rounded-2xl shadow-sm px-4 py-3">
-              <div className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  checked={n.handled}
-                  onChange={() => toggleHandled(n)}
-                  disabled={handledBusyId === n.id}
-                  aria-label={n.handled ? 'Mark not handled' : 'Mark handled'}
-                  className="mt-1 w-4 h-4 flex-shrink-0 accent-[#1a7a3c] disabled:opacity-50"
-                />
-                <p className={`text-gray-900 whitespace-pre-wrap ${n.handled ? 'line-through text-gray-400' : ''}`}>
-                  {n.content}
-                </p>
-              </div>
-              <div className="flex items-center justify-between gap-2 mt-2">
-                <button
-                  type="button"
-                  onClick={() => toggleExpanded(n.id)}
-                  title={formatDateTime(n.created_at)}
-                  className="text-xs text-gray-500 text-left"
-                >
-                  <StaffName name={n.created_by} staff={staff} /> · {expanded.has(n.id) ? formatDateTime(n.created_at) : formatRelativeTime(n.created_at)}
-                </button>
-                {canManage && (
+          {notes.map((n) => {
+            // Subtle pastel tint from the author's color, not a bold/solid
+            // fill — falls back to the default yellow sticky-note styling
+            // when they have no color set. Layout/shadow/etc. unchanged.
+            const authorColor = staffColorFor(n.created_by, staff)
+            return (
+              <div
+                key={n.id}
+                className={`rounded-2xl shadow-sm border px-4 py-3 ${authorColor ? '' : 'bg-yellow-50 border-yellow-200'}`}
+                style={authorColor ? { backgroundColor: pastelTint(authorColor, 0.88), borderColor: pastelTint(authorColor, 0.7) } : undefined}
+              >
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={n.handled}
+                    onChange={() => toggleHandled(n)}
+                    disabled={handledBusyId === n.id}
+                    aria-label={n.handled ? 'Mark not handled' : 'Mark handled'}
+                    className="mt-1 w-4 h-4 flex-shrink-0 accent-[#1a7a3c] disabled:opacity-50"
+                  />
+                  <p className={`text-gray-900 whitespace-pre-wrap ${n.handled ? 'line-through text-gray-400' : ''}`}>
+                    {n.content}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-2">
                   <button
-                    onClick={() => setDeleting(n)}
-                    className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 flex-shrink-0"
+                    type="button"
+                    onClick={() => toggleExpanded(n.id)}
+                    title={formatDateTime(n.created_at)}
+                    className="text-xs text-gray-500 text-left"
                   >
-                    Delete
+                    <StaffName name={n.created_by} staff={staff} /> · {expanded.has(n.id) ? formatDateTime(n.created_at) : formatRelativeTime(n.created_at)}
                   </button>
-                )}
+                  {canManage && (
+                    <button
+                      onClick={() => setDeleting(n)}
+                      className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 flex-shrink-0"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

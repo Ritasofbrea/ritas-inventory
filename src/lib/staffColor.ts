@@ -20,3 +20,15 @@ export function staffColorFor(name: string, staff: Staff[]): string | null {
   if (!alias) return null
   return staff.find((s) => s.name === alias)?.color ?? null
 }
+
+// Mixes a hex color toward white for a subtle pastel background tint — e.g.
+// a note card tinted by its author's color, not a bold/solid fill. `amount`
+// is how much of the way toward white to go (0 = original color, 1 = white).
+export function pastelTint(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  const mix = (channel: number) => Math.round(channel + (255 - channel) * amount)
+  const r = mix((n >> 16) & 255)
+  const g = mix((n >> 8) & 255)
+  const b = mix(n & 255)
+  return `rgb(${r}, ${g}, ${b})`
+}
