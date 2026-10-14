@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { TaskInstance, todayInTZ, addDays, formatDateShort, formatDateTime, formatDueTime, groupHistoryByDay } from '@/lib/tasks'
+import StaffName from '@/components/StaffName'
+import { Staff, TaskInstance, todayInTZ, addDays, formatDateShort, formatDateTime, formatDueTime, groupHistoryByDay } from '@/lib/tasks'
 
 // Fixed default range — browsing the default shows day-grouped sections;
 // any other range (the owner changed a date and clicked Update) flattens
@@ -11,7 +12,7 @@ const DEFAULT_START = addDays(todayInTZ(), -30)
 const DEFAULT_END = todayInTZ()
 
 // Owner-only: 30-day (adjustable) range of every task instance.
-export default function HistoryView() {
+export default function HistoryView({ staff }: { staff: Staff[] }) {
   const [startDate, setStartDate] = useState(DEFAULT_START)
   const [endDate, setEndDate] = useState(DEFAULT_END)
   const [rows, setRows] = useState<TaskInstance[]>([])
@@ -62,10 +63,10 @@ export default function HistoryView() {
           </span>
         </div>
         <p className="text-sm text-gray-500 mt-0.5">
-          Due {formatDateShort(t.due_date)}{t.due_time ? ` at ${formatDueTime(t.due_time)}` : ''} · assigned to {t.assigned_to} · added by {t.created_by}
+          Due {formatDateShort(t.due_date)}{t.due_time ? ` at ${formatDueTime(t.due_time)}` : ''} · assigned to <StaffName name={t.assigned_to} staff={staff} /> · added by <StaffName name={t.created_by} staff={staff} />
         </p>
         {t.status === 'done' && t.completed_by && t.completed_at && (
-          <p className="text-sm text-gray-500">Done by {t.completed_by} · {formatDateTime(t.completed_at)}</p>
+          <p className="text-sm text-gray-500">Done by <StaffName name={t.completed_by} staff={staff} /> · {formatDateTime(t.completed_at)}</p>
         )}
       </div>
       {t.photo_url && (

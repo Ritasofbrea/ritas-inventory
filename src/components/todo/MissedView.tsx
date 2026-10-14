@@ -1,12 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { TaskInstance, formatDateShort, formatDueTime, groupHistoryByDay } from '@/lib/tasks'
+import StaffName from '@/components/StaffName'
+import { Staff, TaskInstance, formatDateShort, formatDueTime, groupHistoryByDay } from '@/lib/tasks'
 
 // Owner-only, read-only record of tasks that aged out of Today's Tasks without
 // being completed (see sweepMissedInstances in task-server.ts). No checkbox,
 // no undo, no way to act on these from here — purely an accountability log.
-export default function MissedView() {
+export default function MissedView({ staff }: { staff: Staff[] }) {
   const [rows, setRows] = useState<TaskInstance[]>([])
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -86,7 +87,7 @@ export default function MissedView() {
                         <p className="font-semibold text-gray-900">{t.title}</p>
                         <p className="text-sm text-gray-500 mt-0.5">
                           {t.checklist_name ? `${t.checklist_name} · ${t.section} · ` : ''}
-                          Assigned to {t.assigned_to}
+                          Assigned to <StaffName name={t.assigned_to} staff={staff} />
                         </p>
                         <p className="text-sm text-gray-500">
                           Due {formatDateShort(t.due_date)}{t.due_time ? ` at ${formatDueTime(t.due_time)}` : ''}

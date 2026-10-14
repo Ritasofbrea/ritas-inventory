@@ -26,12 +26,18 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { id, name, active } = await request.json()
+  const { id, name, active, color } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const updates: Record<string, string | boolean> = {}
+  const updates: Record<string, string | boolean | null> = {}
   if (typeof name === 'string' && name.trim()) updates.name = name.trim()
   if (typeof active === 'boolean') updates.active = active
+  if (color !== undefined) {
+    if (color !== null && !/^#[0-9a-fA-F]{6}$/.test(color)) {
+      return NextResponse.json({ error: 'color must be a hex value like #2563eb, or null to clear it' }, { status: 400 })
+    }
+    updates.color = color
+  }
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
   const db = getServerSupabase()

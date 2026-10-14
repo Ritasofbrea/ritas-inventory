@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload, RealtimePostgresDeletePayload } from '@supabase/realtime-js'
 import AddNoteModal from './AddNoteModal'
 import ConfirmModal from './ConfirmModal'
+import StaffName from '@/components/StaffName'
 import { supabase } from '@/lib/supabase'
 import { Staff, formatDateTime } from '@/lib/tasks'
 import { Note, formatRelativeTime } from '@/lib/notes'
@@ -156,7 +157,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                   title={formatDateTime(n.created_at)}
                   className="text-xs text-gray-500 text-left"
                 >
-                  {n.created_by} · {expanded.has(n.id) ? formatDateTime(n.created_at) : formatRelativeTime(n.created_at)}
+                  <StaffName name={n.created_by} staff={staff} /> · {expanded.has(n.id) ? formatDateTime(n.created_at) : formatRelativeTime(n.created_at)}
                 </button>
                 {canManage && (
                   <button

@@ -23,6 +23,7 @@ export interface Staff {
   name: string
   active: boolean
   created_at: string
+  color: string | null
 }
 
 export interface TaskTemplate {

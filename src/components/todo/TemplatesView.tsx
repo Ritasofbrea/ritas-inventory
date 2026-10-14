@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import StaffName from '@/components/StaffName'
 import { Staff, TaskTemplate, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf, formatDueTime, toHM } from '@/lib/tasks'
 import TaskFormModal from './TaskFormModal'
 import AddChecklistItemModal from './AddChecklistItemModal'
@@ -130,7 +131,7 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
         {!t.active && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-500">OFF</span>}
       </div>
       <p className="text-sm text-gray-500 mt-0.5">
-        {describeRecurrence(t)} · photo {photoSettingOf(t)} · assigned to {t.assigned_to}
+        {describeRecurrence(t)} · photo {photoSettingOf(t)} · assigned to <StaffName name={t.assigned_to} staff={staff} />
       </p>
       {t.due_time && <p className="text-sm text-gray-400 mt-0.5">Due by {formatDueTime(t.due_time)}</p>}
       {t.description && <p className="text-sm text-gray-400 mt-0.5">{t.description}</p>}

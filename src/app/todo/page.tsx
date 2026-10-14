@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Navigation from '@/components/Navigation'
+import StaffName from '@/components/StaffName'
 import StaffPicker from '@/components/todo/StaffPicker'
 import PinModal from '@/components/todo/PinModal'
 import TaskFormModal from '@/components/todo/TaskFormModal'
@@ -336,7 +337,7 @@ export default function TodoPage() {
         </button>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 leading-tight">{task.title}</p>
-          <p className="text-xs text-gray-500 mt-0.5">Assigned to {task.assigned_to}</p>
+          <p className="text-xs text-gray-500 mt-0.5">Assigned to <StaffName name={task.assigned_to} staff={staff} /></p>
           {task.due_time && <p className="text-xs text-gray-500 mt-0.5">Due by {formatDueTime(task.due_time)}</p>}
           {overdue && (
             <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Overdue — was due {formatDateShort(task.due_date)}</p>
@@ -422,7 +423,7 @@ export default function TodoPage() {
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-gray-500 line-through leading-tight">{task.title}</p>
         <p className="text-xs text-gray-500 mt-0.5">
-          {task.completed_by}
+          {task.completed_by && <StaffName name={task.completed_by} staff={staff} />}
           {task.completed_at ? ` · ${formatTime(task.completed_at)}` : ''}
         </p>
         {task.due_time && <p className="text-xs text-gray-400 mt-0.5">Due by {formatDueTime(task.due_time)}</p>}
@@ -604,8 +605,8 @@ export default function TodoPage() {
           </>
         )}
 
-        {view === 'history' && isOwner && <HistoryView />}
-        {view === 'missed' && isOwner && <MissedView />}
+        {view === 'history' && isOwner && <HistoryView staff={staff} />}
+        {view === 'missed' && isOwner && <MissedView staff={staff} />}
         {view === 'templates' && isOwner && <TemplatesView staff={staff} onChanged={notifyTasksChanged} />}
         {view === 'staff' && isOwner && (
           <StaffView
