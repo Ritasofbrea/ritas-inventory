@@ -2,6 +2,7 @@ import { Role } from './types'
 
 const ROLE_KEY = 'ritas_role'
 const OWNER_NAME_KEY = 'ritas_owner_name'
+const SHIFT_LEAD_NAME_KEY = 'ritas_shift_lead_name'
 
 export function getRole(): Role | null {
   if (typeof window === 'undefined') return null
@@ -12,12 +13,14 @@ export function setRole(role: Role) {
   localStorage.setItem(ROLE_KEY, role)
 }
 
-// Role stays just 'owner' | 'shift_lead' — Josh and Gina have identical
-// access, so nothing that only checks "is this an owner" needs to change.
-// Which owner it is lives separately, only for auto-filling identity fields.
+// Role stays just 'owner' | 'shift_lead' — within each, everyone has
+// identical access, so nothing that only checks "is this an owner" (or
+// "is this a shift lead") needs to change. Which specific person it is
+// lives separately, only for auto-filling identity fields.
 export function clearRole() {
   localStorage.removeItem(ROLE_KEY)
   clearOwnerName()
+  clearShiftLeadName()
 }
 
 export function isOwner(): boolean {
@@ -38,4 +41,19 @@ export function setOwnerName(name: string) {
 
 export function clearOwnerName() {
   localStorage.removeItem(OWNER_NAME_KEY)
+}
+
+// Same idea as getOwnerName/setOwnerName, for the 'shift_lead' PIN check
+// matching a specific named shift lead at /login.
+export function getShiftLeadName(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(SHIFT_LEAD_NAME_KEY)
+}
+
+export function setShiftLeadName(name: string) {
+  localStorage.setItem(SHIFT_LEAD_NAME_KEY, name)
+}
+
+export function clearShiftLeadName() {
+  localStorage.removeItem(SHIFT_LEAD_NAME_KEY)
 }

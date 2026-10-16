@@ -12,8 +12,9 @@ export default function PinSettingsPage() {
 
   useEffect(() => {
     const role = getRole()
+    // Any logged-in role can reach this now — an owner changes Josh's/Gina's
+    // PIN, a shift lead changes their own; only a role-less visitor is sent away.
     if (!role) { router.replace('/login'); return }
-    if (role !== 'owner') { router.replace('/count'); return }
     setChecked(true)
   }, [router])
 
@@ -32,7 +33,7 @@ export default function PinSettingsPage() {
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Change PIN</h1>
-          <p className="text-gray-500 mt-1">Set Josh&apos;s, Gina&apos;s, or the Shift Lead login PIN.</p>
+          <p className="text-gray-500 mt-1">Change your own login PIN.</p>
         </div>
 
         <PinManagementView />

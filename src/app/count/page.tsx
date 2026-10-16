@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
-import { getRole } from '@/lib/auth'
+import { getRole, getShiftLeadName } from '@/lib/auth'
 import { Item, InventoryCount, CATEGORIES, Category } from '@/lib/types'
 
 interface CountDraft {
@@ -163,6 +163,13 @@ export default function CountPage() {
     const r = getRole()
     if (!r) { router.replace('/login'); return }
     setRole(r)
+    // Default "who's counting" to the logged-in shift lead instead of asking
+    // every time — still a normal editable field, in case someone else is
+    // physically using this device.
+    if (r === 'shift_lead') {
+      const name = getShiftLeadName()
+      if (name) setCountedBy(name)
+    }
     fetchItems()
     fetch('/api/dashboard-summary').then((res) => res.json()).then((d) => setLastCount(d.lastCount)).catch(() => {})
   }, [router])

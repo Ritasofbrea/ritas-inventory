@@ -1,42 +1,42 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '@/lib/tasks'
-
-type PinName = 'Josh' | 'Gina' | 'shift_lead'
-const PIN_NAMES: PinName[] = ['Josh', 'Gina', 'shift_lead']
-const PIN_LABELS: Record<PinName, string> = { Josh: "Josh's PIN", Gina: "Gina's PIN", shift_lead: 'Shift Lead PIN' }
+import { getRole, getOwnerName, getShiftLeadName } from '@/lib/auth'
 
 const segBtn = (active: boolean) =>
   `flex-1 min-h-[44px] rounded-xl text-sm font-semibold border transition-colors ${
     active ? 'bg-[#1a7a3c] text-white border-[#1a7a3c]' : 'bg-white text-gray-600 border-gray-200'
   }`
 
-// Owner-only: change Josh's, Gina's, or the Shift Lead login PIN — three
-// independent PINs (Josh and Gina each only need their own current PIN, not
-// each other's), stored in Supabase (the `owners` / `pins` tables) rather
-// than env vars — this is the only place these PINs can be changed without a
-// Vercel redeploy. Same trust model as everywhere else in the app: a correct
-// PIN check gates the form, not real server-side auth.
+// Self-service "change my own PIN" (current PIN required first) — not the
+// owner-only Shift Lead management screen's reset, which doesn't need that.
+// An owner can change Josh's or Gina's PIN (same as before); a shift lead
+// can only change their own, never anyone else's — so the selectable list
+// depends on who's actually logged in, rather than a fixed 3-way picker.
 export default function PinManagementView() {
-  const [which, setWhich] = useState<PinName>('Josh')
+  const options = useMemo(() => {
+    if (getRole() === 'owner') return ['Josh', 'Gina']
+    const name = getShiftLeadName()
+    return name ? [name] : []
+  }, [])
+
+  const [which, setWhich] = useState(options[0] ?? '')
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [lastChanged, setLastChanged] = useState<Record<PinName, string | null>>({ Josh: null, Gina: null, shift_lead: null })
+  const [lastChanged, setLastChanged] = useState<Record<string, string | null>>({})
   const [loading, setLoading] = useState(true)
 
   const loadLastChanged = useCallback(async () => {
     try {
       const res = await fetch('/api/pins')
       if (!res.ok) throw new Error()
-      const rows: { name: PinName; updated_at: string }[] = await res.json()
-      const next: Record<PinName, string | null> = { Josh: null, Gina: null, shift_lead: null }
-      rows.forEach((r) => { next[r.name] = r.updated_at })
-      setLastChanged(next)
+      const rows: { name: string; updated_at: string }[] = await res.json()
+      setLastChanged(Object.fromEntries(rows.map((r) => [r.name, r.updated_at])))
     } catch {
       // not critical — the form still works without this
     } finally {
@@ -51,6 +51,7 @@ export default function PinManagementView() {
   const save = async () => {
     setError('')
     setNotice('')
+    if (!which) return
     if (!current) return setError('Enter the current PIN.')
     if (!/^\d{4,6}$/.test(next)) return setError('New PIN must be 4-6 digits.')
     if (next !== confirm) return setError('New PIN and confirmation do not match.')
@@ -64,7 +65,7 @@ export default function PinManagementView() {
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Could not change PIN')
-      setNotice(`✓ ${PIN_LABELS[which]} changed.`)
+      setNotice(`✓ ${which === getOwnerName() || which === getShiftLeadName() ? 'Your' : `${which}'s`} PIN changed.`)
       setCurrent('')
       setNext('')
       setConfirm('')
@@ -76,32 +77,39 @@ export default function PinManagementView() {
     }
   }
 
+  if (options.length === 0) {
+    return <p className="text-gray-400 text-center py-10">Could not determine who&apos;s logged in. Try logging in again.</p>
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Which PIN?</label>
-          <div className="flex gap-2">
-            {PIN_NAMES.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className={segBtn(which === name)}
-                onClick={() => { setWhich(name); setError(''); setNotice('') }}
-              >
-                {name === 'shift_lead' ? 'Shift Lead' : name}
-              </button>
-            ))}
+        {options.length > 1 && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Which PIN?</label>
+            <div className="flex gap-2">
+              {options.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={segBtn(which === name)}
+                  onClick={() => { setWhich(name); setError(''); setNotice('') }}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
           </div>
-          {!loading && (
-            <p className="text-xs text-gray-400 mt-1">
-              {lastChanged[which] ? `Last changed ${formatDateTime(lastChanged[which] as string)}` : 'Not yet changed'}
-            </p>
-          )}
-        </div>
+        )}
+
+        {!loading && (
+          <p className="text-xs text-gray-400 -mt-2">
+            {lastChanged[which] ? `Last changed ${formatDateTime(lastChanged[which] as string)}` : 'Not yet changed'}
+          </p>
+        )}
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Current {PIN_LABELS[which]}</label>
+          <label className="text-xs text-gray-500 font-medium">Current {options.length > 1 ? `${which}'s PIN` : 'PIN'}</label>
           <input
             type="password"
             inputMode="numeric"

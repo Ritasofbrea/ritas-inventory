@@ -164,6 +164,7 @@ export default function Navigation() {
               {navLink('/receive-order', 'Receive Order')}
               {navLink('/adjust', 'Adjustment')}
               {navLink('/todo', 'To-Do', todoBadge)}
+              {navLink('/pin-settings', 'Change PIN')}
             </div>
           )}
 

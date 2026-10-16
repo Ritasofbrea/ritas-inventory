@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { setRole, setOwnerName, clearRole } from '@/lib/auth'
+import { setRole, setOwnerName, setShiftLeadName, clearRole } from '@/lib/auth'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -34,11 +34,12 @@ export default function LoginPage() {
     router.push('/todo')
   }
 
-  // Shift lead has one PIN; "owner" now checks against two named owner PINs
-  // (Josh, Gina — equal access either way), stored in Supabase so they can be
-  // changed in-app instead of via Vercel env vars. There's no "who are you"
-  // step before the PIN — whichever owner's PIN matches is who logged in,
-  // and the server tells us which one so it can be remembered for auto-fill.
+  // Both roles now check against named, individual PINs (owners: Josh/Gina;
+  // shift leads: each person added via the owner-only management screen) —
+  // equal access within each role either way, stored in Supabase so they can
+  // be changed in-app instead of via Vercel env vars. There's no "who are
+  // you" step before the PIN — whichever PIN matches is who logged in, and
+  // the server tells us which one so it can be remembered for auto-fill.
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -54,6 +55,7 @@ export default function LoginPage() {
       if (body.valid) {
         setRole(pinRole)
         if (pinRole === 'owner' && body.name) setOwnerName(body.name)
+        if (pinRole === 'shift_lead' && body.name) setShiftLeadName(body.name)
         router.push(pinRole === 'owner' ? '/dashboard' : '/count')
       } else {
         setError('Wrong PIN. Try again.')
