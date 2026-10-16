@@ -61,3 +61,20 @@ export async function PATCH(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
+
+// Permanent delete — only allowed once already inactive, so someone still
+// actively using their login can't be deleted out from under them; they'd
+// have to be deactivated first (which already blocks login on its own).
+// Unlike deactivate, there's no undo once this runs.
+export async function DELETE(request: NextRequest) {
+  const { id } = await request.json()
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  const db = getServerSupabase()
+  const { data: row, error: fetchError } = await db.from('shift_leads').select('active').eq('id', id).maybeSingle()
+  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
+  if (!row) return NextResponse.json({ error: 'Shift lead not found' }, { status: 404 })
+  if (row.active) return NextResponse.json({ error: 'Deactivate before deleting' }, { status: 400 })
+  const { error } = await db.from('shift_leads').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
+}

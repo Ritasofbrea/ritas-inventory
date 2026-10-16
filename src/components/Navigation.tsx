@@ -17,6 +17,8 @@ const MORE_LINKS = [
   { href: '/manage-items', label: 'Manage Items' },
   { href: '/reports', label: 'Reports' },
   { href: '/clover-mapping', label: 'Clover Mapping' },
+  { href: '/staff', label: 'Staff' },
+  { href: '/shift-leads', label: 'Shift Leads' },
   { href: '/pin-settings', label: 'Change PIN' },
 ]
 

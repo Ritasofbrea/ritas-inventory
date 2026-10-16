@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import ConfirmModal from './ConfirmModal'
 
 interface ShiftLead {
   id: string
@@ -24,6 +25,8 @@ export default function ShiftLeadView() {
   const [busy, setBusy] = useState(false)
   const [resetting, setResetting] = useState<ShiftLead | null>(null)
   const [resetPin, setResetPin] = useState('')
+  const [deleting, setDeleting] = useState<ShiftLead | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -105,6 +108,28 @@ export default function ShiftLeadView() {
     }
   }
 
+  // Permanent, only reachable once already inactive — the deactivate toggle
+  // already blocks login on its own, so this is purely for clearing the list.
+  const handleDelete = async () => {
+    if (!deleting) return
+    setDeleteBusy(true)
+    try {
+      const res = await fetch('/api/shift-leads', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deleting.id }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not delete. Try again.')
+      setDeleting(null)
+      await load()
+    } catch (e) {
+      setDeleting(null)
+      setError(e instanceof Error ? e.message : 'Could not delete. Try again.')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
   if (loading) return <p className="text-gray-400 text-center py-10">Loading…</p>
 
   return (
@@ -159,6 +184,15 @@ export default function ShiftLeadView() {
             >
               {sl.active ? 'Remove' : 'Restore'}
             </button>
+            {!sl.active && (
+              <button
+                onClick={() => setDeleting(sl)}
+                disabled={busy}
+                className="min-h-[40px] px-3 rounded-xl text-sm font-semibold bg-gray-100 text-gray-500 disabled:opacity-50 flex-shrink-0"
+              >
+                Delete
+              </button>
+            )}
           </div>
         ))}
         {list.length === 0 && <p className="text-gray-400 text-center py-6">No shift leads yet.</p>}
@@ -199,6 +233,15 @@ export default function ShiftLeadView() {
             </div>
           </div>
         </div>
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          message={`Permanently delete ${deleting.name}? This can't be undone.`}
+          busy={deleteBusy}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleting(null)}
+        />
       )}
     </div>
   )
