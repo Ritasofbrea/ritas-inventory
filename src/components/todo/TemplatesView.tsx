@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import StaffName from '@/components/StaffName'
-import { Staff, TaskTemplate, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf, formatDueTime, toHM } from '@/lib/tasks'
+import { Staff, TaskTemplate, Recurrence, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf, formatDueTime, toHM } from '@/lib/tasks'
 import TaskFormModal from './TaskFormModal'
 import AddChecklistItemModal from './AddChecklistItemModal'
 import RenameSectionModal from './RenameSectionModal'
@@ -22,7 +22,11 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   const [savingDefault, setSavingDefault] = useState<string | null>(null)
   const [draftDefaultTime, setDraftDefaultTime] = useState<Record<string, string>>({})
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
-  const [addingTo, setAddingTo] = useState<{ checklistName: string; sections: string[] } | null>(null)
+  const [addingTo, setAddingTo] = useState<{
+    checklistName: string
+    sections: string[]
+    sectionRecurrence: Record<string, { recurrence: Recurrence; weekday: number | null; custom_days: number[] | null }>
+  } | null>(null)
   const [renaming, setRenaming] = useState<{ checklistName: string; section: string; otherSections: string[] } | null>(null)
 
   const load = useCallback(async () => {
@@ -270,7 +274,21 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                     </div>
                   ))}
                   <button
-                    onClick={() => setAddingTo({ checklistName: group.name, sections: sectionNames })}
+                    onClick={() =>
+                      setAddingTo({
+                        checklistName: group.name,
+                        sections: sectionNames,
+                        // Pre-fill default for each section from an existing sibling item in
+                        // it — every section passed in here always has at least one, since
+                        // these names come from already-grouped existing templates.
+                        sectionRecurrence: Object.fromEntries(
+                          group.sections.map((s) => [
+                            s.name,
+                            { recurrence: s.items[0].recurrence, weekday: s.items[0].weekday, custom_days: s.items[0].custom_days },
+                          ])
+                        ),
+                      })
+                    }
                     className="w-full min-h-[48px] bg-white border-2 border-dashed border-gray-200 hover:border-green-400 text-gray-500 hover:text-green-700 font-semibold rounded-xl text-sm transition-colors"
                   >
                     + Add Item
@@ -321,6 +339,7 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
           staff={staff}
           checklistName={addingTo.checklistName}
           sections={addingTo.sections}
+          sectionRecurrence={addingTo.sectionRecurrence}
           onClose={() => setAddingTo(null)}
           onSaved={() => {
             setAddingTo(null)

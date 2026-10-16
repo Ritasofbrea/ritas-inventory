@@ -332,10 +332,12 @@ async function renumberChecklist(db: SupabaseClient, orderedIds: string[]): Prom
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type TaskWriteResult<T = {}> = ({ ok: true } & T) | { ok: false; error: string; status: number }
 
-// Adds a new line item to an existing (checklist_name, section). Copies
-// recurrence/weekday/custom_days from an existing sibling in that section — all
-// items in a section share the same cadence, so the owner never has to re-pick
-// it. Placed at the end of its section, everything renumbered to stay contiguous.
+// Adds a new line item to an existing (checklist_name, section). recurrence/
+// weekday/custom_days are per-item, same as any other template — the caller
+// (AddChecklistItemModal) pre-fills them from an existing sibling in that
+// section as a convenience default, but sends its own explicit values here,
+// so a one-off exception (e.g. this one item only on Sundays) is possible.
+// Placed at the end of its section, everything renumbered to stay contiguous.
 export async function addChecklistItem(
   db: SupabaseClient,
   params: {
@@ -348,6 +350,9 @@ export async function addChecklistItem(
     photo_required: boolean
     photo_allowed: boolean
     due_time?: string | null
+    recurrence: Recurrence
+    weekday: number | null
+    custom_days: number[] | null
   }
 ): Promise<TaskWriteResult<{ template: TaskTemplate }>> {
   const { data: siblingsRaw, error: fetchError } = await db
@@ -364,9 +369,9 @@ export async function addChecklistItem(
     .insert({
       title: params.title,
       description: params.description,
-      recurrence: sibling.recurrence,
-      weekday: sibling.weekday,
-      custom_days: sibling.custom_days,
+      recurrence: params.recurrence,
+      weekday: params.weekday,
+      custom_days: params.custom_days,
       checklist_name: params.checklist_name,
       section: params.section,
       sort_order: 0, // placeholder — overwritten by the renumber below

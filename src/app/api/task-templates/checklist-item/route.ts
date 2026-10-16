@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting } from '@/lib/tasks'
-import { addChecklistItem, generateInstancesForDate, isValidAssignee, isValidCreator, moveChecklistItem, parseDueTime } from '@/lib/task-server'
+import {
+  addChecklistItem,
+  generateInstancesForDate,
+  isValidAssignee,
+  isValidCreator,
+  moveChecklistItem,
+  normalizeRecurrence,
+  parseDueTime,
+} from '@/lib/task-server'
 
 // Adds a new line item to an existing named checklist + section (e.g. a new
 // row under "Opening Checklist / Shop Readiness"). Does not create brand-new
@@ -22,6 +30,11 @@ export async function POST(request: NextRequest) {
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
   const dueTimeResult = parseDueTime(due_time)
   if (!dueTimeResult.ok) return NextResponse.json({ error: dueTimeResult.error }, { status: 400 })
+  // Per-item recurrence, explicit from the form (pre-filled from the section's
+  // existing cadence client-side, but always sent explicitly) — not inherited
+  // server-side anymore, so a one-off exception is possible at creation time.
+  const recurrenceResult = normalizeRecurrence(body)
+  if ('error' in recurrenceResult) return NextResponse.json({ error: recurrenceResult.error }, { status: 400 })
 
   const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
@@ -40,6 +53,7 @@ export async function POST(request: NextRequest) {
     created_by,
     due_time: dueTimeResult.value,
     ...photoFlags(setting),
+    ...recurrenceResult,
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
 

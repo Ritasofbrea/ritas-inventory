@@ -2,26 +2,36 @@
 
 import { useState } from 'react'
 import { getOwnerName } from '@/lib/auth'
-import { Staff, EVERYONE, TASK_CREATORS, PhotoSetting } from '@/lib/tasks'
+import { Staff, EVERYONE, TASK_CREATORS, PhotoSetting, Recurrence, WEEKDAY_LABELS } from '@/lib/tasks'
+
+type Freq = 'daily' | 'weekly' | 'custom'
 
 const segBtn = (active: boolean) =>
   `flex-1 min-h-[44px] rounded-xl text-sm font-semibold border transition-colors ${
     active ? 'bg-[#1a7a3c] text-white border-[#1a7a3c]' : 'bg-white text-gray-600 border-gray-200'
   }`
 
-// Adds a new line item to an EXISTING checklist + section — the recurrence
-// (daily / which weekday) is inherited server-side from the section's other
-// items, so this form only asks for what's actually new about this item.
+type SectionRecurrence = Record<string, { recurrence: Recurrence; weekday: number | null; custom_days: number[] | null }>
+
+const freqOf = (r?: { recurrence: Recurrence }): Freq => (r && r.recurrence !== 'none' ? (r.recurrence as Freq) : 'daily')
+
+// Adds a new line item to an EXISTING checklist + section. Recurrence is
+// per-item, same as any other template — pre-filled from the section's
+// existing cadence (so the common case, another daily item in a daily
+// section, needs zero extra taps) but fully editable, for a one-off
+// exception like "same checklist, but Sundays only" on just this item.
 export default function AddChecklistItemModal({
   staff,
   checklistName,
   sections,
+  sectionRecurrence,
   onClose,
   onSaved,
 }: {
   staff: Staff[]
   checklistName: string
   sections: string[]
+  sectionRecurrence: SectionRecurrence
   onClose: () => void
   onSaved: () => void
 }) {
@@ -35,8 +45,25 @@ export default function AddChecklistItemModal({
   const [createdBy, setCreatedBy] = useState(getOwnerName() ?? '')
   const [photo, setPhoto] = useState<PhotoSetting>('optional')
   const [dueTime, setDueTime] = useState('')
+  const [freq, setFreq] = useState<Freq>(freqOf(sectionRecurrence[sections[0] ?? '']))
+  const [weekday, setWeekday] = useState<number | null>(sectionRecurrence[sections[0] ?? '']?.weekday ?? null)
+  const [customDays, setCustomDays] = useState<number[]>(sectionRecurrence[sections[0] ?? '']?.custom_days ?? [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // Changing section re-pre-fills recurrence from that section's existing
+  // cadence — different sections can already run on different schedules
+  // (e.g. Time to Lean), so the default should track whichever is selected.
+  const handleSectionChange = (next: string) => {
+    setSection(next)
+    const existing = sectionRecurrence[next]
+    setFreq(freqOf(existing))
+    setWeekday(existing?.weekday ?? null)
+    setCustomDays(existing?.custom_days ?? [])
+  }
+
+  const toggleCustomDay = (d: number) =>
+    setCustomDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))
 
   const save = async () => {
     setError('')
@@ -44,6 +71,8 @@ export default function AddChecklistItemModal({
     if (!title.trim()) return setError('Give the item a title.')
     if (!assignedTo) return setError('Pick who this is assigned to.')
     if (!createdBy) return setError('Pick who added this task.')
+    if (freq === 'weekly' && weekday === null) return setError('Pick a day of the week.')
+    if (freq === 'custom' && customDays.length === 0) return setError('Pick at least one day.')
     setSaving(true)
     try {
       const res = await fetch('/api/task-templates/checklist-item', {
@@ -58,6 +87,9 @@ export default function AddChecklistItemModal({
           created_by: createdBy,
           photo_setting: photo,
           due_time: dueTime || null,
+          recurrence: freq,
+          weekday: freq === 'weekly' ? weekday : null,
+          custom_days: freq === 'custom' ? customDays : null,
         }),
       })
       const body = await res.json()
@@ -88,7 +120,7 @@ export default function AddChecklistItemModal({
             <label className="text-xs text-gray-500 font-medium">Section</label>
             <select
               value={section}
-              onChange={(e) => setSection(e.target.value)}
+              onChange={(e) => handleSectionChange(e.target.value)}
               className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
             >
               {sections.map((s) => (
@@ -145,6 +177,39 @@ export default function AddChecklistItemModal({
               rows={2}
               className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 focus:outline-none focus:border-green-500"
             />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <label className="text-xs text-gray-500 font-medium -mb-1">How often?</label>
+            <div className="flex gap-2">
+              <button type="button" className={segBtn(freq === 'daily')} onClick={() => setFreq('daily')}>Daily</button>
+              <button type="button" className={segBtn(freq === 'weekly')} onClick={() => setFreq('weekly')}>Weekly</button>
+              <button type="button" className={segBtn(freq === 'custom')} onClick={() => setFreq('custom')}>Custom</button>
+            </div>
+            {freq === 'weekly' && (
+              <div>
+                <p className="text-xs text-gray-500 font-medium mb-1">Which day?</p>
+                <div className="grid grid-cols-7 gap-1">
+                  {WEEKDAY_LABELS.map((label, i) => (
+                    <button key={label} type="button" className={segBtn(weekday === i)} onClick={() => setWeekday(i)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {freq === 'custom' && (
+              <div>
+                <p className="text-xs text-gray-500 font-medium mb-1">Which days? (pick any)</p>
+                <div className="grid grid-cols-7 gap-1">
+                  {WEEKDAY_LABELS.map((label, i) => (
+                    <button key={label} type="button" className={segBtn(customDays.includes(i))} onClick={() => toggleCustomDay(i)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">
