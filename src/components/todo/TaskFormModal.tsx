@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import ConfirmModal from './ConfirmModal'
+import TimeField from './TimeField'
 import { getOwnerName } from '@/lib/auth'
 import {
   Staff,
@@ -295,12 +296,7 @@ export default function TaskFormModal({
 
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500 font-medium">{dueTimeLabel}</label>
-            <input
-              type="time"
-              value={dueTime}
-              onChange={(e) => setDueTime(e.target.value)}
-              className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 focus:outline-none focus:border-green-500"
-            />
+            <TimeField value={dueTime} onChange={setDueTime} />
           </div>
 
           {showPriority && (

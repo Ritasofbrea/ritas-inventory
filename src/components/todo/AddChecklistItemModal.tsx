@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { getOwnerName } from '@/lib/auth'
 import { Staff, EVERYONE, TASK_CREATORS, PhotoSetting, Recurrence, WEEKDAY_LABELS } from '@/lib/tasks'
+import TimeField from './TimeField'
 
 type Freq = 'daily' | 'weekly' | 'custom'
 
@@ -225,12 +226,7 @@ export default function AddChecklistItemModal({
             <label className="text-xs text-gray-500 font-medium">
               Due time <span className="text-gray-400 font-normal">(optional — leave blank to use the checklist&apos;s default)</span>
             </label>
-            <input
-              type="time"
-              value={dueTime}
-              onChange={(e) => setDueTime(e.target.value)}
-              className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 focus:outline-none focus:border-green-500"
-            />
+            <TimeField value={dueTime} onChange={setDueTime} />
           </div>
 
           {error && <p className="text-red-500 text-sm">{error}</p>}

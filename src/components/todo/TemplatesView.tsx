@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import StaffName from '@/components/StaffName'
-import { Staff, TaskTemplate, Recurrence, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf, formatDueTime, toHM } from '@/lib/tasks'
+import { Staff, TaskTemplate, Recurrence, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf, formatDueTime } from '@/lib/tasks'
 import TaskFormModal from './TaskFormModal'
 import AddChecklistItemModal from './AddChecklistItemModal'
 import RenameSectionModal from './RenameSectionModal'
+import TimeField from './TimeField'
 
 // Owner-only: edit or deactivate recurring task templates (never hard-deleted),
 // plus — for the three named checklists — add a new line item to an existing
@@ -20,7 +21,6 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   const [busyId, setBusyId] = useState<string | null>(null)
   const [moveBusyId, setMoveBusyId] = useState<string | null>(null)
   const [savingDefault, setSavingDefault] = useState<string | null>(null)
-  const [draftDefaultTime, setDraftDefaultTime] = useState<Record<string, string>>({})
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const [addingTo, setAddingTo] = useState<{
     checklistName: string
@@ -49,14 +49,6 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   useEffect(() => {
     load()
   }, [load])
-
-  const clearDraftDefaultTime = (name: string) => {
-    setDraftDefaultTime((prev) => {
-      const next = { ...prev }
-      delete next[name]
-      return next
-    })
-  }
 
   const saveDefaultDueTime = async (name: string, due_time: string | null) => {
     setSavingDefault(name)
@@ -214,40 +206,11 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
                     <label className="text-xs font-semibold text-gray-500 flex-1">Default due time</label>
-                    <input
-                      type="time"
-                      value={draftDefaultTime[group.name] ?? toHM(checklistDefaults[group.name] ?? null) ?? ''}
-                      onChange={(e) => setDraftDefaultTime((prev) => ({ ...prev, [group.name]: e.target.value }))}
-                      onBlur={async (e) => {
-                        // A native time input reports "" both when genuinely incomplete
-                        // (e.g. only the hour segment has been picked so far) and when
-                        // explicitly cleared — those are indistinguishable from the value
-                        // alone. Explicit clearing already has its own "Clear" button
-                        // below, so an empty/incomplete value here just discards the
-                        // in-progress edit (falls back to the last saved time) instead of
-                        // ever saving null — that used to wipe out a working due time
-                        // whenever a tap-away (tab switch, collapsing the section)
-                        // interrupted the picker before all three segments were set.
-                        const value = e.target.value
-                        if (value) {
-                          const committed = toHM(checklistDefaults[group.name] ?? null) ?? ''
-                          if (value !== committed) await saveDefaultDueTime(group.name, value)
-                        }
-                        clearDraftDefaultTime(group.name)
-                      }}
+                    <TimeField
+                      value={checklistDefaults[group.name] ?? null}
+                      onChange={(value) => saveDefaultDueTime(group.name, value || null)}
                       disabled={savingDefault === group.name}
-                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-green-500 disabled:opacity-50"
                     />
-                    {checklistDefaults[group.name] && (
-                      <button
-                        type="button"
-                        onClick={() => { clearDraftDefaultTime(group.name); saveDefaultDueTime(group.name, null) }}
-                        disabled={savingDefault === group.name}
-                        className="text-xs font-semibold text-gray-400 hover:text-gray-600 disabled:opacity-50"
-                      >
-                        Clear
-                      </button>
-                    )}
                   </div>
                   {group.sections.map((section) => (
                     <div key={section.name}>
