@@ -13,6 +13,11 @@ export const EVERYONE = 'Everyone'
 // Who can be recorded as having added a task (created_by)
 export const TASK_CREATORS = ['Josh', 'Gina', 'Valerie'] as const
 
+// The two named owners — distinct from TASK_CREATORS above (Valerie is a
+// task creator but not an owner). Mirrors the hardcoded OWNER_NAMES already
+// used in src/app/api/pins/route.ts for the owners/shift_leads table split.
+export const OWNER_NAMES = ['Josh', 'Gina'] as const
+
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'custom'
 export type PhotoSetting = 'off' | 'optional' | 'required'
 // Standalone (non-checklist) tasks only — named-checklist items ignore this.

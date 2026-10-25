@@ -8,12 +8,14 @@ import ConfirmModal from './ConfirmModal'
 import StaffName from '@/components/StaffName'
 import { staffColorFor, pastelTint } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
-import { Staff, formatDateTime } from '@/lib/tasks'
+import { Staff, formatDateTime, OWNER_NAMES } from '@/lib/tasks'
 import { Note, NoteReply, formatRelativeTime } from '@/lib/notes'
 
 // Shared sticky-notes board on the To-Do screen, above Today's Tasks. Anyone
 // can add a note (no PIN); only owners/shift leads (canManage, same gate as
-// + Add Task) can delete one.
+// + Add Task) can delete one. "Handled" is open to everyone too, UNLESS the
+// note was authored by an owner (Josh/Gina) — then it's canManage-only, same
+// tier as Delete (see handledLocked below).
 //
 // Live updates come from Supabase Realtime (postgres_changes on `notes`),
 // not polling — separate from Today's Tasks' own 5-minute poll, which stays
@@ -109,8 +111,9 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
     load()
   }
 
-  // No PIN gate, same as adding a note — a plain visual signal anyone can
-  // flip, not a gate on anything (Delete stays owner/shift-lead-only, below).
+  // Gating (handledLocked, in the render below) keeps this from ever firing
+  // on an owner's note for a non-canManage visitor — the checkbox is
+  // disabled in that case, so this function itself stays ungated.
   const toggleHandled = async (note: Note) => {
     setHandledBusyId(note.id)
     const next = !note.handled
@@ -167,6 +170,10 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
             // fill — falls back to the default yellow sticky-note styling
             // when they have no color set. Layout/shadow/etc. unchanged.
             const authorColor = staffColorFor(n.created_by, staff)
+            // An owner's own note can only be marked handled by someone
+            // authenticated as owner/shift-lead (canManage, same tier as
+            // Delete) — everyone else's notes keep the open-to-anyone toggle.
+            const handledLocked = (OWNER_NAMES as readonly string[]).includes(n.created_by) && !canManage
             return (
               <div
                 key={n.id}
@@ -178,7 +185,8 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                     type="checkbox"
                     checked={n.handled}
                     onChange={() => toggleHandled(n)}
-                    disabled={handledBusyId === n.id}
+                    disabled={handledBusyId === n.id || handledLocked}
+                    title={handledLocked ? 'Only an owner or shift lead can mark this handled' : undefined}
                     aria-label={n.handled ? 'Mark not handled' : 'Mark handled'}
                     className="mt-1 w-4 h-4 flex-shrink-0 accent-[#1a7a3c] disabled:opacity-50"
                   />
