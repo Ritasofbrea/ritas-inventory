@@ -154,6 +154,11 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
 
   return (
     <div className="mb-6">
+      {/* Same size/weight/prominence as the page's own "To-Do" <h1> — a
+          section header, not a replacement for the small "Notes" label
+          directly below it, which stays as-is. */}
+      <h2 className="text-2xl font-bold text-gray-900 mb-3">Store Communication</h2>
+
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500">Notes</h2>
         <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1">
