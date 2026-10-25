@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { isActiveStaff } from '@/lib/task-server'
+import { NoteReply } from '@/lib/notes'
 
 export async function GET() {
   const db = getServerSupabase()
-  const { data, error } = await db.from('notes').select('*').order('created_at', { ascending: false })
+  const [{ data, error }, { data: repliesRaw, error: repliesError }] = await Promise.all([
+    db.from('notes').select('*').order('created_at', { ascending: false }),
+    db.from('note_replies').select('*').order('created_at', { ascending: true }),
+  ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+  if (repliesError) return NextResponse.json({ error: repliesError.message }, { status: 500 })
+
+  const repliesByNote = new Map<string, NoteReply[]>()
+  for (const r of (repliesRaw ?? []) as NoteReply[]) {
+    const list = repliesByNote.get(r.note_id) ?? []
+    list.push(r)
+    repliesByNote.set(r.note_id, list)
+  }
+  const notes = (data ?? []).map((n) => ({ ...n, replies: repliesByNote.get(n.id) ?? [] }))
+  return NextResponse.json(notes)
 }
 
 // No PIN gate — anyone viewing the To-Do screen (even an unauthenticated visitor)

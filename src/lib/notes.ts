@@ -1,11 +1,20 @@
 // Shared sticky-notes types + display helpers for the To-Do screen's Notes board.
 
+export interface NoteReply {
+  id: string
+  note_id: string
+  content: string
+  created_by: string
+  created_at: string
+}
+
 export interface Note {
   id: string
   content: string
   created_by: string
   created_at: string
   handled: boolean
+  replies: NoteReply[]
 }
 
 // "just now" / "5 min ago" / "3 hr ago" / "2 days ago" / "3 weeks ago" / "4 months ago" —

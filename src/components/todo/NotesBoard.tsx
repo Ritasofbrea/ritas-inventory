@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload, RealtimePostgresDeletePayload } from '@supabase/realtime-js'
 import AddNoteModal from './AddNoteModal'
+import AddReplyModal from './AddReplyModal'
 import ConfirmModal from './ConfirmModal'
 import StaffName from '@/components/StaffName'
 import { staffColorFor, pastelTint } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
 import { Staff, formatDateTime } from '@/lib/tasks'
-import { Note, formatRelativeTime } from '@/lib/notes'
+import { Note, NoteReply, formatRelativeTime } from '@/lib/notes'
 
 // Shared sticky-notes board on the To-Do screen, above Today's Tasks. Anyone
 // can add a note (no PIN); only owners/shift leads (canManage, same gate as
@@ -25,6 +26,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
   const [deleting, setDeleting] = useState<Note | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [handledBusyId, setHandledBusyId] = useState<string | null>(null)
+  const [replyingTo, setReplyingTo] = useState<Note | null>(null)
   // Tap a note's timestamp to flip it to the full date/time (hover does the
   // same via the title attribute, but this is a touch-first PWA).
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -53,14 +55,33 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
     const channel = supabase
       .channel('notes-board')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes' }, (payload: RealtimePostgresInsertPayload<Note>) => {
-        setNotes((prev) => (prev.some((n) => n.id === payload.new.id) ? prev : [payload.new, ...prev]))
+        // The raw `notes` row has no `replies` column — it's a join this
+        // app adds in the GET /api/notes route — so a freshly-inserted note
+        // always starts with none rather than an undefined field.
+        setNotes((prev) => (prev.some((n) => n.id === payload.new.id) ? prev : [{ ...payload.new, replies: [] }, ...prev]))
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresUpdatePayload<Note>) => {
-        setNotes((prev) => prev.map((n) => (n.id === payload.new.id ? payload.new : n)))
+        // Same reasoning as INSERT: merge rather than replace, so an
+        // unrelated field update (e.g. someone else's "handled" toggle)
+        // doesn't wipe this note's already-loaded replies off the card.
+        setNotes((prev) => prev.map((n) => (n.id === payload.new.id ? { ...n, ...payload.new } : n)))
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresDeletePayload<Note>) => {
         const deletedId = payload.old.id
         if (deletedId) setNotes((prev) => prev.filter((n) => n.id !== deletedId))
+      })
+      // A parent note's own cascade-delete removes its replies in the
+      // database, but there's no separate DELETE event to listen for here —
+      // the note's DELETE handler above already drops the whole card.
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'note_replies' }, (payload: RealtimePostgresInsertPayload<NoteReply>) => {
+        const reply = payload.new
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === reply.note_id && !n.replies.some((r) => r.id === reply.id)
+              ? { ...n, replies: [...n.replies, reply] }
+              : n
+          )
+        )
       })
       .subscribe()
 
@@ -80,6 +101,11 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
 
   const afterSaved = () => {
     setShowAdd(false)
+    load()
+  }
+
+  const afterReplySaved = () => {
+    setReplyingTo(null)
     load()
   }
 
@@ -169,15 +195,36 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                   >
                     <StaffName name={n.created_by} staff={staff} /> · {expanded.has(n.id) ? formatDateTime(n.created_at) : formatRelativeTime(n.created_at)}
                   </button>
-                  {canManage && (
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     <button
-                      onClick={() => setDeleting(n)}
-                      className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 flex-shrink-0"
+                      onClick={() => setReplyingTo(n)}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1"
                     >
-                      Delete
+                      Reply
                     </button>
-                  )}
+                    {canManage && (
+                      <button
+                        onClick={() => setDeleting(n)}
+                        className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {n.replies.length > 0 && (
+                  <div className="mt-2 pl-3 border-l-2 border-gray-200 flex flex-col gap-1.5">
+                    {n.replies.map((r) => (
+                      <div key={r.id}>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.content}</p>
+                        <p className="text-xs text-gray-400">
+                          <StaffName name={r.created_by} staff={staff} /> · {formatRelativeTime(r.created_at)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -185,6 +232,15 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
       )}
 
       {showAdd && <AddNoteModal staff={staff} onClose={() => setShowAdd(false)} onSaved={afterSaved} />}
+
+      {replyingTo && (
+        <AddReplyModal
+          staff={staff}
+          noteId={replyingTo.id}
+          onClose={() => setReplyingTo(null)}
+          onSaved={afterReplySaved}
+        />
+      )}
 
       {deleting && (
         <ConfirmModal
