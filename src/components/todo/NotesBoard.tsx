@@ -6,9 +6,9 @@ import AddNoteModal from './AddNoteModal'
 import AddReplyModal from './AddReplyModal'
 import ConfirmModal from './ConfirmModal'
 import StaffName from '@/components/StaffName'
-import { staffColorFor, pastelTint } from '@/lib/staffColor'
+import { staffColorFor, pastelTint, isOwnerStaffName } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
-import { Staff, formatDateTime, OWNER_NAMES } from '@/lib/tasks'
+import { Staff, formatDateTime } from '@/lib/tasks'
 import { Note, NoteReply, formatRelativeTime } from '@/lib/notes'
 
 // Shared sticky-notes board on the To-Do screen, above Today's Tasks. Anyone
@@ -173,7 +173,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
             // An owner's own note can only be marked handled by someone
             // authenticated as owner/shift-lead (canManage, same tier as
             // Delete) — everyone else's notes keep the open-to-anyone toggle.
-            const handledLocked = (OWNER_NAMES as readonly string[]).includes(n.created_by) && !canManage
+            const handledLocked = isOwnerStaffName(n.created_by) && !canManage
             return (
               <div
                 key={n.id}

@@ -21,6 +21,15 @@ export function staffColorFor(name: string, staff: Staff[]): string | null {
   return staff.find((s) => s.name === alias)?.color ?? null
 }
 
+// Is this a *staff-table* name (e.g. a note's created_by, which is always a
+// staff name, never a TASK_CREATORS short one) for one of the two owners?
+// Reuses CREATOR_NAME_ALIASES.Josh ('Josh D.') as the single source of truth
+// for that identity instead of a second hardcoded string — Gina's staff name
+// matches her owners-table name exactly, so no alias is needed for her.
+export function isOwnerStaffName(staffName: string): boolean {
+  return staffName === 'Gina' || staffName === CREATOR_NAME_ALIASES.Josh
+}
+
 // Mixes a hex color toward white for a subtle pastel background tint — e.g.
 // a note card tinted by its author's color, not a bold/solid fill. `amount`
 // is how much of the way toward white to go (0 = original color, 1 = white).

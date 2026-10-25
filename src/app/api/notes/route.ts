@@ -46,10 +46,12 @@ export async function POST(request: NextRequest) {
 
 // Toggling "handled" is open to everyone for a regular staffer's note, same
 // no-PIN trust level as adding one — a plain visual signal. For a note an
-// owner (Josh/Gina) authored, only owner/shift-lead (canManage) can toggle
-// it, same tier as Delete. Both gates are enforced client-side only (the
-// checkbox is disabled otherwise), same as every other owner-only action in
-// this app — there's no server-side role check anywhere in this codebase.
+// owner authored (isOwnerStaffName in staffColor.ts — created_by is always a
+// staff-table name here, e.g. 'Josh D.', not the owners-table 'Josh'), only
+// owner/shift-lead (canManage) can toggle it, same tier as Delete. Both
+// gates are enforced client-side only (the checkbox is disabled otherwise),
+// same as every other owner-only action in this app — there's no
+// server-side role check anywhere in this codebase.
 export async function PATCH(request: NextRequest) {
   const { id, handled } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
