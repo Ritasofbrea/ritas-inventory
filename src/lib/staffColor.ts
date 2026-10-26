@@ -43,6 +43,31 @@ export function namesLikelyMatch(shortOrFullName: string, staffFullName: string)
   return a === b || b.startsWith(`${a} `)
 }
 
+// How many people are actually required to acknowledge an ack-required note
+// (patch 16): every active staff name plus every active shift lead
+// (deduped by staff-table identity via namesLikelyMatch, falling back to
+// the shift lead's own name if they have no matching staff entry), minus
+// owners (never required), minus the note's author if — and only if — the
+// author is a shift lead (exempt from their own note; a regular staffer
+// still counts on their own note). Pure/shared so the client (NotesBoard,
+// for display) and the server (acknowledgments route, for auto-archive —
+// see notes-server.ts) can never compute a different number for the same
+// note.
+export function computeAckDenominator(staffNames: string[], shiftLeadNames: string[], authorName: string): number {
+  const denom = new Set<string>()
+  staffNames.forEach((name) => {
+    if (!isOwnerStaffName(name)) denom.add(name)
+  })
+  shiftLeadNames.forEach((slName) => {
+    const matchedStaff = staffNames.find((s) => namesLikelyMatch(slName, s))
+    const canonicalName = matchedStaff ?? slName
+    if (!isOwnerStaffName(canonicalName)) denom.add(canonicalName)
+  })
+  const authorIsShiftLead = shiftLeadNames.some((sl) => namesLikelyMatch(sl, authorName))
+  if (authorIsShiftLead) denom.delete(authorName)
+  return denom.size
+}
+
 // Mixes a hex color toward white for a subtle pastel background tint — e.g.
 // a note card tinted by its author's color, not a bold/solid fill. `amount`
 // is how much of the way toward white to go (0 = original color, 1 = white).

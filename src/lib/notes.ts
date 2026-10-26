@@ -1,5 +1,7 @@
 // Shared sticky-notes types + display helpers for the To-Do screen's Notes board.
 
+import { todayInTZ } from './tasks'
+
 export interface NoteReply {
   id: string
   note_id: string
@@ -26,8 +28,31 @@ export interface Note {
   created_at: string
   handled: boolean
   requires_ack: boolean
+  archived: boolean
+  archived_at: string | null
   replies: NoteReply[]
   acknowledgments: NoteAcknowledgment[]
+}
+
+export interface ArchivedNoteDayGroup {
+  date: string
+  notes: Note[]
+}
+
+// Groups already-sorted (newest first) archived notes by their Pacific
+// calendar day (archived_at), same grouping shape as tasks'
+// groupHistoryByDay — but keyed off a timestamp rather than an existing
+// due_date string, so the day has to be computed here via todayInTZ.
+export function groupArchivedNotesByDay(notes: Note[]): ArchivedNoteDayGroup[] {
+  const groups: ArchivedNoteDayGroup[] = []
+  for (const note of notes) {
+    if (!note.archived_at) continue
+    const date = todayInTZ(new Date(note.archived_at))
+    const last = groups[groups.length - 1]
+    if (last && last.date === date) last.notes.push(note)
+    else groups.push({ date, notes: [note] })
+  }
+  return groups
 }
 
 // "just now" / "5 min ago" / "3 hr ago" / "2 days ago" / "3 weeks ago" / "4 months ago" —

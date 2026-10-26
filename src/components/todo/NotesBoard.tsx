@@ -6,8 +6,9 @@ import AddNoteModal from './AddNoteModal'
 import AddReplyModal from './AddReplyModal'
 import AckModal from './AckModal'
 import ConfirmModal from './ConfirmModal'
+import NotesHistoryModal from './NotesHistoryModal'
 import StaffName from '@/components/StaffName'
-import { staffColorFor, pastelTint, isOwnerStaffName, namesLikelyMatch } from '@/lib/staffColor'
+import { staffColorFor, pastelTint, isOwnerStaffName, namesLikelyMatch, computeAckDenominator } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
 import { Staff, formatDateTime } from '@/lib/tasks'
 import { Note, NoteReply, NoteAcknowledgment, formatRelativeTime } from '@/lib/notes'
@@ -39,9 +40,17 @@ import { Note, NoteReply, NoteAcknowledgment, formatRelativeTime } from '@/lib/n
 // against the note's created_by via namesLikelyMatch — shift leads aren't
 // in the same name-space as the staff table, same gap isOwnerStaffName
 // solves for owners). The "Acknowledged by (n of X)" denominator mirrors
-// this: owners are never counted, and an author is only dropped from the
-// denominator when they're a shift lead (a regular staffer still counts on
-// their own note).
+// this (computeAckDenominator in staffColor.ts, shared with the server so
+// the two can't drift — see notes-server.ts's auto-archive check below).
+//
+// Archiving (patch 17): "Delete" no longer destroys a note — it archives it
+// (content/replies/acknowledgments all preserved), which just means it
+// disappears from this live board; see Notes History for the full record.
+// An ack-required note also auto-archives the moment its acknowledgment
+// count reaches the required denominator (handled server-side, right after
+// the triggering insert in POST /api/notes/acknowledgments) — either path
+// shows up here as a Realtime UPDATE with archived: true, which this board
+// treats as "remove from the live list," not a field to merge in.
 export default function NotesBoard({
   staff,
   canManage,
@@ -61,6 +70,7 @@ export default function NotesBoard({
   const [handledBusyId, setHandledBusyId] = useState<string | null>(null)
   const [replyingTo, setReplyingTo] = useState<Note | null>(null)
   const [acking, setAcking] = useState<Note | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
   const [shiftLeads, setShiftLeads] = useState<{ name: string; active: boolean }[]>([])
   // Tap a note's timestamp to flip it to the full date/time (hover does the
   // same via the title attribute, but this is a touch-first PWA).
@@ -112,10 +122,16 @@ export default function NotesBoard({
         )
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresUpdatePayload<Note>) => {
-        // Same reasoning as INSERT: merge rather than replace, so an
-        // unrelated field update (e.g. someone else's "handled" toggle)
-        // doesn't wipe this note's already-loaded replies off the card.
-        setNotes((prev) => prev.map((n) => (n.id === payload.new.id ? { ...n, ...payload.new } : n)))
+        // An archive (manual Delete, or auto-archive on full acknowledgment —
+        // both are UPDATEs now, never a DELETE) means "remove from this live
+        // list," same visual result as the old hard-delete. Any other field
+        // update (e.g. someone else's "handled" toggle) merges rather than
+        // replaces, so it doesn't wipe this note's already-loaded replies.
+        if (payload.new.archived) {
+          setNotes((prev) => prev.filter((n) => n.id !== payload.new.id))
+        } else {
+          setNotes((prev) => prev.map((n) => (n.id === payload.new.id ? { ...n, ...payload.new } : n)))
+        }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresDeletePayload<Note>) => {
         const deletedId = payload.old.id
@@ -229,9 +245,14 @@ export default function NotesBoard({
 
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500">Notes</h2>
-        <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1">
-          + Add Note
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setShowHistory(true)} className="text-xs font-semibold text-gray-500 hover:text-gray-700 px-2 py-1">
+            Notes History
+          </button>
+          <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1">
+            + Add Note
+          </button>
+        </div>
       </div>
 
       {!loading && notes.length === 0 && <p className="text-gray-400 text-sm text-center py-3">No notes yet.</p>}
@@ -261,25 +282,13 @@ export default function NotesBoard({
             // Exemptions (patch 16): an owner is exempt from every
             // ack-required note; a shift lead is exempt only from a note
             // they personally authored.
-            const authorIsShiftLead = shiftLeads.some((sl) => namesLikelyMatch(sl.name, n.created_by))
             const viewerIsAuthoringShiftLead = !!shiftLeadName && namesLikelyMatch(shiftLeadName, n.created_by)
             const ackExempt = isOwner || viewerIsAuthoringShiftLead
-
-            // Denominator = active staff + active shift leads, deduped by
-            // staff-table identity, minus owners, minus the author if (and
-            // only if) the author is a shift lead. A regular staffer still
-            // counts on their own note.
-            const ackDenominatorNames = new Set<string>()
-            staff.forEach((s) => {
-              if (!isOwnerStaffName(s.name)) ackDenominatorNames.add(s.name)
-            })
-            shiftLeads.forEach((sl) => {
-              const matchedStaff = staff.find((s) => namesLikelyMatch(sl.name, s.name))
-              const canonicalName = matchedStaff ? matchedStaff.name : sl.name
-              if (!isOwnerStaffName(canonicalName)) ackDenominatorNames.add(canonicalName)
-            })
-            if (authorIsShiftLead) ackDenominatorNames.delete(n.created_by)
-            const ackDenominator = ackDenominatorNames.size
+            const ackDenominator = computeAckDenominator(
+              staff.map((s) => s.name),
+              shiftLeads.map((sl) => sl.name),
+              n.created_by
+            )
 
             return (
               <div
@@ -401,12 +410,14 @@ export default function NotesBoard({
 
       {deleting && (
         <ConfirmModal
-          message="Permanently delete this note? This can't be undone."
+          message="Archive this note? It'll disappear from the board here, but stays saved — with its replies and any acknowledgments — in Notes History."
           busy={deleteBusy}
           onConfirm={handleDelete}
           onCancel={() => setDeleting(null)}
         />
       )}
+
+      {showHistory && <NotesHistoryModal staff={staff} shiftLeads={shiftLeads} onClose={() => setShowHistory(false)} />}
     </div>
   )
 }

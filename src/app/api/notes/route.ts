@@ -1,37 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { isActiveStaff } from '@/lib/task-server'
-import { NoteReply, NoteAcknowledgment } from '@/lib/notes'
+import { fetchNotesWithJoins } from '@/lib/notes-server'
 
+// Live board only — archived notes (manually "deleted" or auto-archived on
+// full acknowledgment, see DELETE below and notes-server.ts) live in Notes
+// History instead; see GET /api/notes/history.
 export async function GET() {
   const db = getServerSupabase()
-  const [{ data, error }, { data: repliesRaw, error: repliesError }, { data: acksRaw, error: acksError }] = await Promise.all([
-    db.from('notes').select('*').order('created_at', { ascending: false }),
-    db.from('note_replies').select('*').order('created_at', { ascending: true }),
-    db.from('note_acknowledgments').select('*').order('acknowledged_at', { ascending: true }),
-  ])
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (repliesError) return NextResponse.json({ error: repliesError.message }, { status: 500 })
-  if (acksError) return NextResponse.json({ error: acksError.message }, { status: 500 })
-
-  const repliesByNote = new Map<string, NoteReply[]>()
-  for (const r of (repliesRaw ?? []) as NoteReply[]) {
-    const list = repliesByNote.get(r.note_id) ?? []
-    list.push(r)
-    repliesByNote.set(r.note_id, list)
+  try {
+    return NextResponse.json(await fetchNotesWithJoins(db, { archived: false }))
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not load notes' }, { status: 500 })
   }
-  const acksByNote = new Map<string, NoteAcknowledgment[]>()
-  for (const a of (acksRaw ?? []) as NoteAcknowledgment[]) {
-    const list = acksByNote.get(a.note_id) ?? []
-    list.push(a)
-    acksByNote.set(a.note_id, list)
-  }
-  const notes = (data ?? []).map((n) => ({
-    ...n,
-    replies: repliesByNote.get(n.id) ?? [],
-    acknowledgments: acksByNote.get(n.id) ?? [],
-  }))
-  return NextResponse.json(notes)
 }
 
 // No PIN gate — anyone viewing the To-Do screen (even an unauthenticated visitor)
@@ -79,14 +60,20 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json(data)
 }
 
-// Owner/shift-lead gating is enforced client-side only (the Delete button is
-// hidden otherwise) — same as every other owner-only action in this app (e.g.
-// task delete), there's no server-side role check anywhere in this codebase.
+// "Delete" archives, it no longer destroys the row (patch 17) — so
+// acknowledgment record-keeping survives it. Sets archived/archived_at and
+// leaves everything else (content, replies, acknowledgments) untouched; it
+// just disappears from the live board (GET above) and shows up in Notes
+// History (GET /api/notes/history) instead. Owner/shift-lead gating is
+// enforced client-side only (the Delete button is hidden otherwise), same
+// as every other owner-only action in this app — there's no server-side
+// role check anywhere in this codebase. There is no hard-delete anywhere
+// anymore and no restore/un-archive for this pass.
 export async function DELETE(request: NextRequest) {
   const { id } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   const db = getServerSupabase()
-  const { error } = await db.from('notes').delete().eq('id', id)
+  const { error } = await db.from('notes').update({ archived: true, archived_at: new Date().toISOString() }).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }
