@@ -53,6 +53,7 @@ export default function TodoPage() {
   const [pinUnlocked, setPinUnlocked] = useState(false)
   const [showPin, setShowPin] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [showAddNote, setShowAddNote] = useState(false)
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<TaskInstance | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -145,6 +146,15 @@ export default function TodoPage() {
   const handleAddClick = () => {
     if (canManage) setShowAdd(true)
     else setShowPin(true)
+  }
+
+  // "Jump to Tasks" (combined-header patch): smooth-scrolls past Notes,
+  // whatever its length, straight to the view-switcher/Add Task row that
+  // sits right above the actual task list — same anchor whether that row
+  // is currently rendered above Notes (history/missed/templates views) or
+  // below it (today view, see taskListHeader below).
+  const scrollToTasks = () => {
+    document.getElementById('todo-task-list-start')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const handleCheckboxTap = (task: TaskInstance) => {
@@ -454,39 +464,65 @@ export default function TodoPage() {
 
   const views: View[] = isOwner ? ['today', 'history', 'missed', 'templates'] : ['today']
 
+  // View-switcher tabs + "+ Add Task", as one unit (combined-header patch:
+  // Add Task relocated here, right at the top of the actual task list, so
+  // the "Jump to Tasks" anchor lands on the same spot whether this renders
+  // above Notes (history/missed/templates — no Notes section on those views
+  // to skip past) or below it (today view, right where the task list starts).
+  const taskListHeader = (
+    <div id="todo-task-list-start" className="flex items-center gap-2 mb-5">
+      {views.length > 1 ? (
+        <div className="flex-1 flex gap-1 bg-white rounded-xl p-1 border border-gray-100">
+          {views.map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`flex-1 min-h-[40px] rounded-lg text-sm font-semibold transition-colors ${
+                view === v ? 'bg-[#1a7a3c] text-white' : 'text-gray-500'
+              }`}
+            >
+              {VIEW_LABELS[v]}{v === 'missed' && missedCount > 0 ? ` (${missedCount})` : ''}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
+      <button
+        onClick={handleAddClick}
+        className="flex-shrink-0 bg-[#c8102e] hover:bg-[#a50d26] text-white font-semibold px-4 min-h-[44px] rounded-xl text-sm transition-colors"
+      >
+        + Add Task
+      </button>
+    </div>
+  )
+
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
       <Navigation />
 
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6">
-        <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="mb-3 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">To-Do</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Store Communication/To-Do</h1>
             <p className="text-sm text-gray-500 mt-1">{formatDateShort(today)}</p>
           </div>
           <button
-            onClick={handleAddClick}
+            onClick={() => setShowAddNote(true)}
             className="flex-shrink-0 bg-[#c8102e] hover:bg-[#a50d26] text-white font-semibold px-4 min-h-[44px] rounded-xl text-sm transition-colors"
           >
-            + Add Task
+            + Add Note
           </button>
         </div>
 
-        {views.length > 1 && (
-          <div className="flex gap-1 mb-5 bg-white rounded-xl p-1 border border-gray-100">
-            {views.map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`flex-1 min-h-[40px] rounded-lg text-sm font-semibold transition-colors ${
-                  view === v ? 'bg-[#1a7a3c] text-white' : 'text-gray-500'
-                }`}
-              >
-                {VIEW_LABELS[v]}{v === 'missed' && missedCount > 0 ? ` (${missedCount})` : ''}
-              </button>
-            ))}
-          </div>
-        )}
+        <button
+          onClick={scrollToTasks}
+          className="mb-5 text-sm font-semibold text-blue-600 hover:text-blue-700"
+        >
+          ↓ Jump to Tasks
+        </button>
+
+        {view !== 'today' && isOwner && taskListHeader}
 
         {notice && (
           <div className="mb-4 bg-white border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm font-semibold">
@@ -503,7 +539,11 @@ export default function TodoPage() {
               canManage={canManage}
               isOwner={isOwner}
               shiftLeadName={role === 'shift_lead' ? getShiftLeadName() : null}
+              showAdd={showAddNote}
+              setShowAdd={setShowAddNote}
             />
+
+            {taskListHeader}
 
             <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">
               Today&apos;s Tasks{open.length > 0 ? ` (${open.length})` : ''}

@@ -56,15 +56,18 @@ export default function NotesBoard({
   canManage,
   isOwner,
   shiftLeadName,
+  showAdd,
+  setShowAdd,
 }: {
   staff: Staff[]
   canManage: boolean
   isOwner: boolean
   shiftLeadName: string | null
+  showAdd: boolean
+  setShowAdd: (show: boolean) => void
 }) {
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
   const [deleting, setDeleting] = useState<Note | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [handledBusyId, setHandledBusyId] = useState<string | null>(null)
@@ -238,21 +241,14 @@ export default function NotesBoard({
 
   return (
     <div className="mb-6">
-      {/* Same size/weight/prominence as the page's own "To-Do" <h1> — a
-          section header, not a replacement for the small "Notes" label
-          directly below it, which stays as-is. */}
-      <h2 className="text-2xl font-bold text-gray-900 mb-3">Store Communication</h2>
-
+      {/* The page's own combined "Store Communication/To-Do" <h1> covers
+          this section now — "Add Note" lives up there too (combined-header
+          patch); this row just keeps the small "Notes" label + History link. */}
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500">Notes</h2>
-        <div className="flex items-center gap-1">
-          <button onClick={() => setShowHistory(true)} className="text-xs font-semibold text-gray-500 hover:text-gray-700 px-2 py-1">
-            Notes History
-          </button>
-          <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1">
-            + Add Note
-          </button>
-        </div>
+        <button onClick={() => setShowHistory(true)} className="text-xs font-semibold text-gray-500 hover:text-gray-700 px-2 py-1">
+          Notes History
+        </button>
       </div>
 
       {!loading && notes.length === 0 && <p className="text-gray-400 text-sm text-center py-3">No notes yet.</p>}
