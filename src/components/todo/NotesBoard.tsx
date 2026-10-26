@@ -212,21 +212,34 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
             // authenticated as owner/shift-lead (canManage, same tier as
             // Delete) — everyone else's notes keep the open-to-anyone toggle.
             const handledLocked = isOwnerStaffName(n.created_by) && !canManage
-            // No new color meaning for ack-required notes — every color in
-            // the palette is already spoken for (amber/orange = overdue,
-            // blue/red/purple = person-colors). Distinguished by a thicker
-            // dashed border plus a neutral gray badge instead.
-            const borderStyle = n.requires_ack ? 'border-2 border-dashed' : 'border'
+            // Ack-required notes are called out with a thicker dashed border
+            // plus a badge, both in hot pink/fuchsia — the one color in this
+            // palette not already spoken for (amber/orange = overdue,
+            // blue/red/purple = person-colors) — specifically so it grabs
+            // attention at a glance (patch 14; the original neutral-gray
+            // treatment from patch 13 didn't stand out enough). When
+            // requires_ack, this pink border wins over the author's own
+            // color tint (the tint still colors the card background).
+            const borderStyle = n.requires_ack ? 'border-2 border-dashed border-fuchsia-600' : 'border'
             const ackedNames = n.acknowledgments.map((a) => a.staff_name)
             return (
               <div
                 key={n.id}
-                className={`rounded-2xl shadow-sm ${borderStyle} px-4 py-3 ${authorColor ? '' : 'bg-yellow-50 border-yellow-200'}`}
-                style={authorColor ? { backgroundColor: pastelTint(authorColor, 0.88), borderColor: pastelTint(authorColor, 0.7) } : undefined}
+                className={`rounded-2xl shadow-sm ${borderStyle} px-4 py-3 ${authorColor ? '' : 'bg-yellow-50'} ${
+                  !authorColor && !n.requires_ack ? 'border-yellow-200' : ''
+                }`}
+                style={
+                  authorColor
+                    ? {
+                        backgroundColor: pastelTint(authorColor, 0.88),
+                        ...(n.requires_ack ? {} : { borderColor: pastelTint(authorColor, 0.7) }),
+                      }
+                    : undefined
+                }
               >
                 {n.requires_ack && (
                   <div className="mb-2">
-                    <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-gray-700 bg-gray-200 px-2 py-0.5 rounded-full">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-white bg-fuchsia-600 px-2 py-0.5 rounded-full">
                       ⚠ Action Needed
                     </span>
                   </div>
@@ -258,7 +271,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                     {n.requires_ack && (
                       <button
                         onClick={() => setAcking(n)}
-                        className="text-xs font-semibold text-gray-700 hover:text-gray-900 px-2 py-1"
+                        className="text-xs font-semibold text-fuchsia-600 hover:text-fuchsia-700 px-2 py-1"
                       >
                         I Understand
                       </button>
