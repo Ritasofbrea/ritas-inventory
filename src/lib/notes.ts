@@ -8,13 +8,26 @@ export interface NoteReply {
   created_at: string
 }
 
+// One row per person who tapped "I Understand" on an ack-required note.
+// `id` is absent when the API's response is the no-op "already acknowledged"
+// path (nothing was inserted) — callers merging this into local state should
+// dedupe by (note_id, staff_name), not by id.
+export interface NoteAcknowledgment {
+  id?: string
+  note_id: string
+  staff_name: string
+  acknowledged_at: string
+}
+
 export interface Note {
   id: string
   content: string
   created_by: string
   created_at: string
   handled: boolean
+  requires_ack: boolean
   replies: NoteReply[]
+  acknowledgments: NoteAcknowledgment[]
 }
 
 // "just now" / "5 min ago" / "3 hr ago" / "2 days ago" / "3 weeks ago" / "4 months ago" —

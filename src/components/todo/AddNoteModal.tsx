@@ -5,18 +5,24 @@ import { Staff } from '@/lib/tasks'
 
 // Small add-note form: free text plus a tap-to-pick name grid (same idea as
 // StaffPicker — whoever's adding the note picks their own name, no typing,
-// no PIN). Anyone can add a note, so this never checks role/canManage.
+// no PIN). Anyone can add a note, so this never checks role/canManage —
+// except the "Needs Acknowledgment" toggle below, which is owner/shift-lead
+// only (same canManage gate as "+ Add Task"); regular staff never see it,
+// so their notes are never ack-required.
 export default function AddNoteModal({
   staff,
+  canManage,
   onClose,
   onSaved,
 }: {
   staff: Staff[]
+  canManage: boolean
   onClose: () => void
   onSaved: (message: string) => void
 }) {
   const [content, setContent] = useState('')
   const [createdBy, setCreatedBy] = useState('')
+  const [requiresAck, setRequiresAck] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -29,7 +35,7 @@ export default function AddNoteModal({
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, created_by: createdBy }),
+        body: JSON.stringify({ content, created_by: createdBy, requires_ack: canManage && requiresAck }),
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Could not save')
@@ -87,6 +93,18 @@ export default function AddNoteModal({
               {staff.length === 0 && <p className="col-span-2 text-gray-400 text-sm py-2">No staff names yet.</p>}
             </div>
           </div>
+
+          {canManage && (
+            <label className="flex items-center gap-2 text-sm text-gray-700 font-medium">
+              <input
+                type="checkbox"
+                checked={requiresAck}
+                onChange={(e) => setRequiresAck(e.target.checked)}
+                className="w-4 h-4 accent-[#1a7a3c]"
+              />
+              Needs Acknowledgment
+            </label>
+          )}
 
           {error && <p className="text-red-500 text-sm">{error}</p>}
         </div>

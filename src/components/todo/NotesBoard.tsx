@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from 'react'
 import type { RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload, RealtimePostgresDeletePayload } from '@supabase/realtime-js'
 import AddNoteModal from './AddNoteModal'
 import AddReplyModal from './AddReplyModal'
+import AckModal from './AckModal'
 import ConfirmModal from './ConfirmModal'
 import StaffName from '@/components/StaffName'
 import { staffColorFor, pastelTint, isOwnerStaffName } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
 import { Staff, formatDateTime } from '@/lib/tasks'
-import { Note, NoteReply, formatRelativeTime } from '@/lib/notes'
+import { Note, NoteReply, NoteAcknowledgment, formatRelativeTime } from '@/lib/notes'
 
 // Shared sticky-notes board on the To-Do screen, above Today's Tasks. Anyone
 // can add a note (no PIN); only owners/shift leads (canManage, same gate as
@@ -17,10 +18,19 @@ import { Note, NoteReply, formatRelativeTime } from '@/lib/notes'
 // note was authored by an owner (Josh/Gina) — then it's canManage-only, same
 // tier as Delete (see handledLocked below).
 //
-// Live updates come from Supabase Realtime (postgres_changes on `notes`),
-// not polling — separate from Today's Tasks' own 5-minute poll, which stays
-// untouched. Requires `notes` to be added to the supabase_realtime
-// publication; see supabase/enable-notes-realtime.sql.
+// A note can also be flagged "Needs Acknowledgment" (owner/shift-lead only,
+// set at creation in AddNoteModal) — this is a compliance record, not a
+// notification system: no reminders, no hard gate on anything else in the
+// app, just a one-tap "I Understand" per person logged in
+// note_acknowledgments (see AckModal), shown as a count/list against the
+// active staff roster.
+//
+// Live updates come from Supabase Realtime (postgres_changes on `notes`,
+// `note_replies`, `note_acknowledgments`), not polling — separate from
+// Today's Tasks' own 5-minute poll, which stays untouched. Requires each
+// table added to the supabase_realtime publication; see
+// supabase/enable-notes-realtime.sql, enable-note-replies-realtime.sql,
+// enable-note-acknowledgments-realtime.sql.
 export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canManage: boolean }) {
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,6 +39,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [handledBusyId, setHandledBusyId] = useState<string | null>(null)
   const [replyingTo, setReplyingTo] = useState<Note | null>(null)
+  const [acking, setAcking] = useState<Note | null>(null)
   // Tap a note's timestamp to flip it to the full date/time (hover does the
   // same via the title attribute, but this is a touch-first PWA).
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -57,10 +68,13 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
     const channel = supabase
       .channel('notes-board')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes' }, (payload: RealtimePostgresInsertPayload<Note>) => {
-        // The raw `notes` row has no `replies` column — it's a join this
-        // app adds in the GET /api/notes route — so a freshly-inserted note
-        // always starts with none rather than an undefined field.
-        setNotes((prev) => (prev.some((n) => n.id === payload.new.id) ? prev : [{ ...payload.new, replies: [] }, ...prev]))
+        // The raw `notes` row has no `replies`/`acknowledgments` columns —
+        // they're joins this app adds in the GET /api/notes route — so a
+        // freshly-inserted note always starts with none of either rather
+        // than an undefined field.
+        setNotes((prev) =>
+          prev.some((n) => n.id === payload.new.id) ? prev : [{ ...payload.new, replies: [], acknowledgments: [] }, ...prev]
+        )
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresUpdatePayload<Note>) => {
         // Same reasoning as INSERT: merge rather than replace, so an
@@ -81,6 +95,20 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
           prev.map((n) =>
             n.id === reply.note_id && !n.replies.some((r) => r.id === reply.id)
               ? { ...n, replies: [...n.replies, reply] }
+              : n
+          )
+        )
+      })
+      // Dedupe by (note_id, staff_name), not id — the unique constraint
+      // means staff_name alone is unique per note, and the no-op
+      // "already acknowledged" API response (see acknowledgments/route.ts)
+      // has no id to key off of.
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'note_acknowledgments' }, (payload: RealtimePostgresInsertPayload<NoteAcknowledgment>) => {
+        const ack = payload.new
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === ack.note_id && !n.acknowledgments.some((a) => a.staff_name === ack.staff_name)
+              ? { ...n, acknowledgments: [...n.acknowledgments, ack] }
               : n
           )
         )
@@ -108,6 +136,11 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
 
   const afterReplySaved = () => {
     setReplyingTo(null)
+    load()
+  }
+
+  const afterAckSaved = () => {
+    setAcking(null)
     load()
   }
 
@@ -179,12 +212,25 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
             // authenticated as owner/shift-lead (canManage, same tier as
             // Delete) — everyone else's notes keep the open-to-anyone toggle.
             const handledLocked = isOwnerStaffName(n.created_by) && !canManage
+            // No new color meaning for ack-required notes — every color in
+            // the palette is already spoken for (amber/orange = overdue,
+            // blue/red/purple = person-colors). Distinguished by a thicker
+            // dashed border plus a neutral gray badge instead.
+            const borderStyle = n.requires_ack ? 'border-2 border-dashed' : 'border'
+            const ackedNames = n.acknowledgments.map((a) => a.staff_name)
             return (
               <div
                 key={n.id}
-                className={`rounded-2xl shadow-sm border px-4 py-3 ${authorColor ? '' : 'bg-yellow-50 border-yellow-200'}`}
+                className={`rounded-2xl shadow-sm ${borderStyle} px-4 py-3 ${authorColor ? '' : 'bg-yellow-50 border-yellow-200'}`}
                 style={authorColor ? { backgroundColor: pastelTint(authorColor, 0.88), borderColor: pastelTint(authorColor, 0.7) } : undefined}
               >
+                {n.requires_ack && (
+                  <div className="mb-2">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-gray-700 bg-gray-200 px-2 py-0.5 rounded-full">
+                      ⚠ Action Needed
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-start gap-2">
                   <input
                     type="checkbox"
@@ -209,6 +255,14 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                     <StaffName name={n.created_by} staff={staff} /> · {expanded.has(n.id) ? formatDateTime(n.created_at) : formatRelativeTime(n.created_at)}
                   </button>
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {n.requires_ack && (
+                      <button
+                        onClick={() => setAcking(n)}
+                        className="text-xs font-semibold text-gray-700 hover:text-gray-900 px-2 py-1"
+                      >
+                        I Understand
+                      </button>
+                    )}
                     <button
                       onClick={() => setReplyingTo(n)}
                       className="text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1"
@@ -238,13 +292,21 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                     ))}
                   </div>
                 )}
+
+                {n.requires_ack && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    {ackedNames.length === 0
+                      ? `Acknowledged by: none yet (0 of ${staff.length})`
+                      : `Acknowledged by: ${ackedNames.join(', ')} (${ackedNames.length} of ${staff.length})`}
+                  </p>
+                )}
               </div>
             )
           })}
         </div>
       )}
 
-      {showAdd && <AddNoteModal staff={staff} onClose={() => setShowAdd(false)} onSaved={afterSaved} />}
+      {showAdd && <AddNoteModal staff={staff} canManage={canManage} onClose={() => setShowAdd(false)} onSaved={afterSaved} />}
 
       {replyingTo && (
         <AddReplyModal
@@ -252,6 +314,16 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
           noteId={replyingTo.id}
           onClose={() => setReplyingTo(null)}
           onSaved={afterReplySaved}
+        />
+      )}
+
+      {acking && (
+        <AckModal
+          staff={staff}
+          noteId={acking.id}
+          alreadyAcknowledged={acking.acknowledgments.map((a) => a.staff_name)}
+          onClose={() => setAcking(null)}
+          onSaved={afterAckSaved}
         />
       )}
 
