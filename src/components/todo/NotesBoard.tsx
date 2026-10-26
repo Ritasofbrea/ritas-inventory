@@ -271,7 +271,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                     {n.requires_ack && (
                       <button
                         onClick={() => setAcking(n)}
-                        className="text-xs font-semibold text-fuchsia-600 hover:text-fuchsia-700 px-2 py-1"
+                        className="text-xs font-semibold text-white bg-fuchsia-600 hover:bg-fuchsia-700 px-2.5 py-1 rounded-full"
                       >
                         I Understand
                       </button>
