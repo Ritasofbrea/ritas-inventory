@@ -30,6 +30,19 @@ export function isOwnerStaffName(staffName: string): boolean {
   return staffName === 'Gina' || staffName === CREATOR_NAME_ALIASES.Josh
 }
 
+// Loose match between a short/login name (an owner's or shift lead's, e.g.
+// "Melek") and a staff-table full name (e.g. "Melek Hernandez") — the same
+// identity-space gap CREATOR_NAME_ALIASES solves for the two owners, but
+// shift leads are added dynamically via an in-app screen with no fixed list
+// to hand-alias, so this matches on an exact name or the staff name's
+// leading word instead. Best-effort: a shift lead whose login name shares
+// neither form with their staff entry won't be recognized.
+export function namesLikelyMatch(shortOrFullName: string, staffFullName: string): boolean {
+  const a = shortOrFullName.trim().toLowerCase()
+  const b = staffFullName.trim().toLowerCase()
+  return a === b || b.startsWith(`${a} `)
+}
+
 // Mixes a hex color toward white for a subtle pastel background tint — e.g.
 // a note card tinted by its author's color, not a bold/solid fill. `amount`
 // is how much of the way toward white to go (0 = original color, 1 = white).

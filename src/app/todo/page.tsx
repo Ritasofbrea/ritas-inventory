@@ -11,7 +11,7 @@ import ConfirmModal from '@/components/todo/ConfirmModal'
 import HistoryView from '@/components/todo/HistoryView'
 import MissedView from '@/components/todo/MissedView'
 import TemplatesView from '@/components/todo/TemplatesView'
-import { getRole } from '@/lib/auth'
+import { getRole, getShiftLeadName } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
 import { Role } from '@/lib/types'
 import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatDueTime, formatTime, isOverdue, sortStandalone, todayInTZ } from '@/lib/tasks'
@@ -498,7 +498,12 @@ export default function TodoPage() {
           <>
             {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">{error}</div>}
 
-            <NotesBoard staff={staff} canManage={canManage} />
+            <NotesBoard
+              staff={staff}
+              canManage={canManage}
+              isOwner={isOwner}
+              shiftLeadName={role === 'shift_lead' ? getShiftLeadName() : null}
+            />
 
             <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">
               Today&apos;s Tasks{open.length > 0 ? ` (${open.length})` : ''}

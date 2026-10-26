@@ -7,7 +7,7 @@ import AddReplyModal from './AddReplyModal'
 import AckModal from './AckModal'
 import ConfirmModal from './ConfirmModal'
 import StaffName from '@/components/StaffName'
-import { staffColorFor, pastelTint, isOwnerStaffName } from '@/lib/staffColor'
+import { staffColorFor, pastelTint, isOwnerStaffName, namesLikelyMatch } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
 import { Staff, formatDateTime } from '@/lib/tasks'
 import { Note, NoteReply, NoteAcknowledgment, formatRelativeTime } from '@/lib/notes'
@@ -31,7 +31,28 @@ import { Note, NoteReply, NoteAcknowledgment, formatRelativeTime } from '@/lib/n
 // table added to the supabase_realtime publication; see
 // supabase/enable-notes-realtime.sql, enable-note-replies-realtime.sql,
 // enable-note-acknowledgments-realtime.sql.
-export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canManage: boolean }) {
+//
+// Acknowledgment exemptions (patch 16): an owner never needs to acknowledge
+// any note (`isOwner` — the logged-in session's role, not the generic
+// canManage tier, since this is identity-specific); a shift lead is exempt
+// only from a note they personally authored (`shiftLeadName`, matched
+// against the note's created_by via namesLikelyMatch — shift leads aren't
+// in the same name-space as the staff table, same gap isOwnerStaffName
+// solves for owners). The "Acknowledged by (n of X)" denominator mirrors
+// this: owners are never counted, and an author is only dropped from the
+// denominator when they're a shift lead (a regular staffer still counts on
+// their own note).
+export default function NotesBoard({
+  staff,
+  canManage,
+  isOwner,
+  shiftLeadName,
+}: {
+  staff: Staff[]
+  canManage: boolean
+  isOwner: boolean
+  shiftLeadName: string | null
+}) {
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -40,6 +61,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
   const [handledBusyId, setHandledBusyId] = useState<string | null>(null)
   const [replyingTo, setReplyingTo] = useState<Note | null>(null)
   const [acking, setAcking] = useState<Note | null>(null)
+  const [shiftLeads, setShiftLeads] = useState<{ name: string; active: boolean }[]>([])
   // Tap a note's timestamp to flip it to the full date/time (hover does the
   // same via the title attribute, but this is a touch-first PWA).
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -59,6 +81,19 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
   useEffect(() => {
     load()
   }, [load])
+
+  // Only needed for the ack-exemption math above — /api/shift-leads returns
+  // everyone (it's the owner-only management screen's list), so filter to
+  // active here same as /api/staff does server-side.
+  useEffect(() => {
+    fetch('/api/shift-leads')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: { name: string; active: boolean }[]) => setShiftLeads((data ?? []).filter((s) => s.active)))
+      .catch(() => {
+        // ack denominator just falls back to the full staff roster (no
+        // shift-lead exclusions) — not worth an error banner for this
+      })
+  }, [])
 
   // Push, not poll: every connected client (including an anonymous visitor
   // who added no note themselves) sees an add/delete the instant it happens.
@@ -222,6 +257,30 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
             // color tint (the tint still colors the card background).
             const borderStyle = n.requires_ack ? 'border-2 border-dashed border-fuchsia-600' : 'border'
             const ackedNames = n.acknowledgments.map((a) => a.staff_name)
+
+            // Exemptions (patch 16): an owner is exempt from every
+            // ack-required note; a shift lead is exempt only from a note
+            // they personally authored.
+            const authorIsShiftLead = shiftLeads.some((sl) => namesLikelyMatch(sl.name, n.created_by))
+            const viewerIsAuthoringShiftLead = !!shiftLeadName && namesLikelyMatch(shiftLeadName, n.created_by)
+            const ackExempt = isOwner || viewerIsAuthoringShiftLead
+
+            // Denominator = active staff + active shift leads, deduped by
+            // staff-table identity, minus owners, minus the author if (and
+            // only if) the author is a shift lead. A regular staffer still
+            // counts on their own note.
+            const ackDenominatorNames = new Set<string>()
+            staff.forEach((s) => {
+              if (!isOwnerStaffName(s.name)) ackDenominatorNames.add(s.name)
+            })
+            shiftLeads.forEach((sl) => {
+              const matchedStaff = staff.find((s) => namesLikelyMatch(sl.name, s.name))
+              const canonicalName = matchedStaff ? matchedStaff.name : sl.name
+              if (!isOwnerStaffName(canonicalName)) ackDenominatorNames.add(canonicalName)
+            })
+            if (authorIsShiftLead) ackDenominatorNames.delete(n.created_by)
+            const ackDenominator = ackDenominatorNames.size
+
             return (
               <div
                 key={n.id}
@@ -268,7 +327,7 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                     <StaffName name={n.created_by} staff={staff} /> · {expanded.has(n.id) ? formatDateTime(n.created_at) : formatRelativeTime(n.created_at)}
                   </button>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    {n.requires_ack && (
+                    {n.requires_ack && !ackExempt && (
                       <button
                         onClick={() => setAcking(n)}
                         className="text-xs font-semibold text-white bg-fuchsia-600 hover:bg-fuchsia-700 px-2.5 py-1 rounded-full"
@@ -309,8 +368,8 @@ export default function NotesBoard({ staff, canManage }: { staff: Staff[]; canMa
                 {n.requires_ack && (
                   <p className="text-xs text-gray-500 mt-2">
                     {ackedNames.length === 0
-                      ? `Acknowledged by: none yet (0 of ${staff.length})`
-                      : `Acknowledged by: ${ackedNames.join(', ')} (${ackedNames.length} of ${staff.length})`}
+                      ? `Acknowledged by: none yet (0 of ${ackDenominator})`
+                      : `Acknowledged by: ${ackedNames.join(', ')} (${ackedNames.length} of ${ackDenominator})`}
                   </p>
                 )}
               </div>
