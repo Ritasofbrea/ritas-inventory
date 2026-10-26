@@ -7,6 +7,7 @@ import AddReplyModal from './AddReplyModal'
 import AckModal from './AckModal'
 import ConfirmModal from './ConfirmModal'
 import NotesHistoryModal from './NotesHistoryModal'
+import TruncatedNoteContent from './TruncatedNoteContent'
 import StaffName from '@/components/StaffName'
 import { staffColorFor, pastelTint, isOwnerStaffName, namesLikelyMatch, computeAckDenominator } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
@@ -318,9 +319,7 @@ export default function NotesBoard({
                     aria-label={n.handled ? 'Mark not handled' : 'Mark handled'}
                     className="mt-1 w-4 h-4 flex-shrink-0 accent-[#1a7a3c] disabled:opacity-50"
                   />
-                  <p className={`text-gray-900 whitespace-pre-wrap ${n.handled ? 'line-through text-gray-400' : ''}`}>
-                    {n.content}
-                  </p>
+                  <TruncatedNoteContent content={n.content} handled={n.handled} />
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-2">
                   <button
