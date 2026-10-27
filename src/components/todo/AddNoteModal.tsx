@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Staff } from '@/lib/tasks'
+import { uploadNotePhoto } from '@/lib/photo'
 
 // Small add-note form: free text plus a tap-to-pick name grid (same idea as
 // StaffPicker — whoever's adding the note picks their own name, no typing,
@@ -23,8 +24,25 @@ export default function AddNoteModal({
   const [content, setContent] = useState('')
   const [createdBy, setCreatedBy] = useState('')
   const [requiresAck, setRequiresAck] = useState(false)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handlePhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
+
+  const removePhoto = () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview)
+    setPhotoFile(null)
+    setPhotoPreview(null)
+  }
 
   const save = async () => {
     setError('')
@@ -32,10 +50,15 @@ export default function AddNoteModal({
     if (!createdBy) return setError('Pick your name.')
     setSaving(true)
     try {
+      // Reference photo is always optional (unlike task photos, there's no
+      // required-photo mode here) and, since the note doesn't exist yet,
+      // gets uploaded to its own random path first — the resulting URL just
+      // rides along in the note's own insert.
+      const photoUrl = photoFile ? await uploadNotePhoto(photoFile) : null
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, created_by: createdBy, requires_ack: canManage && requiresAck }),
+        body: JSON.stringify({ content, created_by: createdBy, requires_ack: canManage && requiresAck, photo_url: photoUrl }),
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Could not save')
@@ -71,6 +94,32 @@ export default function AddNoteModal({
               className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 focus:outline-none focus:border-green-500"
               autoFocus
             />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Photo (optional)</label>
+            {photoPreview ? (
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photoPreview} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+                <button
+                  type="button"
+                  onClick={removePhoto}
+                  className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1"
+                >
+                  Remove photo
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="self-start text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1"
+              >
+                📷 Add Photo
+              </button>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
           </div>
 
           <div className="flex flex-col gap-1">

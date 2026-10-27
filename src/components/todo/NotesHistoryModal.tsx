@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import StaffName from '@/components/StaffName'
+import PhotoLightbox from './PhotoLightbox'
 import { staffColorFor, pastelTint, computeAckDenominator } from '@/lib/staffColor'
 import { Staff, formatDateShort, formatDateTime } from '@/lib/tasks'
 import { Note, groupArchivedNotesByDay } from '@/lib/notes'
@@ -25,6 +26,7 @@ export default function NotesHistoryModal({
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/notes/history')
@@ -82,6 +84,16 @@ export default function NotesHistoryModal({
                         </span>
                       )}
                       <p className="text-gray-900 whitespace-pre-wrap">{n.content}</p>
+                      {n.photo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setLightboxUrl(n.photo_url)}
+                          className="mt-2 block"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={n.photo_url} alt="Note photo" className="w-20 h-20 rounded-lg object-cover border border-gray-200" />
+                        </button>
+                      )}
                       <p className="text-xs text-gray-500 mt-1">
                         <StaffName name={n.created_by} staff={staff} /> · created {formatDateTime(n.created_at)}
                         {n.archived_at && <> · archived {formatDateTime(n.archived_at)}</>}
@@ -124,6 +136,12 @@ export default function NotesHistoryModal({
           ))}
         </div>
       </div>
+
+      {lightboxUrl && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+        </div>
+      )}
     </div>
   )
 }

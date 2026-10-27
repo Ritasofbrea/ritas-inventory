@@ -8,6 +8,7 @@ import AckModal from './AckModal'
 import ConfirmModal from './ConfirmModal'
 import NotesHistoryModal from './NotesHistoryModal'
 import TruncatedNoteContent from './TruncatedNoteContent'
+import PhotoLightbox from './PhotoLightbox'
 import StaffName from '@/components/StaffName'
 import { staffColorFor, pastelTint, isOwnerStaffName, namesLikelyMatch, computeAckDenominator } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
@@ -75,6 +76,7 @@ export default function NotesBoard({
   const [replyingTo, setReplyingTo] = useState<Note | null>(null)
   const [acking, setAcking] = useState<Note | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [shiftLeads, setShiftLeads] = useState<{ name: string; active: boolean }[]>([])
   // Tap a note's timestamp to flip it to the full date/time (hover does the
   // same via the title attribute, but this is a touch-first PWA).
@@ -321,6 +323,16 @@ export default function NotesBoard({
                   />
                   <TruncatedNoteContent content={n.content} handled={n.handled} />
                 </div>
+                {n.photo_url && (
+                  <button
+                    type="button"
+                    onClick={() => setLightboxUrl(n.photo_url)}
+                    className="mt-2 block"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={n.photo_url} alt="Note photo" className="w-20 h-20 rounded-lg object-cover border border-gray-200" />
+                  </button>
+                )}
                 <div className="flex items-center justify-between gap-2 mt-2">
                   <button
                     type="button"
@@ -413,6 +425,8 @@ export default function NotesBoard({
       )}
 
       {showHistory && <NotesHistoryModal staff={staff} shiftLeads={shiftLeads} onClose={() => setShowHistory(false)} />}
+
+      {lightboxUrl && <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { TASK_PHOTO_BUCKET } from './task-constants'
+import { NOTE_PHOTO_BUCKET } from './note-photo-constants'
 
 const MAX_EDGE = 1600
 
@@ -42,6 +43,24 @@ export async function uploadTaskPhoto(taskId: string, file: File): Promise<strin
 
   const { error } = await supabase.storage
     .from(TASK_PHOTO_BUCKET)
+    .uploadToSignedUrl(body.path, body.token, blob, { contentType: 'image/jpeg' })
+  if (error) throw new Error(error.message)
+
+  return body.publicUrl as string
+}
+
+// Uploads an optional reference photo for a note (patch 22) and returns its
+// public URL — picked before the note exists, so unlike uploadTaskPhoto this
+// isn't tied to an id; /api/notes/photo-upload just hands back a random path.
+export async function uploadNotePhoto(file: File): Promise<string> {
+  const blob = await resizeToJpeg(file)
+
+  const res = await fetch('/api/notes/photo-upload', { method: 'POST' })
+  const body = await res.json()
+  if (!res.ok) throw new Error(body.error || 'Could not start upload')
+
+  const { error } = await supabase.storage
+    .from(NOTE_PHOTO_BUCKET)
     .uploadToSignedUrl(body.path, body.token, blob, { contentType: 'image/jpeg' })
   if (error) throw new Error(error.message)
 

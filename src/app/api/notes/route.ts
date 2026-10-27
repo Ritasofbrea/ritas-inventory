@@ -25,7 +25,7 @@ export async function GET() {
 // route trusts whatever boolean it's given, same as every other owner-only
 // flag in this app.
 export async function POST(request: NextRequest) {
-  const { content, created_by, requires_ack } = await request.json()
+  const { content, created_by, requires_ack, photo_url } = await request.json()
   if (typeof content !== 'string' || !content.trim()) {
     return NextResponse.json({ error: 'Write something first' }, { status: 400 })
   }
@@ -35,7 +35,12 @@ export async function POST(request: NextRequest) {
   }
   const { data, error } = await db
     .from('notes')
-    .insert({ content: content.trim(), created_by, requires_ack: requires_ack === true })
+    .insert({
+      content: content.trim(),
+      created_by,
+      requires_ack: requires_ack === true,
+      photo_url: typeof photo_url === 'string' && photo_url ? photo_url : null,
+    })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

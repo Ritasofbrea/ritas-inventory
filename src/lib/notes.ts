@@ -30,6 +30,7 @@ export interface Note {
   requires_ack: boolean
   archived: boolean
   archived_at: string | null
+  photo_url: string | null
   replies: NoteReply[]
   acknowledgments: NoteAcknowledgment[]
 }
