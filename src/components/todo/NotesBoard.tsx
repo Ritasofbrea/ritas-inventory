@@ -13,7 +13,7 @@ import StaffName from '@/components/StaffName'
 import { staffColorFor, pastelTint, isOwnerStaffName, namesLikelyMatch, computeAckDenominator } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
 import { Staff, formatDateTime } from '@/lib/tasks'
-import { Note, NoteReply, NoteAcknowledgment, formatRelativeTime } from '@/lib/notes'
+import { Note, NoteReply, NoteAcknowledgment, NotePhoto, formatRelativeTime } from '@/lib/notes'
 
 // Shared sticky-notes board on the To-Do screen, above Today's Tasks. Anyone
 // can add a note (no PIN); only owners/shift leads (canManage, same gate as
@@ -29,11 +29,11 @@ import { Note, NoteReply, NoteAcknowledgment, formatRelativeTime } from '@/lib/n
 // active staff roster.
 //
 // Live updates come from Supabase Realtime (postgres_changes on `notes`,
-// `note_replies`, `note_acknowledgments`), not polling — separate from
-// Today's Tasks' own 5-minute poll, which stays untouched. Requires each
-// table added to the supabase_realtime publication; see
+// `note_replies`, `note_acknowledgments`, `note_photos`), not polling —
+// separate from Today's Tasks' own 5-minute poll, which stays untouched.
+// Requires each table added to the supabase_realtime publication; see
 // supabase/enable-notes-realtime.sql, enable-note-replies-realtime.sql,
-// enable-note-acknowledgments-realtime.sql.
+// enable-note-acknowledgments-realtime.sql, enable-note-photos-realtime.sql.
 //
 // Acknowledgment exemptions (patch 16): an owner never needs to acknowledge
 // any note (`isOwner` — the logged-in session's role, not the generic
@@ -119,12 +119,15 @@ export default function NotesBoard({
     const channel = supabase
       .channel('notes-board')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes' }, (payload: RealtimePostgresInsertPayload<Note>) => {
-        // The raw `notes` row has no `replies`/`acknowledgments` columns —
-        // they're joins this app adds in the GET /api/notes route — so a
-        // freshly-inserted note always starts with none of either rather
-        // than an undefined field.
+        // The raw `notes` row has no `replies`/`acknowledgments`/`photos`
+        // columns — they're joins this app adds in the GET /api/notes route
+        // — so a freshly-inserted note always starts with none of them
+        // rather than an undefined field. Any attached photos arrive
+        // moments later as separate note_photos INSERTs, below.
         setNotes((prev) =>
-          prev.some((n) => n.id === payload.new.id) ? prev : [{ ...payload.new, replies: [], acknowledgments: [] }, ...prev]
+          prev.some((n) => n.id === payload.new.id)
+            ? prev
+            : [{ ...payload.new, replies: [], acknowledgments: [], photos: [] }, ...prev]
         )
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresUpdatePayload<Note>) => {
@@ -166,6 +169,19 @@ export default function NotesBoard({
           prev.map((n) =>
             n.id === ack.note_id && !n.acknowledgments.some((a) => a.staff_name === ack.staff_name)
               ? { ...n, acknowledgments: [...n.acknowledgments, ack] }
+              : n
+          )
+        )
+      })
+      // A note's photos (up to 3, patch 23) are attached via their own
+      // inserts right after the note itself, so another viewer's note first
+      // arrives with photos: [] (above) and these fill in moments later.
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'note_photos' }, (payload: RealtimePostgresInsertPayload<NotePhoto>) => {
+        const photo = payload.new
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === photo.note_id && !n.photos.some((p) => p.id === photo.id)
+              ? { ...n, photos: [...n.photos, photo].sort((a, b) => a.sort_order - b.sort_order) }
               : n
           )
         )
@@ -323,15 +339,15 @@ export default function NotesBoard({
                   />
                   <TruncatedNoteContent content={n.content} handled={n.handled} />
                 </div>
-                {n.photo_url && (
-                  <button
-                    type="button"
-                    onClick={() => setLightboxUrl(n.photo_url)}
-                    className="mt-2 block"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={n.photo_url} alt="Note photo" className="w-20 h-20 rounded-lg object-cover border border-gray-200" />
-                  </button>
+                {n.photos.length > 0 && (
+                  <div className="mt-2 flex items-center gap-2">
+                    {n.photos.map((p) => (
+                      <button key={p.id ?? p.photo_url} type="button" onClick={() => setLightboxUrl(p.photo_url)} className="block">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.photo_url} alt="Note photo" className="w-20 h-20 rounded-lg object-cover border border-gray-200" />
+                      </button>
+                    ))}
+                  </div>
                 )}
                 <div className="flex items-center justify-between gap-2 mt-2">
                   <button

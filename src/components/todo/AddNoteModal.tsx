@@ -24,24 +24,29 @@ export default function AddNoteModal({
   const [content, setContent] = useState('')
   const [createdBy, setCreatedBy] = useState('')
   const [requiresAck, setRequiresAck] = useState(false)
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoFiles, setPhotoFiles] = useState<File[]>([])
+  const [photoPreviews, setPhotoPreviews] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const MAX_PHOTOS = 3
 
-  const handlePhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  // Multi-select, but silently capped at MAX_PHOTOS total — if someone picks
+  // more than fits, the extras past the cap are just dropped rather than
+  // blocking the ones that do fit.
+  const handlePhotosSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
     e.target.value = ''
-    if (!file) return
-    setPhotoFile(file)
-    setPhotoPreview(URL.createObjectURL(file))
+    if (files.length === 0) return
+    const accepted = files.slice(0, MAX_PHOTOS - photoFiles.length)
+    setPhotoFiles((prev) => [...prev, ...accepted])
+    setPhotoPreviews((prev) => [...prev, ...accepted.map((f) => URL.createObjectURL(f))])
   }
 
-  const removePhoto = () => {
-    if (photoPreview) URL.revokeObjectURL(photoPreview)
-    setPhotoFile(null)
-    setPhotoPreview(null)
+  const removePhotoAt = (index: number) => {
+    URL.revokeObjectURL(photoPreviews[index])
+    setPhotoFiles((prev) => prev.filter((_, i) => i !== index))
+    setPhotoPreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
   const save = async () => {
@@ -50,15 +55,15 @@ export default function AddNoteModal({
     if (!createdBy) return setError('Pick your name.')
     setSaving(true)
     try {
-      // Reference photo is always optional (unlike task photos, there's no
+      // Photos are always optional (unlike task photos, there's no
       // required-photo mode here) and, since the note doesn't exist yet,
-      // gets uploaded to its own random path first — the resulting URL just
-      // rides along in the note's own insert.
-      const photoUrl = photoFile ? await uploadNotePhoto(photoFile) : null
+      // each gets uploaded to its own random path first — the resulting
+      // URLs just ride along in the note's own insert, in upload order.
+      const photoUrls = photoFiles.length > 0 ? await Promise.all(photoFiles.map((f) => uploadNotePhoto(f))) : []
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, created_by: createdBy, requires_ack: canManage && requiresAck, photo_url: photoUrl }),
+        body: JSON.stringify({ content, created_by: createdBy, requires_ack: canManage && requiresAck, photo_urls: photoUrls }),
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Could not save')
@@ -97,29 +102,35 @@ export default function AddNoteModal({
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500 font-medium">Photo (optional)</label>
-            {photoPreview ? (
-              <div className="flex items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photoPreview} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
-                <button
-                  type="button"
-                  onClick={removePhoto}
-                  className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1"
-                >
-                  Remove photo
-                </button>
+            <label className="text-xs text-gray-500 font-medium">Photos (optional, up to {MAX_PHOTOS})</label>
+            {photoPreviews.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {photoPreviews.map((src, i) => (
+                  <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt="" className="w-16 h-16 rounded-lg object-cover border border-gray-200" />
+                    <button
+                      type="button"
+                      onClick={() => removePhotoAt(i)}
+                      aria-label="Remove photo"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-700 hover:bg-gray-800 text-white text-xs leading-none flex items-center justify-center"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
               </div>
-            ) : (
+            )}
+            {photoFiles.length < MAX_PHOTOS && (
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="self-start text-xs font-semibold text-blue-600 hover:text-blue-700 px-2 py-1"
               >
-                📷 Add Photo
+                📷 {photoFiles.length === 0 ? 'Add Photo' : 'Add Another'}
               </button>
             )}
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
+            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotosSelected} />
           </div>
 
           <div className="flex flex-col gap-1">

@@ -1,7 +1,7 @@
 // Server-only helpers for the Notes board (patch 17: archive + auto-archive).
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeAckDenominator } from './staffColor'
-import { Note, NoteReply, NoteAcknowledgment } from './notes'
+import { Note, NoteReply, NoteAcknowledgment, NotePhoto } from './notes'
 
 // Shared join logic for the live board (GET /api/notes, archived=false) and
 // Notes History (GET /api/notes/history, archived=true) — same notes +
@@ -11,14 +11,21 @@ import { Note, NoteReply, NoteAcknowledgment } from './notes'
 // that's what Notes History groups by).
 export async function fetchNotesWithJoins(db: SupabaseClient, opts: { archived: boolean }): Promise<Note[]> {
   const sortColumn = opts.archived ? 'archived_at' : 'created_at'
-  const [{ data, error }, { data: repliesRaw, error: repliesError }, { data: acksRaw, error: acksError }] = await Promise.all([
+  const [
+    { data, error },
+    { data: repliesRaw, error: repliesError },
+    { data: acksRaw, error: acksError },
+    { data: photosRaw, error: photosError },
+  ] = await Promise.all([
     db.from('notes').select('*').eq('archived', opts.archived).order(sortColumn, { ascending: false }),
     db.from('note_replies').select('*').order('created_at', { ascending: true }),
     db.from('note_acknowledgments').select('*').order('acknowledged_at', { ascending: true }),
+    db.from('note_photos').select('*').order('sort_order', { ascending: true }),
   ])
   if (error) throw new Error(error.message)
   if (repliesError) throw new Error(repliesError.message)
   if (acksError) throw new Error(acksError.message)
+  if (photosError) throw new Error(photosError.message)
 
   const repliesByNote = new Map<string, NoteReply[]>()
   for (const r of (repliesRaw ?? []) as NoteReply[]) {
@@ -32,10 +39,17 @@ export async function fetchNotesWithJoins(db: SupabaseClient, opts: { archived: 
     list.push(a)
     acksByNote.set(a.note_id, list)
   }
+  const photosByNote = new Map<string, NotePhoto[]>()
+  for (const p of (photosRaw ?? []) as NotePhoto[]) {
+    const list = photosByNote.get(p.note_id) ?? []
+    list.push(p)
+    photosByNote.set(p.note_id, list)
+  }
   return (data ?? []).map((n) => ({
     ...n,
     replies: repliesByNote.get(n.id) ?? [],
     acknowledgments: acksByNote.get(n.id) ?? [],
+    photos: photosByNote.get(n.id) ?? [],
   }))
 }
 

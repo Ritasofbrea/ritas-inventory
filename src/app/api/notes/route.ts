@@ -25,7 +25,7 @@ export async function GET() {
 // route trusts whatever boolean it's given, same as every other owner-only
 // flag in this app.
 export async function POST(request: NextRequest) {
-  const { content, created_by, requires_ack, photo_url } = await request.json()
+  const { content, created_by, requires_ack, photo_urls } = await request.json()
   if (typeof content !== 'string' || !content.trim()) {
     return NextResponse.json({ error: 'Write something first' }, { status: 400 })
   }
@@ -35,16 +35,26 @@ export async function POST(request: NextRequest) {
   }
   const { data, error } = await db
     .from('notes')
-    .insert({
-      content: content.trim(),
-      created_by,
-      requires_ack: requires_ack === true,
-      photo_url: typeof photo_url === 'string' && photo_url ? photo_url : null,
-    })
+    .insert({ content: content.trim(), created_by, requires_ack: requires_ack === true })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  // Up to 3 photos (patch 23), already uploaded client-side before this call
+  // (see AddNoteModal) — the note has to exist first, so attaching them is a
+  // second insert keyed off the id we just got back. sort_order just
+  // preserves upload order, capped here too in case a client ever sends more.
+  const urls: string[] = Array.isArray(photo_urls) ? photo_urls.filter((u): u is string => typeof u === 'string' && !!u).slice(0, 3) : []
+  let photos = []
+  if (urls.length > 0) {
+    const { data: photoRows, error: photoError } = await db
+      .from('note_photos')
+      .insert(urls.map((photo_url, i) => ({ note_id: data.id, photo_url, sort_order: i })))
+      .select()
+    if (photoError) return NextResponse.json({ error: photoError.message }, { status: 500 })
+    photos = photoRows ?? []
+  }
+  return NextResponse.json({ ...data, photos })
 }
 
 // Toggling "handled" is open to everyone for a regular staffer's note, same

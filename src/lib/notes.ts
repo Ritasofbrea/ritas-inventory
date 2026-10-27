@@ -10,6 +10,15 @@ export interface NoteReply {
   created_at: string
 }
 
+// Up to 3 per note (enforced client-side in AddNoteModal), ordered by
+// sort_order — the order they were attached in, no reordering supported.
+export interface NotePhoto {
+  id?: string
+  note_id: string
+  photo_url: string
+  sort_order: number
+}
+
 // One row per person who tapped "I Understand" on an ack-required note.
 // `id` is absent when the API's response is the no-op "already acknowledged"
 // path (nothing was inserted) — callers merging this into local state should
@@ -30,7 +39,7 @@ export interface Note {
   requires_ack: boolean
   archived: boolean
   archived_at: string | null
-  photo_url: string | null
+  photos: NotePhoto[]
   replies: NoteReply[]
   acknowledgments: NoteAcknowledgment[]
 }

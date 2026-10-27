@@ -84,15 +84,15 @@ export default function NotesHistoryModal({
                         </span>
                       )}
                       <p className="text-gray-900 whitespace-pre-wrap">{n.content}</p>
-                      {n.photo_url && (
-                        <button
-                          type="button"
-                          onClick={() => setLightboxUrl(n.photo_url)}
-                          className="mt-2 block"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={n.photo_url} alt="Note photo" className="w-20 h-20 rounded-lg object-cover border border-gray-200" />
-                        </button>
+                      {n.photos.length > 0 && (
+                        <div className="mt-2 flex items-center gap-2">
+                          {n.photos.map((p) => (
+                            <button key={p.id ?? p.photo_url} type="button" onClick={() => setLightboxUrl(p.photo_url)} className="block">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={p.photo_url} alt="Note photo" className="w-20 h-20 rounded-lg object-cover border border-gray-200" />
+                            </button>
+                          ))}
+                        </div>
                       )}
                       <p className="text-xs text-gray-500 mt-1">
                         <StaffName name={n.created_by} staff={staff} /> · created {formatDateTime(n.created_at)}
