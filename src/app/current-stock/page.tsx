@@ -46,13 +46,6 @@ export default function CurrentStockPage() {
     })
   }
 
-  useEffect(() => {
-    const role = getRole()
-    if (!role) { router.replace('/login'); return }
-    if (role !== 'owner') { router.replace('/count'); return }
-    fetchData()
-  }, [router])
-
   const fetchData = async () => {
     const [itemsRes, countsRes] = await Promise.all([
       fetch('/api/items'),
@@ -66,6 +59,14 @@ export default function CurrentStockPage() {
     setLastUpdated(new Date())
     setLoading(false)
   }
+
+  useEffect(() => {
+    const role = getRole()
+    if (!role) { router.replace('/login'); return }
+    if (role !== 'owner') { router.replace('/count'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
+    fetchData()
+  }, [router])
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-400 text-lg">Loading…</p></div>
