@@ -41,14 +41,6 @@ export default function ParSettingsPage() {
     })
   }
 
-  useEffect(() => {
-    const role = getRole()
-    if (!role) { router.replace('/login'); return }
-    if (role !== 'owner') { router.replace('/count'); return }
-    fetchItems()
-    fetch('/api/par-suggestions').then((r) => r.json()).then((d) => { if (!d.error) setSuggestions(d) })
-  }, [router])
-
   const fetchItems = async () => {
     try {
       const res = await fetch('/api/items')
@@ -68,6 +60,15 @@ export default function ParSettingsPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const role = getRole()
+    if (!role) { router.replace('/login'); return }
+    if (role !== 'owner') { router.replace('/count'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
+    fetchItems()
+    fetch('/api/par-suggestions').then((r) => r.json()).then((d) => { if (!d.error) setSuggestions(d) })
+  }, [router])
 
   const hasSecondary = (item: Item) => item.secondary_unit !== ''
 
