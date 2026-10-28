@@ -48,13 +48,6 @@ export default function ManageItemsPage() {
     })
   }
 
-  useEffect(() => {
-    const role = getRole()
-    if (!role) { router.replace('/login'); return }
-    if (role !== 'owner') { router.replace('/count'); return }
-    fetchItems()
-  }, [router])
-
   const fetchItems = async () => {
     try {
       const res = await fetch('/api/items')
@@ -65,6 +58,14 @@ export default function ManageItemsPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const role = getRole()
+    if (!role) { router.replace('/login'); return }
+    if (role !== 'owner') { router.replace('/count'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
+    fetchItems()
+  }, [router])
 
   const handleAdd = async () => {
     if (!newName.trim()) return
