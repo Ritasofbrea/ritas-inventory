@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react'
 import { Staff } from '@/lib/tasks'
 import { uploadNotePhoto } from '@/lib/photo'
-import { addKnownPrivateNoteAuthor } from '@/lib/auth'
 
 // Small add-note form: free text plus a tap-to-pick name grid (same idea as
 // StaffPicker — whoever's adding the note picks their own name, no typing,
@@ -12,7 +11,11 @@ import { addKnownPrivateNoteAuthor } from '@/lib/auth'
 // only (same canManage gate as "+ Add Task"); regular staff never see it,
 // so their notes are never ack-required. "Send privately to ownership
 // only" (patch 21) is the opposite: available to everyone, no gate — who
-// can later *see* a private note is what's restricted, not who can send one.
+// can later *see* a private note is what's restricted, not who can send
+// one, and that's owner-only with no exceptions (not even the author —
+// this app runs on one shared store tablet, so there's no safe way to
+// single out "the same person" after the fact; the success message below
+// is the author's only confirmation it sent).
 export default function AddNoteModal({
   staff,
   canManage,
@@ -77,9 +80,6 @@ export default function AddNoteModal({
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Could not save')
-      // Remembers this name on this device so the author keeps seeing their
-      // own private note on future loads — see getKnownPrivateNoteAuthors.
-      if (ownerOnly) addKnownPrivateNoteAuthor(createdBy)
       onSaved('Note added')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save. Try again.')

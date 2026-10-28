@@ -12,7 +12,6 @@ import PhotoLightbox from './PhotoLightbox'
 import StaffName from '@/components/StaffName'
 import { staffColorFor, pastelTint, isOwnerStaffName, namesLikelyMatch, computeAckDenominator } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
-import { getKnownPrivateNoteAuthors } from '@/lib/auth'
 import { Staff, formatDateTime } from '@/lib/tasks'
 import { Note, NoteReply, NoteAcknowledgment, NotePhoto, formatRelativeTime, notesVisibilityParams } from '@/lib/notes'
 
@@ -85,7 +84,7 @@ export default function NotesBoard({
 
   const load = useCallback(async () => {
     try {
-      const qs = notesVisibilityParams(isOwner, getKnownPrivateNoteAuthors())
+      const qs = notesVisibilityParams(isOwner)
       const res = await fetch(`/api/notes${qs ? `?${qs}` : ''}`)
       if (res.ok) setNotes(await res.json())
     } catch {

@@ -11,7 +11,7 @@ import { Note, NoteReply, NoteAcknowledgment, NotePhoto } from './notes'
 // that's what Notes History groups by).
 export async function fetchNotesWithJoins(
   db: SupabaseClient,
-  opts: { archived: boolean; viewerIsOwner: boolean; viewerAuthorNames: string[] }
+  opts: { archived: boolean; viewerIsOwner: boolean }
 ): Promise<Note[]> {
   const sortColumn = opts.archived ? 'archived_at' : 'created_at'
   const [
@@ -33,12 +33,23 @@ export async function fetchNotesWithJoins(
   // Private ("owner_only," patch 21) notes are dropped here before any
   // joins are attached — not just hidden in the UI — so an unauthorized
   // viewer's response never contains them at all: not in the list, not in
-  // counts, nothing. Visible to owners always, and to the viewer's own
-  // known author name(s) (see auth.ts) so they keep seeing their own after
-  // posting.
-  const visibleNotes = (data ?? []).filter(
-    (n) => !n.owner_only || opts.viewerIsOwner || opts.viewerAuthorNames.includes(n.created_by)
-  )
+  // counts, nothing. Owner-only, no exceptions, not even a note's own
+  // author once they're off the owner role.
+  //
+  // Fix note: the original version of this also let through any note whose
+  // created_by matched a name in a client-sent `authors` list, meant to let
+  // an author keep seeing their own note after posting (there's no real
+  // login for regular staff to check instead). That list lived in
+  // localStorage, which this app's actual device — a single shared store
+  // tablet everyone uses — doesn't scope per person. So it accumulated
+  // every name that had EVER posted privately from that tablet, and the
+  // server trusted whatever list the client sent, meaning anyone browsing
+  // from that same tablet afterward — any role, any person — got every one
+  // of those notes, regardless of who was actually asking. Confirmed
+  // reproducing on both this route and GET /api/notes/history, since both
+  // call this same function with the same flawed opts. Removed entirely;
+  // `viewerIsOwner` is now the only check.
+  const visibleNotes = (data ?? []).filter((n) => !n.owner_only || opts.viewerIsOwner)
 
   const repliesByNote = new Map<string, NoteReply[]>()
   for (const r of (repliesRaw ?? []) as NoteReply[]) {

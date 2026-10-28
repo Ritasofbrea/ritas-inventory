@@ -46,16 +46,16 @@ export interface Note {
 }
 
 // Shared by the live board and Notes History fetches — tells the server
-// which owner_only ("private," patch 21) notes this viewer is allowed to
-// see: all of them if they're an owner, otherwise only ones authored under
-// a name this browser has used before (see auth.ts's
-// getKnownPrivateNoteAuthors — there's no persistent login for regular
-// staff to match against, so this is the closest equivalent, same
-// client-asserted trust model as every other role check in this app).
-export function notesVisibilityParams(isOwner: boolean, knownPrivateAuthors: string[]): string {
+// whether this viewer may see owner_only ("private," patch 21) notes.
+// Owner only, no exceptions — not even a private note's own author can see
+// it again once posted unless they're logged in as owner (an earlier
+// version tried a per-device "known author" exception; that leaked every
+// private note ever posted from a shared device to anyone browsing from
+// it afterward, regardless of role, which defeated the feature — see the
+// fix notes on fetchNotesWithJoins in notes-server.ts).
+export function notesVisibilityParams(isOwner: boolean): string {
   const params = new URLSearchParams()
   if (isOwner) params.set('role', 'owner')
-  if (knownPrivateAuthors.length > 0) params.set('authors', knownPrivateAuthors.join(','))
   return params.toString()
 }
 

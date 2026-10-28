@@ -7,17 +7,15 @@ import { fetchNotesWithJoins } from '@/lib/notes-server'
 // full acknowledgment, see DELETE below and notes-server.ts) live in Notes
 // History instead; see GET /api/notes/history.
 //
-// ?role=owner and ?authors=Name,Other%20Name (patch 21) tell
-// fetchNotesWithJoins which private notes this viewer may see — same
-// client-asserted trust model as everything else in this app, just applied
-// to what this route returns rather than only hidden in the UI.
+// ?role=owner (patch 21) tells fetchNotesWithJoins whether this viewer may
+// see private notes — owner-only, no exceptions (see the fix note on
+// fetchNotesWithJoins for why there used to be one, and why it leaked).
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const viewerIsOwner = searchParams.get('role') === 'owner'
-  const viewerAuthorNames = (searchParams.get('authors') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
   const db = getServerSupabase()
   try {
-    return NextResponse.json(await fetchNotesWithJoins(db, { archived: false, viewerIsOwner, viewerAuthorNames }))
+    return NextResponse.json(await fetchNotesWithJoins(db, { archived: false, viewerIsOwner }))
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not load notes' }, { status: 500 })
   }

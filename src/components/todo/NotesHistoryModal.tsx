@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import StaffName from '@/components/StaffName'
 import PhotoLightbox from './PhotoLightbox'
 import { staffColorFor, pastelTint, computeAckDenominator } from '@/lib/staffColor'
-import { getKnownPrivateNoteAuthors } from '@/lib/auth'
 import { Staff, formatDateShort, formatDateTime } from '@/lib/tasks'
 import { Note, groupArchivedNotesByDay, notesVisibilityParams } from '@/lib/notes'
 
@@ -32,7 +31,7 @@ export default function NotesHistoryModal({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    const qs = notesVisibilityParams(isOwner, getKnownPrivateNoteAuthors())
+    const qs = notesVisibilityParams(isOwner)
     fetch(`/api/notes/history${qs ? `?${qs}` : ''}`)
       .then((res) => {
         if (!res.ok) throw new Error()
