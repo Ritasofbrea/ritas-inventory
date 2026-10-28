@@ -25,7 +25,7 @@ create table flavor_week_slots (
   slot_number integer not null check (slot_number between 1 and 12),
   flavor_id uuid references flavors(id) on delete set null,
   flavor_name text not null,
-  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
   unique (week_id, slot_number)
 );
 

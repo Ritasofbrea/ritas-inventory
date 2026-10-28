@@ -69,10 +69,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error } = await db
     .from('flavor_week_slots')
-    .upsert(
-      { week_id: week.id, slot_number, flavor_id, flavor_name: flavor.name, updated_at: new Date().toISOString() },
-      { onConflict: 'week_id,slot_number' }
-    )
+    .upsert({ week_id: week.id, slot_number, flavor_id, flavor_name: flavor.name }, { onConflict: 'week_id,slot_number' })
     .select('slot_number, flavor_id, flavor_name')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
