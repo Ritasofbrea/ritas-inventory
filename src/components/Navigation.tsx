@@ -19,6 +19,7 @@ const MORE_LINKS = [
   { href: '/clover-mapping', label: 'Clover Mapping' },
   { href: '/staff', label: 'Staff' },
   { href: '/shift-leads', label: 'Shift Leads' },
+  { href: '/flavors-catalog', label: 'Flavors Catalog' },
   { href: '/pin-settings', label: 'Change PIN' },
 ]
 
@@ -166,14 +167,18 @@ export default function Navigation() {
               {navLink('/receive-order', 'Receive Order')}
               {navLink('/adjust', 'Adjustment')}
               {navLink('/todo', 'To-Do', todoBadge)}
+              {navLink('/flavors', 'Flavors')}
               {navLink('/pin-settings', 'Change PIN')}
             </div>
           )}
 
-          {/* No role: reached the To-Do List straight from the login screen */}
+          {/* No role: reached the To-Do List straight from the login screen.
+              Flavors is read-only for this audience (patch 20) but still
+              visible — same "anyone can look" tier as To-Do itself. */}
           {roleLoaded && role === null && (
             <div className="flex items-center gap-0.5">
               {navLink('/todo', 'To-Do', todoBadge)}
+              {navLink('/flavors', 'Flavors')}
             </div>
           )}
 
@@ -184,6 +189,7 @@ export default function Navigation() {
                 {navLink('/current-stock', 'Stock')}
                 {navLink('/order-list', 'Order List')}
                 {navLink('/todo', 'To-Do', todoBadge)}
+                {navLink('/flavors', 'Flavors')}
                 {navLink('/history', 'History')}
               </div>
 
