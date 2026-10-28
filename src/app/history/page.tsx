@@ -26,14 +26,6 @@ export default function HistoryPage() {
   const [top10Fetched, setTop10Fetched] = useState(false)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    const role = getRole()
-    if (!role) { router.replace('/login'); return }
-    if (role !== 'owner') { router.replace('/count'); return }
-    fetchHistory()
-    fetchTop10()
-  }, [router])
-
   const fetchHistory = async () => {
     try {
       const res = await fetch('/api/counts?limit=500')
@@ -61,6 +53,15 @@ export default function HistoryPage() {
     }
   }
 
+  useEffect(() => {
+    const role = getRole()
+    if (!role) { router.replace('/login'); return }
+    if (role !== 'owner') { router.replace('/count'); return }
+    fetchHistory()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
+    fetchTop10()
+  }, [router])
+
   const handleViewChange = (v: 'recent' | 'top10') => {
     setView(v)
     if (v === 'top10') fetchTop10()
@@ -69,7 +70,8 @@ export default function HistoryPage() {
   const toggleGroup = (key: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
