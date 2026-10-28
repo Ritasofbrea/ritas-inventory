@@ -58,13 +58,6 @@ export default function DashboardPage() {
   const [onOrderCount, setOnOrderCount] = useState(0)
   const [receiptReceivedBy, setReceiptReceivedBy] = useState<Record<string, string | null>>({})
 
-  useEffect(() => {
-    const role = getRole()
-    if (!role) { router.replace('/login'); return }
-    if (role !== 'owner') { router.replace('/count'); return }
-    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary(), fetchLastCounts(), fetchTopMovers()])
-  }, [router])
-
   const fetchItems = async () => {
     try {
       const res = await fetch('/api/items')
@@ -114,6 +107,14 @@ export default function DashboardPage() {
     const data: VelocityRow[] = await res.json()
     setTopMovers(data.filter((r) => r.consumed > 0).slice(0, 5))
   }
+
+  useEffect(() => {
+    const role = getRole()
+    if (!role) { router.replace('/login'); return }
+    if (role !== 'owner') { router.replace('/count'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
+    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary(), fetchLastCounts(), fetchTopMovers()])
+  }, [router])
 
   const resolveShort = async (id: string, name: string) => {
     setResolvingId(id)
