@@ -6,10 +6,18 @@ import { fetchNotesWithJoins } from '@/lib/notes-server'
 // Live board only — archived notes (manually "deleted" or auto-archived on
 // full acknowledgment, see DELETE below and notes-server.ts) live in Notes
 // History instead; see GET /api/notes/history.
-export async function GET() {
+//
+// ?role=owner and ?authors=Name,Other%20Name (patch 21) tell
+// fetchNotesWithJoins which private notes this viewer may see — same
+// client-asserted trust model as everything else in this app, just applied
+// to what this route returns rather than only hidden in the UI.
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const viewerIsOwner = searchParams.get('role') === 'owner'
+  const viewerAuthorNames = (searchParams.get('authors') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
   const db = getServerSupabase()
   try {
-    return NextResponse.json(await fetchNotesWithJoins(db, { archived: false }))
+    return NextResponse.json(await fetchNotesWithJoins(db, { archived: false, viewerIsOwner, viewerAuthorNames }))
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not load notes' }, { status: 500 })
   }
@@ -23,9 +31,11 @@ export async function GET() {
 // requires_ack is gated client-side only (the toggle is hidden from regular
 // staff in AddNoteModal, same canManage check used for "+ Add Task") — this
 // route trusts whatever boolean it's given, same as every other owner-only
-// flag in this app.
+// flag in this app. owner_only (patch 21) is NOT gated at all — anyone can
+// send a private note to ownership, same as a regular one; it's who can
+// later *see* it (fetchNotesWithJoins) that's restricted.
 export async function POST(request: NextRequest) {
-  const { content, created_by, requires_ack, photo_urls } = await request.json()
+  const { content, created_by, requires_ack, photo_urls, owner_only } = await request.json()
   if (typeof content !== 'string' || !content.trim()) {
     return NextResponse.json({ error: 'Write something first' }, { status: 400 })
   }
@@ -35,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
   const { data, error } = await db
     .from('notes')
-    .insert({ content: content.trim(), created_by, requires_ack: requires_ack === true })
+    .insert({ content: content.trim(), created_by, requires_ack: requires_ack === true, owner_only: owner_only === true })
     .select()
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

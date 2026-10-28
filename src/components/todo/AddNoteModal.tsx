@@ -3,13 +3,16 @@
 import { useRef, useState } from 'react'
 import { Staff } from '@/lib/tasks'
 import { uploadNotePhoto } from '@/lib/photo'
+import { addKnownPrivateNoteAuthor } from '@/lib/auth'
 
 // Small add-note form: free text plus a tap-to-pick name grid (same idea as
 // StaffPicker — whoever's adding the note picks their own name, no typing,
 // no PIN). Anyone can add a note, so this never checks role/canManage —
 // except the "Needs Acknowledgment" toggle below, which is owner/shift-lead
 // only (same canManage gate as "+ Add Task"); regular staff never see it,
-// so their notes are never ack-required.
+// so their notes are never ack-required. "Send privately to ownership
+// only" (patch 21) is the opposite: available to everyone, no gate — who
+// can later *see* a private note is what's restricted, not who can send one.
 export default function AddNoteModal({
   staff,
   canManage,
@@ -24,6 +27,7 @@ export default function AddNoteModal({
   const [content, setContent] = useState('')
   const [createdBy, setCreatedBy] = useState('')
   const [requiresAck, setRequiresAck] = useState(false)
+  const [ownerOnly, setOwnerOnly] = useState(false)
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -63,10 +67,19 @@ export default function AddNoteModal({
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, created_by: createdBy, requires_ack: canManage && requiresAck, photo_urls: photoUrls }),
+        body: JSON.stringify({
+          content,
+          created_by: createdBy,
+          requires_ack: canManage && requiresAck,
+          photo_urls: photoUrls,
+          owner_only: ownerOnly,
+        }),
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Could not save')
+      // Remembers this name on this device so the author keeps seeing their
+      // own private note on future loads — see getKnownPrivateNoteAuthors.
+      if (ownerOnly) addKnownPrivateNoteAuthor(createdBy)
       onSaved('Note added')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save. Try again.')
@@ -153,6 +166,16 @@ export default function AddNoteModal({
               {staff.length === 0 && <p className="col-span-2 text-gray-400 text-sm py-2">No staff names yet.</p>}
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700 font-medium">
+            <input
+              type="checkbox"
+              checked={ownerOnly}
+              onChange={(e) => setOwnerOnly(e.target.checked)}
+              className="w-4 h-4 accent-[#1a7a3c]"
+            />
+            🔒 Send privately to ownership only
+          </label>
 
           {canManage && (
             <label className="flex items-center gap-2 text-sm text-gray-700 font-medium">

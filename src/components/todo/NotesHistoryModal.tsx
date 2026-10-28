@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import StaffName from '@/components/StaffName'
 import PhotoLightbox from './PhotoLightbox'
 import { staffColorFor, pastelTint, computeAckDenominator } from '@/lib/staffColor'
+import { getKnownPrivateNoteAuthors } from '@/lib/auth'
 import { Staff, formatDateShort, formatDateTime } from '@/lib/tasks'
-import { Note, groupArchivedNotesByDay } from '@/lib/notes'
+import { Note, groupArchivedNotesByDay, notesVisibilityParams } from '@/lib/notes'
 
 // Read-only record of every archived note (manual Delete, or auto-archived
 // the moment an ack-required note's acknowledgment count hit its required
@@ -17,10 +18,12 @@ import { Note, groupArchivedNotesByDay } from '@/lib/notes'
 export default function NotesHistoryModal({
   staff,
   shiftLeads,
+  isOwner,
   onClose,
 }: {
   staff: Staff[]
   shiftLeads: { name: string }[]
+  isOwner: boolean
   onClose: () => void
 }) {
   const [notes, setNotes] = useState<Note[]>([])
@@ -29,7 +32,8 @@ export default function NotesHistoryModal({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/notes/history')
+    const qs = notesVisibilityParams(isOwner, getKnownPrivateNoteAuthors())
+    fetch(`/api/notes/history${qs ? `?${qs}` : ''}`)
       .then((res) => {
         if (!res.ok) throw new Error()
         return res.json()
@@ -37,7 +41,7 @@ export default function NotesHistoryModal({
       .then(setNotes)
       .catch(() => setError('Could not load Notes History. Try again.'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [isOwner])
 
   const dayGroups = groupArchivedNotesByDay(notes)
 
@@ -78,10 +82,19 @@ export default function NotesHistoryModal({
                       className={`rounded-2xl border px-4 py-3 ${authorColor ? '' : 'bg-gray-50 border-gray-200'}`}
                       style={authorColor ? { backgroundColor: pastelTint(authorColor, 0.92), borderColor: pastelTint(authorColor, 0.75) } : undefined}
                     >
-                      {n.requires_ack && (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-white bg-fuchsia-600 px-2 py-0.5 rounded-full mb-2">
-                          ⚠ Action Needed
-                        </span>
+                      {(n.requires_ack || n.owner_only) && (
+                        <div className="mb-2 flex items-center gap-1.5 flex-wrap">
+                          {n.requires_ack && (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-white bg-fuchsia-600 px-2 py-0.5 rounded-full">
+                              ⚠ Action Needed
+                            </span>
+                          )}
+                          {n.owner_only && (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-white bg-gray-700 px-2 py-0.5 rounded-full">
+                              🔒 Private to Ownership
+                            </span>
+                          )}
+                        </div>
                       )}
                       <p className="text-gray-900 whitespace-pre-wrap">{n.content}</p>
                       {n.photos.length > 0 && (

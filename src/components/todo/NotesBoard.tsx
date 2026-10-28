@@ -12,8 +12,9 @@ import PhotoLightbox from './PhotoLightbox'
 import StaffName from '@/components/StaffName'
 import { staffColorFor, pastelTint, isOwnerStaffName, namesLikelyMatch, computeAckDenominator } from '@/lib/staffColor'
 import { supabase } from '@/lib/supabase'
+import { getKnownPrivateNoteAuthors } from '@/lib/auth'
 import { Staff, formatDateTime } from '@/lib/tasks'
-import { Note, NoteReply, NoteAcknowledgment, NotePhoto, formatRelativeTime } from '@/lib/notes'
+import { Note, NoteReply, NoteAcknowledgment, NotePhoto, formatRelativeTime, notesVisibilityParams } from '@/lib/notes'
 
 // Shared sticky-notes board on the To-Do screen, above Today's Tasks. Anyone
 // can add a note (no PIN); only owners/shift leads (canManage, same gate as
@@ -84,7 +85,8 @@ export default function NotesBoard({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/notes')
+      const qs = notesVisibilityParams(isOwner, getKnownPrivateNoteAuthors())
+      const res = await fetch(`/api/notes${qs ? `?${qs}` : ''}`)
       if (res.ok) setNotes(await res.json())
     } catch {
       // board just stays empty/stale on a transient error — not worth
@@ -92,10 +94,27 @@ export default function NotesBoard({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isOwner])
 
   useEffect(() => {
     load()
+  }, [load])
+
+  // Private notes (patch 21) are filtered out of the Realtime channel itself
+  // (see the `filter` on the `notes` listeners below), not just hidden in
+  // the UI, so an owner/author who's already on the page won't see a new
+  // one pop in live — they'll pick it up on the next load here instead.
+  // Same visibility-change + periodic pattern Today's Tasks already uses.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', refresh)
+    const interval = setInterval(refresh, 5 * 60 * 1000)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      clearInterval(interval)
+    }
   }, [load])
 
   // Only needed for the ack-exemption math above — /api/shift-leads returns
@@ -118,7 +137,14 @@ export default function NotesBoard({
   useEffect(() => {
     const channel = supabase
       .channel('notes-board')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes' }, (payload: RealtimePostgresInsertPayload<Note>) => {
+      // owner_only=eq.false on all three `notes` listeners (patch 21): a
+      // private note's INSERT/UPDATE never reaches ANY connected browser
+      // over Realtime, including an owner's — not just filtered out of the
+      // handler below, filtered out of the channel itself, so the content
+      // never transits to an unauthorized client at all. Owners/authors
+      // pick new/changed private notes up via the visibility-change refresh
+      // above instead of an instant live push.
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes', filter: 'owner_only=eq.false' }, (payload: RealtimePostgresInsertPayload<Note>) => {
         // The raw `notes` row has no `replies`/`acknowledgments`/`photos`
         // columns — they're joins this app adds in the GET /api/notes route
         // — so a freshly-inserted note always starts with none of them
@@ -130,7 +156,7 @@ export default function NotesBoard({
             : [{ ...payload.new, replies: [], acknowledgments: [], photos: [] }, ...prev]
         )
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresUpdatePayload<Note>) => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notes', filter: 'owner_only=eq.false' }, (payload: RealtimePostgresUpdatePayload<Note>) => {
         // An archive (manual Delete, or auto-archive on full acknowledgment —
         // both are UPDATEs now, never a DELETE) means "remove from this live
         // list," same visual result as the old hard-delete. Any other field
@@ -142,13 +168,22 @@ export default function NotesBoard({
           setNotes((prev) => prev.map((n) => (n.id === payload.new.id ? { ...n, ...payload.new } : n)))
         }
       })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes' }, (payload: RealtimePostgresDeletePayload<Note>) => {
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notes', filter: 'owner_only=eq.false' }, (payload: RealtimePostgresDeletePayload<Note>) => {
         const deletedId = payload.old.id
         if (deletedId) setNotes((prev) => prev.filter((n) => n.id !== deletedId))
       })
       // A parent note's own cascade-delete removes its replies in the
       // database, but there's no separate DELETE event to listen for here —
       // the note's DELETE handler above already drops the whole card.
+      //
+      // Known gap: Supabase Realtime's `filter` can only check a column on
+      // the listened table itself, and replies/acknowledgments/photos don't
+      // carry their parent's `owner_only` flag — so a reply/ack/photo on a
+      // private note a viewer can't see still briefly reaches their browser
+      // over the wire here. It's harmless in practice (the `.map` below is
+      // a no-op since that note was never added to `notes` for them in the
+      // first place, so nothing renders or persists), but it's not the same
+      // hard guarantee the `notes` table itself gets above.
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'note_replies' }, (payload: RealtimePostgresInsertPayload<NoteReply>) => {
         const reply = payload.new
         setNotes((prev) =>
@@ -320,11 +355,21 @@ export default function NotesBoard({
                     : undefined
                 }
               >
-                {n.requires_ack && (
-                  <div className="mb-2">
-                    <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-white bg-fuchsia-600 px-2 py-0.5 rounded-full">
-                      ⚠ Action Needed
-                    </span>
+                {(n.requires_ack || n.owner_only) && (
+                  <div className="mb-2 flex items-center gap-1.5 flex-wrap">
+                    {/* Independent flags (patch 21) — a note can be ack-required,
+                        private, both, or neither; these are two separate badges,
+                        not one conflated indicator. */}
+                    {n.requires_ack && (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-white bg-fuchsia-600 px-2 py-0.5 rounded-full">
+                        ⚠ Action Needed
+                      </span>
+                    )}
+                    {n.owner_only && (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-white bg-gray-700 px-2 py-0.5 rounded-full">
+                        🔒 Private to Ownership
+                      </span>
+                    )}
                   </div>
                 )}
                 <div className="flex items-start gap-2">
@@ -373,7 +418,12 @@ export default function NotesBoard({
                     >
                       Reply
                     </button>
-                    {canManage && (
+                    {/* A private note can only be archived by an owner, even
+                        though a shift lead with canManage could delete a
+                        regular one — same "author can't delete their own
+                        note either" tier this already sits in, just scoped
+                        tighter for owner_only (patch 21). */}
+                    {canManage && (!n.owner_only || isOwner) && (
                       <button
                         onClick={() => setDeleting(n)}
                         className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1"
@@ -440,7 +490,7 @@ export default function NotesBoard({
         />
       )}
 
-      {showHistory && <NotesHistoryModal staff={staff} shiftLeads={shiftLeads} onClose={() => setShowHistory(false)} />}
+      {showHistory && <NotesHistoryModal staff={staff} shiftLeads={shiftLeads} isOwner={isOwner} onClose={() => setShowHistory(false)} />}
 
       {lightboxUrl && <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
     </div>

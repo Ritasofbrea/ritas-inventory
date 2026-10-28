@@ -9,7 +9,10 @@ import { Note, NoteReply, NoteAcknowledgment, NotePhoto } from './notes'
 // `archived` filter and sort column (created_at for the live board, newest
 // first; archived_at for history, most-recently-archived first, since
 // that's what Notes History groups by).
-export async function fetchNotesWithJoins(db: SupabaseClient, opts: { archived: boolean }): Promise<Note[]> {
+export async function fetchNotesWithJoins(
+  db: SupabaseClient,
+  opts: { archived: boolean; viewerIsOwner: boolean; viewerAuthorNames: string[] }
+): Promise<Note[]> {
   const sortColumn = opts.archived ? 'archived_at' : 'created_at'
   const [
     { data, error },
@@ -26,6 +29,16 @@ export async function fetchNotesWithJoins(db: SupabaseClient, opts: { archived: 
   if (repliesError) throw new Error(repliesError.message)
   if (acksError) throw new Error(acksError.message)
   if (photosError) throw new Error(photosError.message)
+
+  // Private ("owner_only," patch 21) notes are dropped here before any
+  // joins are attached — not just hidden in the UI — so an unauthorized
+  // viewer's response never contains them at all: not in the list, not in
+  // counts, nothing. Visible to owners always, and to the viewer's own
+  // known author name(s) (see auth.ts) so they keep seeing their own after
+  // posting.
+  const visibleNotes = (data ?? []).filter(
+    (n) => !n.owner_only || opts.viewerIsOwner || opts.viewerAuthorNames.includes(n.created_by)
+  )
 
   const repliesByNote = new Map<string, NoteReply[]>()
   for (const r of (repliesRaw ?? []) as NoteReply[]) {
@@ -45,7 +58,7 @@ export async function fetchNotesWithJoins(db: SupabaseClient, opts: { archived: 
     list.push(p)
     photosByNote.set(p.note_id, list)
   }
-  return (data ?? []).map((n) => ({
+  return visibleNotes.map((n) => ({
     ...n,
     replies: repliesByNote.get(n.id) ?? [],
     acknowledgments: acksByNote.get(n.id) ?? [],

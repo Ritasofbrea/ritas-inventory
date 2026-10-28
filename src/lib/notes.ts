@@ -39,9 +39,24 @@ export interface Note {
   requires_ack: boolean
   archived: boolean
   archived_at: string | null
+  owner_only: boolean
   photos: NotePhoto[]
   replies: NoteReply[]
   acknowledgments: NoteAcknowledgment[]
+}
+
+// Shared by the live board and Notes History fetches — tells the server
+// which owner_only ("private," patch 21) notes this viewer is allowed to
+// see: all of them if they're an owner, otherwise only ones authored under
+// a name this browser has used before (see auth.ts's
+// getKnownPrivateNoteAuthors — there's no persistent login for regular
+// staff to match against, so this is the closest equivalent, same
+// client-asserted trust model as every other role check in this app).
+export function notesVisibilityParams(isOwner: boolean, knownPrivateAuthors: string[]): string {
+  const params = new URLSearchParams()
+  if (isOwner) params.set('role', 'owner')
+  if (knownPrivateAuthors.length > 0) params.set('authors', knownPrivateAuthors.join(','))
+  return params.toString()
 }
 
 export interface ArchivedNoteDayGroup {

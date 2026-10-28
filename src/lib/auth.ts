@@ -3,6 +3,7 @@ import { Role } from './types'
 const ROLE_KEY = 'ritas_role'
 const OWNER_NAME_KEY = 'ritas_owner_name'
 const SHIFT_LEAD_NAME_KEY = 'ritas_shift_lead_name'
+const PRIVATE_NOTE_AUTHORS_KEY = 'ritas_private_note_authors'
 
 export function getRole(): Role | null {
   if (typeof window === 'undefined') return null
@@ -56,4 +57,31 @@ export function setShiftLeadName(name: string) {
 
 export function clearShiftLeadName() {
   localStorage.removeItem(SHIFT_LEAD_NAME_KEY)
+}
+
+// Owner-only ("private") notes (patch 21) need to stay visible to their
+// author after posting, but regular staff have no persistent login — they
+// just tap their name from a grid each time, same as completing a task.
+// So instead of a real identity, this remembers, per device, every staff
+// name that has used this browser to post a private note; GET /api/notes
+// (and /api/notes/history) take that list and let those names keep seeing
+// their own. A different device won't carry this over — same limitation
+// shift-lead name-matching already has (see namesLikelyMatch in
+// staffColor.ts) — and a shared store tablet accumulates everyone who's
+// ever posted privately from it, which is the intended behavior there.
+export function getKnownPrivateNoteAuthors(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PRIVATE_NOTE_AUTHORS_KEY) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+export function addKnownPrivateNoteAuthor(name: string) {
+  if (typeof window === 'undefined' || !name) return
+  const current = getKnownPrivateNoteAuthors()
+  if (current.includes(name)) return
+  localStorage.setItem(PRIVATE_NOTE_AUTHORS_KEY, JSON.stringify([...current, name]))
 }
