@@ -49,7 +49,6 @@ export default function OrderListPage() {
 
   // On-order tracking
   const [onOrderItemIds, setOnOrderItemIds] = useState<Set<string>>(new Set())
-  const [onOrderDetails, setOnOrderDetails] = useState<Record<string, { qty: number; unit: string; orderedAt: string; orderId: string }>>({})
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
   const [pendingOrders, setPendingOrders] = useState<OrderRecord[]>([])
 
@@ -57,22 +56,6 @@ export default function OrderListPage() {
   const [orderHistory, setOrderHistory] = useState<OrderRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    const role = getRole()
-    if (!role) { router.replace('/login'); return }
-    if (role !== 'owner') { router.replace('/count'); return }
-    loadAll()
-  }, [router])
-
-  const loadAll = async () => {
-    const [data, { onOrderIds }] = await Promise.all([fetchItems(), fetchPendingOrders()])
-    if (data) {
-      const needsOrder = data.filter((i) => getStockStatus(i) !== 'ok')
-      const toOrderIds = needsOrder.filter((i) => !onOrderIds.has(i.id)).map((i) => i.id)
-      setSelectedIds(new Set(toOrderIds))
-    }
-  }
 
   const fetchItems = async () => {
     try {
@@ -101,21 +84,33 @@ export default function OrderListPage() {
     const pending = all.filter((r) => r.type === 'ordered' && !fulfilledOrderIds.has(r.id))
 
     const itemIds = new Set<string>()
-    const details: Record<string, { qty: number; unit: string; orderedAt: string; orderId: string }> = {}
     for (const order of pending) {
       for (const item of order.order_history_items) {
-        if (item.item_id) {
-          itemIds.add(item.item_id)
-          details[item.item_id] = { qty: item.quantity, unit: item.unit, orderedAt: order.created_at, orderId: order.id }
-        }
+        if (item.item_id) itemIds.add(item.item_id)
       }
     }
 
     setOnOrderItemIds(itemIds)
-    setOnOrderDetails(details)
     setPendingOrders(pending)
     return { onOrderIds: itemIds }
   }
+
+  const loadAll = async () => {
+    const [data, { onOrderIds }] = await Promise.all([fetchItems(), fetchPendingOrders()])
+    if (data) {
+      const needsOrder = data.filter((i) => getStockStatus(i) !== 'ok')
+      const toOrderIds = needsOrder.filter((i) => !onOrderIds.has(i.id)).map((i) => i.id)
+      setSelectedIds(new Set(toOrderIds))
+    }
+  }
+
+  useEffect(() => {
+    const role = getRole()
+    if (!role) { router.replace('/login'); return }
+    if (role !== 'owner') { router.replace('/count'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
+    loadAll()
+  }, [router])
 
   const fetchHistory = async () => {
     if (orderHistory.length > 0) return
@@ -136,7 +131,8 @@ export default function OrderListPage() {
   const toggleItem = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -200,7 +196,8 @@ export default function OrderListPage() {
   const toggleOrder = (id: string) => {
     setExpandedOrders((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -239,13 +236,6 @@ export default function OrderListPage() {
   }, {})
 
   const unmapped = sorted.filter((i) => !i.distributor)
-
-  const sortedOnOrder = [...onOrderItems].sort((a, b) => {
-    if (a.supplier_order == null && b.supplier_order == null) return 0
-    if (a.supplier_order == null) return 1
-    if (b.supplier_order == null) return -1
-    return a.supplier_order - b.supplier_order
-  })
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
@@ -485,7 +475,7 @@ export default function OrderListPage() {
             ) : orderHistory.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-12 text-center">
                 <p className="text-gray-400 text-lg">No order history yet.</p>
-                <p className="text-gray-400 text-sm mt-1">Use "Mark as Ordered" or "Receive Order" to start tracking.</p>
+                <p className="text-gray-400 text-sm mt-1">Use &quot;Mark as Ordered&quot; or &quot;Receive Order&quot; to start tracking.</p>
               </div>
             ) : (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
