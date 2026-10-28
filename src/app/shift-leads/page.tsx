@@ -17,6 +17,7 @@ export default function ShiftLeadsPage() {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: flips the gate open once the role check passes on mount
     setChecked(true)
   }, [router])
 

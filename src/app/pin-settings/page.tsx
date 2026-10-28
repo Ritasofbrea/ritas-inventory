@@ -15,6 +15,7 @@ export default function PinSettingsPage() {
     // Any logged-in role can reach this now — an owner changes Josh's/Gina's
     // PIN, a shift lead changes their own; only a role-less visitor is sent away.
     if (!role) { router.replace('/login'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: flips the gate open once the role check passes on mount
     setChecked(true)
   }, [router])
 

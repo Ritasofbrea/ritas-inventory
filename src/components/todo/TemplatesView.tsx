@@ -47,6 +47,7 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
     load()
   }, [load])
 

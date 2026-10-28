@@ -38,6 +38,7 @@ export default function FlavorCatalogView() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
     load()
   }, [load])
 

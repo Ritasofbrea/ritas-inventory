@@ -101,6 +101,7 @@ export default function TodoPage() {
   useEffect(() => {
     // To-Do works with no role at all (the login screen's "To-Do List" button);
     // a role only unlocks the owner views and skips the Add Task PIN.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve role once on mount, this app's standard page-load pattern
     setRole(getRole())
     loadTasks()
     loadStaff()

@@ -36,6 +36,7 @@ export default function Navigation() {
   const [todoBadge, setTodoBadge] = useState(0)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve role once on mount, this app's standard page-load pattern
     setRole(getRole())
     setRoleLoaded(true)
     if (typeof Notification !== 'undefined') {

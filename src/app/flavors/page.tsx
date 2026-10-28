@@ -33,6 +33,7 @@ export default function FlavorsPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve role once on mount, this app's standard page-load pattern
     setRole(getRole())
     setRoleLoaded(true)
   }, [])
@@ -62,6 +63,7 @@ export default function FlavorsPage() {
   }, [weekStart])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches this week's slots on mount and whenever the week changes
     loadWeek()
   }, [loadWeek])
 
