@@ -131,7 +131,6 @@ export default function CountPage() {
       if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
       clearAllBlurTimers()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -159,9 +158,33 @@ export default function CountPage() {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
 
+  const fetchItems = async () => {
+    try {
+      const res = await fetch('/api/items')
+      const data = await res.json()
+      setItems(data)
+      clearAllBlurTimers()
+      setCounts({})
+      setSecondaryCounts({})
+      setConfirmedItems(new Set())
+      try {
+        const draftRes = await fetch('/api/count-draft')
+        const draft = await draftRes.json()
+        if (draft) setDraftToRestore(toDraftData(draft as ServerDraft))
+      } catch {
+        // draft fetch failing shouldn't block count entry
+      }
+    } catch {
+      setError('Failed to load items. Check your connection.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     const r = getRole()
     if (!r) { router.replace('/login'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve role once on mount, this app's standard page-load pattern
     setRole(r)
     // Default "who's counting" to the logged-in shift lead instead of asking
     // every time — still a normal editable field, in case someone else is
@@ -213,29 +236,6 @@ export default function CountPage() {
   const handleDiscardDraft = () => {
     fetch('/api/count-draft', { method: 'DELETE' }).catch(() => {})
     setDraftToRestore(null)
-  }
-
-  const fetchItems = async () => {
-    try {
-      const res = await fetch('/api/items')
-      const data = await res.json()
-      setItems(data)
-      clearAllBlurTimers()
-      setCounts({})
-      setSecondaryCounts({})
-      setConfirmedItems(new Set())
-      try {
-        const draftRes = await fetch('/api/count-draft')
-        const draft = await draftRes.json()
-        if (draft) setDraftToRestore(toDraftData(draft as ServerDraft))
-      } catch {
-        // draft fetch failing shouldn't block count entry
-      }
-    } catch {
-      setError('Failed to load items. Check your connection.')
-    } finally {
-      setLoading(false)
-    }
   }
 
   const handleChange = (itemId: string, value: string) => {
