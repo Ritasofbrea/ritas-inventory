@@ -66,13 +66,6 @@ export default function ReceiveOrderPage() {
     submitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [])
 
-  useEffect(() => {
-    const r = getRole()
-    if (!r) { router.replace('/login'); return }
-    setRole(r)
-    Promise.all([fetchItems(), fetchRecentOrders()]).finally(() => setLoading(false))
-  }, [router])
-
   const fetchItems = async () => {
     const res = await fetch('/api/items')
     setItems(await res.json())
@@ -88,6 +81,14 @@ export default function ReceiveOrderPage() {
     const pending = all.filter((r) => r.type === 'ordered' && !fulfilledIds.has(r.id))
     setRecentOrders(pending.slice(0, 6))
   }
+
+  useEffect(() => {
+    const r = getRole()
+    if (!r) { router.replace('/login'); return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve role once on mount, this app's standard page-load pattern
+    setRole(r)
+    Promise.all([fetchItems(), fetchRecentOrders()]).finally(() => setLoading(false))
+  }, [router])
 
   const handleChange = (id: string, val: string) => {
     if (val === '' || /^\d*\.?\d*$/.test(val)) {
@@ -353,7 +354,7 @@ export default function ReceiveOrderPage() {
               </div>
             </label>
             {recentOrders.length === 0 ? (
-              <div className="px-5 py-4 text-sm text-gray-400">No recent orders found. Use "Mark as Ordered" on the Order List first.</div>
+              <div className="px-5 py-4 text-sm text-gray-400">No recent orders found. Use &quot;Mark as Ordered&quot; on the Order List first.</div>
             ) : (
               recentOrders.map((order) => (
                 <label key={order.id} className={`flex items-center gap-3 px-5 py-4 cursor-pointer border-b border-gray-100 last:border-0 transition-colors ${selectedOrder?.id === order.id ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
