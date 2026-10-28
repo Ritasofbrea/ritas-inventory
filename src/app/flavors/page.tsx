@@ -6,7 +6,15 @@ import FlavorSlotPicker from '@/components/todo/FlavorSlotPicker'
 import { getRole } from '@/lib/auth'
 import { Role } from '@/lib/types'
 import { addDays, todayInTZ } from '@/lib/tasks'
-import { FLAVOR_SLOT_COUNT, Flavor, FlavorWeekSlot, formatWeekLabel, startOfWeek } from '@/lib/flavors'
+import {
+  FLAVOR_SLOT_COUNT,
+  FLAVOR_TYPE_BADGE,
+  FLAVOR_TYPE_BADGE_CLASS,
+  Flavor,
+  FlavorWeekSlot,
+  formatWeekLabel,
+  startOfWeek,
+} from '@/lib/flavors'
 
 // Weekly flavor planning board (patch 20) — open to everyone, like /todo:
 // owners and shift leads (canManage, same tier as "+ Add Task") can
@@ -81,6 +89,11 @@ export default function FlavorsPage() {
 
   const slotMap = new Map(slots.map((s) => [s.slot_number, s]))
   const editingSlotData = editingSlot !== null ? slotMap.get(editingSlot) : undefined
+  // Glance-able hint only (patch 26) — Joshua always wants at least one
+  // sugar-free and tries to have a cream ice represented, but a week can
+  // still be saved/used without either.
+  const hasSugarFree = slots.some((s) => s.flavor_type === 'sugar_free')
+  const hasCreamIce = slots.some((s) => s.flavor_type === 'cream_ice')
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
@@ -107,6 +120,17 @@ export default function FlavorsPage() {
 
         {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">{error}</div>}
 
+        {!loading && (
+          <div className="mb-5 flex flex-col gap-1.5 text-sm font-semibold">
+            <p className={hasSugarFree ? 'text-green-700' : 'text-amber-600'}>
+              {hasSugarFree ? '✓ Sugar Free covered' : '⚠ No Sugar Free flavor selected yet'}
+            </p>
+            <p className={hasCreamIce ? 'text-green-700' : 'text-amber-600'}>
+              {hasCreamIce ? '✓ Cream Ice covered' : '⚠ No Cream Ice flavor selected yet'}
+            </p>
+          </div>
+        )}
+
         {!roleLoaded || loading ? (
           <p className="text-gray-400 text-center py-10">Loading…</p>
         ) : (
@@ -130,6 +154,13 @@ export default function FlavorsPage() {
                   <span className={`flex-1 font-semibold ${filled ? 'text-gray-900' : 'text-gray-400'}`}>
                     {slot?.flavor_name ?? 'Empty'}
                   </span>
+                  {slot?.flavor_type && (
+                    <span
+                      className={`flex-shrink-0 text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${FLAVOR_TYPE_BADGE_CLASS[slot.flavor_type]}`}
+                    >
+                      {FLAVOR_TYPE_BADGE[slot.flavor_type]}
+                    </span>
+                  )}
                   {canManage && <span className="text-gray-300 flex-shrink-0">›</span>}
                 </button>
               )

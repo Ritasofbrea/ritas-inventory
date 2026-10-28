@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   const { data: slots, error } = await db
     .from('flavor_week_slots')
-    .select('slot_number, flavor_id, flavor_name')
+    .select('slot_number, flavor_id, flavor_name, flavor_type')
     .eq('week_id', week.id)
     .order('slot_number')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -54,14 +54,15 @@ export async function PATCH(request: NextRequest) {
       .eq('week_id', week.id)
       .eq('slot_number', slot_number)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ slot_number, flavor_id: null, flavor_name: null })
+    return NextResponse.json({ slot_number, flavor_id: null, flavor_name: null, flavor_type: null })
   }
 
-  // flavor_name is looked up here, not trusted from the client, so the
-  // snapshot always reflects the catalog's actual name at pick time.
+  // flavor_name and flavor_type are looked up here, not trusted from the
+  // client, so the snapshot always reflects the catalog's actual values at
+  // pick time.
   const { data: flavor, error: flavorError } = await db
     .from('flavors')
-    .select('name')
+    .select('name, type')
     .eq('id', flavor_id)
     .maybeSingle()
   if (flavorError) return NextResponse.json({ error: flavorError.message }, { status: 500 })
@@ -69,8 +70,11 @@ export async function PATCH(request: NextRequest) {
 
   const { data, error } = await db
     .from('flavor_week_slots')
-    .upsert({ week_id: week.id, slot_number, flavor_id, flavor_name: flavor.name }, { onConflict: 'week_id,slot_number' })
-    .select('slot_number, flavor_id, flavor_name')
+    .upsert(
+      { week_id: week.id, slot_number, flavor_id, flavor_name: flavor.name, flavor_type: flavor.type },
+      { onConflict: 'week_id,slot_number' }
+    )
+    .select('slot_number, flavor_id, flavor_name, flavor_type')
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)

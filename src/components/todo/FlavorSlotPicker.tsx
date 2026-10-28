@@ -1,9 +1,12 @@
 'use client'
 
-import { Flavor } from '@/lib/flavors'
+import { FLAVOR_TYPE_LABELS, Flavor, groupFlavorsByType } from '@/lib/flavors'
 
 // Bottom-sheet list of flavor buttons for one week's slot — same pattern as
 // StaffPicker, plus a "Clear this slot" option when it's already filled.
+// Grouped by type (patch 26) rather than a flat alphabetical list — with
+// ~89 flavors, that's the difference between "easy to find things" and a
+// lot of scrolling; no search/filter needed on top of it.
 export default function FlavorSlotPicker({
   flavors,
   slotNumber,
@@ -43,25 +46,28 @@ export default function FlavorSlotPicker({
               Clear this slot
             </button>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            {flavors.map((f) => (
-              <button
-                key={f.id}
-                disabled={busy}
-                onClick={() => onPick(f.id)}
-                className={`min-h-[52px] font-semibold rounded-xl px-3 py-2 border transition-colors disabled:opacity-50 ${
-                  f.id === currentFlavorId
-                    ? 'bg-[#1a7a3c] text-white border-[#1a7a3c]'
-                    : 'bg-green-50 hover:bg-green-100 active:bg-green-200 text-gray-900 border-green-100'
-                }`}
-              >
-                {f.name}
-              </button>
-            ))}
-            {flavors.length === 0 && (
-              <p className="col-span-2 text-gray-400 text-sm py-4">No active flavors in the catalog yet.</p>
-            )}
-          </div>
+          {groupFlavorsByType(flavors).map((group) => (
+            <div key={group.type}>
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1.5">{FLAVOR_TYPE_LABELS[group.type]}</p>
+              <div className="grid grid-cols-2 gap-2">
+                {group.flavors.map((f) => (
+                  <button
+                    key={f.id}
+                    disabled={busy}
+                    onClick={() => onPick(f.id)}
+                    className={`min-h-[52px] font-semibold rounded-xl px-3 py-2 border transition-colors disabled:opacity-50 ${
+                      f.id === currentFlavorId
+                        ? 'bg-[#1a7a3c] text-white border-[#1a7a3c]'
+                        : 'bg-green-50 hover:bg-green-100 active:bg-green-200 text-gray-900 border-green-100'
+                    }`}
+                  >
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {flavors.length === 0 && <p className="text-gray-400 text-sm py-4">No active flavors in the catalog yet.</p>}
         </div>
         <div className="px-6 pb-6 pt-3 flex-shrink-0">
           <button onClick={onClose} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold py-3 rounded-xl">
