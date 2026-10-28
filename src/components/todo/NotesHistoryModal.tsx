@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import StaffName from '@/components/StaffName'
 import PhotoLightbox from './PhotoLightbox'
 import { staffColorFor, pastelTint, computeAckDenominator } from '@/lib/staffColor'
@@ -29,17 +29,29 @@ export default function NotesHistoryModal({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  // Same out-of-order-response guard as NotesBoard's load() — belt and
+  // suspenders here, since `isOwner` is already settled by the time this
+  // modal mounts (the user has to tap a button to open it), but nothing
+  // stops a future re-render from changing it mid-fetch.
+  const loadSeq = useRef(0)
 
   useEffect(() => {
+    const seq = ++loadSeq.current
     const qs = notesVisibilityParams(isOwner)
     fetch(`/api/notes/history${qs ? `?${qs}` : ''}`)
       .then((res) => {
         if (!res.ok) throw new Error()
         return res.json()
       })
-      .then(setNotes)
-      .catch(() => setError('Could not load Notes History. Try again.'))
-      .finally(() => setLoading(false))
+      .then((json) => {
+        if (seq === loadSeq.current) setNotes(json)
+      })
+      .catch(() => {
+        if (seq === loadSeq.current) setError('Could not load Notes History. Try again.')
+      })
+      .finally(() => {
+        if (seq === loadSeq.current) setLoading(false)
+      })
   }, [isOwner])
 
   const dayGroups = groupArchivedNotesByDay(notes)

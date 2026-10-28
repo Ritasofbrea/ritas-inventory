@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RealtimePostgresInsertPayload, RealtimePostgresUpdatePayload, RealtimePostgresDeletePayload } from '@supabase/realtime-js'
 import AddNoteModal from './AddNoteModal'
 import AddReplyModal from './AddReplyModal'
@@ -82,16 +82,31 @@ export default function NotesBoard({
   // same via the title attribute, but this is a touch-first PWA).
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
+  // `isOwner` starts false on mount (page.tsx only knows the real role once
+  // its own effect reads localStorage) and can flip true moments later, so
+  // `load` — keyed on `isOwner` — fires twice in quick succession: once
+  // without ?role=owner, then again with it once the real role resolves.
+  // Network responses aren't guaranteed to land in dispatch order, so
+  // without this guard the FIRST (role-less, private-notes-excluded)
+  // request could resolve AFTER the second and silently overwrite the
+  // correct list — exactly what caused private notes to vanish from the
+  // live board on a plain reload even for an owner. loadSeq only lets the
+  // most-recently-DISPATCHED request's response apply.
+  const loadSeq = useRef(0)
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
     try {
       const qs = notesVisibilityParams(isOwner)
       const res = await fetch(`/api/notes${qs ? `?${qs}` : ''}`)
-      if (res.ok) setNotes(await res.json())
+      if (res.ok) {
+        const json = await res.json()
+        if (seq === loadSeq.current) setNotes(json)
+      }
     } catch {
       // board just stays empty/stale on a transient error — not worth
       // surfacing an error banner for a low-stakes notes board
     } finally {
-      setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
     }
   }, [isOwner])
 
