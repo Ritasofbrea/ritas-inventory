@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { isActiveStaff } from '@/lib/task-server'
 import { maybeAutoArchiveNote } from '@/lib/notes-server'
+import { requireRole } from '@/lib/session'
 
 // One-tap "I Understand" — no text entry, same no-PIN trust level as adding
 // a note or reply (isActiveStaff). Logging twice for the same person is a
@@ -14,11 +15,13 @@ import { maybeAutoArchiveNote } from '@/lib/notes-server'
 // count just reached its required total and, if so, archives it right then
 // (patch 17) — no manual Delete needed for a fully-acknowledged note.
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead', 'staff'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { note_id, staff_name } = await request.json()
   if (typeof note_id !== 'string' || !note_id) {
     return NextResponse.json({ error: 'Missing note' }, { status: 400 })
   }
-  const db = getServerSupabase()
   if (!(await isActiveStaff(db, staff_name))) {
     return NextResponse.json({ error: 'Pick your name from the list' }, { status: 400 })
   }

@@ -1,0 +1,38 @@
+'use client'
+
+import { useEffect } from 'react'
+import { clearRole } from '@/lib/auth'
+
+export const LOGIN_MESSAGE_KEY = 'ritas_login_message'
+
+let patched = false
+
+// Patch 29 B8: wraps window.fetch once, globally, so ANY 401 response from
+// anywhere in the app — not just this component — is treated as "your
+// session is no longer valid": clears the local role/name cache and sends
+// the device to /login with a short message. A full navigation (not a
+// router.push) so every page's timers/intervals are torn down with it —
+// that's what stops an auto-refresh loop from repeatedly hitting 401.
+// Excludes /login itself so a pre-session 401 there (e.g. SESSION_SECRET
+// briefly unavailable) doesn't bounce the page it's already on.
+export default function SessionGuard() {
+  useEffect(() => {
+    if (patched) return
+    patched = true
+    const originalFetch = window.fetch.bind(window)
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      const response = await originalFetch(...args)
+      if (response.status === 401 && !window.location.pathname.startsWith('/login')) {
+        clearRole()
+        try {
+          sessionStorage.setItem(LOGIN_MESSAGE_KEY, 'Please log in again.')
+        } catch {
+          // ignore — private browsing / storage blocked
+        }
+        window.location.href = '/login'
+      }
+      return response
+    }
+  }, [])
+  return null
+}

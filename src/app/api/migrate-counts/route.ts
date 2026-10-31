@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 
 // Count sheet from 6/22/2026 – { name, category (if needed to disambiguate), count }
@@ -215,7 +215,14 @@ const counts: { name: string; category?: string; count: number }[] = [
   { name: 'Receipt Paper', count: 4 },
 ]
 
-export async function POST() {
+// One-time migration route — nothing in the app calls this (confirmed by
+// grep). Patch 29 A2: same CRON_SECRET bearer gate as the cron routes.
+export async function POST(request: NextRequest) {
+  const secret = process.env.CRON_SECRET
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const db = getServerSupabase()
   const errors: string[] = []
   let updated = 0

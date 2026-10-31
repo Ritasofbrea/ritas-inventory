@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { NOTE_PHOTO_BUCKET } from '@/lib/note-photo-constants'
+import { requireRole } from '@/lib/session'
 
 // Issues a one-time signed upload URL so the browser uploads straight to
 // Supabase Storage (avoids Vercel's ~4.5MB request body limit) — same
@@ -8,8 +9,10 @@ import { NOTE_PHOTO_BUCKET } from '@/lib/note-photo-constants'
 // a note photo is picked before the note itself is created (AddNoteModal
 // uploads it first, then posts the resulting URL along with the note), so
 // the path is just a random, unguessable filename.
-export async function POST() {
+export async function POST(request: NextRequest) {
   const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead', 'staff'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
   const { data, error } = await db.storage.from(NOTE_PHOTO_BUCKET).createSignedUploadUrl(path)
   if (error || !data) return NextResponse.json({ error: error?.message ?? 'Could not start upload' }, { status: 500 })

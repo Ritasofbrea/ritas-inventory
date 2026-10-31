@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
 export async function GET(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { searchParams } = new URL(request.url)
   const type = searchParams.get('type') // optional filter
   const unresolvedOnly = searchParams.get('unresolved') === 'true'
 
-  const db = getServerSupabase()
   let query = db
     .from('order_history')
     .select('*, order_history_items(*)')
@@ -22,13 +25,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { type, notes, items, related_order_id, resolved, received_by } = body
 
   if (!type || !Array.isArray(items) || items.length === 0)
     return NextResponse.json({ error: 'Missing type or items' }, { status: 400 })
-
-  const db = getServerSupabase()
 
   const { data: order, error: orderError } = await db
     .from('order_history')
@@ -73,22 +77,26 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { id } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const db = getServerSupabase()
   const { error } = await db.from('order_history').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
 
 export async function PATCH(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { id, resolved, resolved_by } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const db = getServerSupabase()
   const updates: Record<string, unknown> = { resolved }
   if (resolved === true) {
     updates.resolved_at = new Date().toISOString()

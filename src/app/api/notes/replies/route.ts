@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { isActiveStaff } from '@/lib/task-server'
+import { requireRole } from '@/lib/session'
 
 // Add-only follow-up on an existing note — no edit/delete for this pass, same
 // no-PIN trust level as adding a note itself (isActiveStaff, not the
 // owner-only TASK_CREATORS list). Deleting the parent note cascade-deletes
 // its replies (see add-note-replies.sql); there's no delete route here.
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead', 'staff'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { note_id, content, created_by } = await request.json()
   if (typeof note_id !== 'string' || !note_id) {
     return NextResponse.json({ error: 'Missing note' }, { status: 400 })
@@ -14,7 +18,6 @@ export async function POST(request: NextRequest) {
   if (typeof content !== 'string' || !content.trim()) {
     return NextResponse.json({ error: 'Write something first' }, { status: 400 })
   }
-  const db = getServerSupabase()
   if (!(await isActiveStaff(db, created_by))) {
     return NextResponse.json({ error: 'Pick your name from the list' }, { status: 400 })
   }

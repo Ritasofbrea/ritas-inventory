@@ -1,9 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { setRole, setOwnerName, setShiftLeadName, clearRole } from '@/lib/auth'
+import { fetchSession } from '@/lib/client-session'
+import { LOGIN_MESSAGE_KEY } from '@/components/SessionGuard'
+import StaffPicker from '@/components/todo/StaffPicker'
+import type { Staff } from '@/lib/tasks'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -12,6 +16,38 @@ export default function LoginPage() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [verifying, setVerifying] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [checkingSession, setCheckingSession] = useState(true)
+  const [showStaffPicker, setShowStaffPicker] = useState(false)
+  const [staffList, setStaffList] = useState<Staff[]>([])
+  const [staffBusy, setStaffBusy] = useState(false)
+
+  // Patch 29: a device that already has a valid session skips this screen
+  // entirely — covers a returning staff device (one-time name pick, then
+  // never again for 365 days) and anyone who navigates here while still
+  // logged in elsewhere.
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem(LOGIN_MESSAGE_KEY)
+      if (msg) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve once on mount, this app's standard page-load pattern
+        setNotice(msg)
+        sessionStorage.removeItem(LOGIN_MESSAGE_KEY)
+      }
+    } catch {
+      // ignore
+    }
+    fetchSession().then(({ role }) => {
+      if (role === 'owner' || role === 'shift_lead') {
+        setRole(role)
+        router.replace(role === 'owner' ? '/dashboard' : '/count')
+      } else if (role === 'staff') {
+        router.replace('/todo')
+      } else {
+        setCheckingSession(false)
+      }
+    })
+  }, [router])
 
   const handleShiftLead = () => {
     setPinRole('shift_lead')
@@ -27,11 +63,42 @@ export default function LoginPage() {
     setPin('')
   }
 
-  // To-Do is open to everyone: no PIN, and no role is kept (so a previously stored
-  // owner/shift-lead role can't carry over into the role-less To-Do view).
-  const handleTodo = () => {
-    clearRole()
-    router.push('/todo')
+  // To-Do is open to everyone: no owner/shift_lead role is kept (so a
+  // previously stored one can't carry over into the role-less To-Do view).
+  // Patch 29: picking a name here establishes a real 365-day staff session
+  // server-side (POST /api/session) — a one-time step per device; see
+  // src/app/api/session/route.ts.
+  const handleTodo = async () => {
+    setError('')
+    try {
+      const res = await fetch('/api/staff')
+      const list = await res.json()
+      if (!res.ok) throw new Error()
+      setStaffList(list)
+      setShowStaffPicker(true)
+    } catch {
+      setError('Could not load the staff list. Check your connection and try again.')
+    }
+  }
+
+  const handleStaffNamePicked = async (name: string) => {
+    setStaffBusy(true)
+    try {
+      const res = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) throw new Error()
+      clearRole()
+      setShowStaffPicker(false)
+      router.push('/todo')
+    } catch {
+      setError('Could not log in. Try again.')
+      setShowStaffPicker(false)
+    } finally {
+      setStaffBusy(false)
+    }
   }
 
   // Both roles now check against named, individual PINs (owners: Josh/Gina;
@@ -61,11 +128,19 @@ export default function LoginPage() {
         setError('Wrong PIN. Try again.')
         setPin('')
       }
-    } catch {
-      setError('Could not check the PIN. Check your connection and try again.')
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : 'Could not check the PIN. Check your connection and try again.')
     } finally {
       setVerifying(false)
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-[100dvh] bg-[#1a7a3c] flex items-center justify-center">
+        <p className="text-green-100">Loading…</p>
+      </div>
+    )
   }
 
   return (
@@ -78,6 +153,10 @@ export default function LoginPage() {
           </div>
           <p className="text-green-200 mt-1 font-medium tracking-wide">Brea Location – Inventory</p>
         </div>
+
+        {notice && (
+          <p className="text-center text-yellow-200 bg-black/20 rounded-xl py-2 px-3 mb-4 text-sm font-medium">{notice}</p>
+        )}
 
         {!showPinEntry ? (
           <div className="flex flex-col gap-4">
@@ -103,6 +182,10 @@ export default function LoginPage() {
             >
               To-Do List
             </button>
+
+            {error && (
+              <p className="text-center text-[#c8102e] bg-white rounded-xl py-2 px-3 font-medium">{error}</p>
+            )}
           </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-xl p-6">
@@ -141,6 +224,16 @@ export default function LoginPage() {
           </div>
         )}
       </div>
+
+      {showStaffPicker && (
+        <StaffPicker
+          staff={staffList}
+          title="Who are you?"
+          busy={staffBusy}
+          onPick={handleStaffNamePicked}
+          onClose={() => setShowStaffPicker(false)}
+        />
+      )}
     </div>
   )
 }

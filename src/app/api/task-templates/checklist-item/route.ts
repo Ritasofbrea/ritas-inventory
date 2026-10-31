@@ -10,11 +10,16 @@ import {
   normalizeRecurrence,
   parseDueTime,
 } from '@/lib/task-server'
+import { requireRole } from '@/lib/session'
 
 // Adds a new line item to an existing named checklist + section (e.g. a new
 // row under "Opening Checklist / Shop Readiness"). Does not create brand-new
 // checklists or sections — only existing (checklist_name, section) pairs.
+// Owner-only — Repeating tab.
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { checklist_name, section, title, description, assigned_to, created_by, photo_setting, due_time } = body
 
@@ -36,7 +41,6 @@ export async function POST(request: NextRequest) {
   const recurrenceResult = normalizeRecurrence(body)
   if ('error' in recurrenceResult) return NextResponse.json({ error: recurrenceResult.error }, { status: 400 })
 
-  const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
     return NextResponse.json({ error: 'Pick who this is assigned to' }, { status: 400 })
   }
@@ -70,12 +74,15 @@ export async function POST(request: NextRequest) {
 
 // Reorders a checklist item within its own section (swap with the item above/below).
 export async function PATCH(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { id, direction } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   if (direction !== 'up' && direction !== 'down') {
     return NextResponse.json({ error: 'direction must be "up" or "down"' }, { status: 400 })
   }
-  const result = await moveChecklistItem(getServerSupabase(), id, direction)
+  const result = await moveChecklistItem(db, id, direction)
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
   return NextResponse.json({ success: true })
 }
