@@ -17,6 +17,12 @@ export type Recurrence = 'none' | 'daily' | 'weekly' | 'custom'
 export type PhotoSetting = 'off' | 'optional' | 'required'
 // Standalone (non-checklist) tasks only — named-checklist items ignore this.
 export type Priority = 'normal' | 'high'
+// 'none' = plain task, no steps. 'reference' = the Details/description text is
+// shown as a collapsible read-only "Instructions" section. 'checklist' = the
+// template's task_template_steps are shown as checkboxes; the task can't be
+// completed until every step is checked (enforced server-side).
+export type StepStyle = 'none' | 'reference' | 'checklist'
+export const STEP_STYLES: StepStyle[] = ['none', 'reference', 'checklist']
 
 export interface Staff {
   id: string
@@ -24,6 +30,14 @@ export interface Staff {
   active: boolean
   created_at: string
   color: string | null
+}
+
+export interface TaskTemplateStep {
+  id: string
+  template_id: string
+  sort_order: number
+  content: string
+  created_at: string
 }
 
 export interface TaskTemplate {
@@ -44,6 +58,10 @@ export interface TaskTemplate {
   sort_order: number
   priority: Priority
   due_time: string | null
+  step_style: StepStyle
+  // Only attached by GET /api/task-templates (for the template editor); not
+  // present on rows coming from anywhere else.
+  steps?: TaskTemplateStep[]
 }
 
 export interface TaskInstance {
@@ -66,6 +84,12 @@ export interface TaskInstance {
   sort_order: number
   priority: Priority
   due_time: string | null
+  // Only attached by GET /api/tasks?view=today (read live from the owning
+  // template, not snapshotted — see attachStepsToInstances in task-server.ts).
+  // Absent (undefined) on History/Missed rows, which don't show steps.
+  step_style?: StepStyle
+  steps?: TaskTemplateStep[]
+  checked_step_ids?: string[]
 }
 
 // One row per named checklist, holding its default due time (null = none set).

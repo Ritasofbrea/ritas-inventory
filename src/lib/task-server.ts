@@ -4,11 +4,13 @@ import {
   templateMatchesDate,
   todayInTZ,
   TaskTemplate,
+  TaskTemplateStep,
   TaskInstance,
   Checklist,
   Recurrence,
   Priority,
   PhotoSetting,
+  StepStyle,
   photoFlags,
   EVERYONE,
   TASK_CREATORS,
@@ -332,12 +334,15 @@ async function renumberChecklist(db: SupabaseClient, orderedIds: string[]): Prom
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type TaskWriteResult<T = {}> = ({ ok: true } & T) | { ok: false; error: string; status: number }
 
-// Adds a new line item to an existing (checklist_name, section). recurrence/
-// weekday/custom_days are per-item, same as any other template — the caller
-// (AddChecklistItemModal) pre-fills them from an existing sibling in that
-// section as a convenience default, but sends its own explicit values here,
-// so a one-off exception (e.g. this one item only on Sundays) is possible.
-// Placed at the end of its section, everything renumbered to stay contiguous.
+// Adds a new line item to an existing (checklist_name, section), or to a
+// brand-new section — appended at the very end of the checklist, after every
+// existing section — if that (checklist_name, section) pair doesn't exist yet.
+// recurrence/weekday/custom_days are per-item, same as any other template —
+// the caller (AddChecklistItemModal) pre-fills them from an existing sibling
+// in that section as a convenience default, but sends its own explicit values
+// here, so a one-off exception (e.g. this one item only on Sundays) is
+// possible. Placed at the end of its section, everything renumbered to stay
+// contiguous.
 export async function addChecklistItem(
   db: SupabaseClient,
   params: {
@@ -361,8 +366,8 @@ export async function addChecklistItem(
     .eq('checklist_name', params.checklist_name)
   if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
   const siblings = (siblingsRaw ?? []) as TaskTemplate[]
+  if (siblings.length === 0) return { ok: false, error: 'That checklist was not found', status: 400 }
   const sibling = siblings.find((t) => t.section === params.section)
-  if (!sibling) return { ok: false, error: 'That checklist/section was not found', status: 400 }
 
   const { data: inserted, error: insertError } = await db
     .from('task_templates')
@@ -387,12 +392,15 @@ export async function addChecklistItem(
 
   const existingOrdered = canonicalOrder(siblings)
   let insertAt = existingOrdered.length
-  for (let i = existingOrdered.length - 1; i >= 0; i--) {
-    if (existingOrdered[i].section === params.section) {
-      insertAt = i + 1
-      break
+  if (sibling) {
+    for (let i = existingOrdered.length - 1; i >= 0; i--) {
+      if (existingOrdered[i].section === params.section) {
+        insertAt = i + 1
+        break
+      }
     }
   }
+  // else: brand-new section — insertAt stays at the end of the whole checklist.
   const ordered = [...existingOrdered.slice(0, insertAt), inserted as TaskTemplate, ...existingOrdered.slice(insertAt)]
   const renumberError = await renumberChecklist(db, ordered.map((t) => t.id))
   if (renumberError) return { ok: false, error: renumberError, status: 500 }
@@ -683,6 +691,229 @@ export async function undoCompletion(db: SupabaseClient, instanceId: string): Pr
     .eq('status', 'done')
   if (error) return { ok: false, error: error.message, status: 500 }
 
+  // Step checks (task_instance_step_checks) are deliberately left alone — they
+  // represent physical work already done, same treatment as the task's title/
+  // description/etc. Only completion metadata and the photo (tied to the
+  // completion moment, may need retaking) are cleared. Reopening a checklist
+  // task via undo shows it fully checked, same as it was right before it was
+  // marked done, rather than forcing every step to be re-tapped.
   await removeTaskPhotos(db, [task.photo_url])
   return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Task steps (patch 28): reference text (reuses `description`) or checkable
+// sub-steps hanging off a template, checked per-instance in
+// task_instance_step_checks. See tasks.ts StepStyle.
+// ---------------------------------------------------------------------------
+
+export function isValidStepStyle(value: unknown): value is StepStyle {
+  return value === 'none' || value === 'reference' || value === 'checklist'
+}
+
+// Attaches each instance's live step_style/steps/checked_step_ids, read from
+// its owning template — never snapshotted onto the instance, so editing a
+// template's steps mid-day changes what an already-generated instance shows
+// (accepted; see patch 28 notes). Instances with no template_id (one-off
+// tasks) always get step_style 'none' and empty arrays.
+export async function attachStepsToInstances<T extends TaskInstance>(db: SupabaseClient, instances: T[]): Promise<T[]> {
+  const templateIds = Array.from(new Set(instances.map((i) => i.template_id).filter((id): id is string => id !== null)))
+  if (templateIds.length === 0) {
+    return instances.map((i) => ({ ...i, step_style: 'none' as StepStyle, steps: [], checked_step_ids: [] }))
+  }
+
+  const [{ data: templatesRaw, error: templatesError }, { data: stepsRaw, error: stepsError }, { data: checksRaw, error: checksError }] =
+    await Promise.all([
+      db.from('task_templates').select('id, step_style').in('id', templateIds),
+      db.from('task_template_steps').select('*').in('template_id', templateIds).order('sort_order', { ascending: true }),
+      db.from('task_instance_step_checks').select('instance_id, step_id').in('instance_id', instances.map((i) => i.id)),
+    ])
+  if (templatesError) throw new Error(templatesError.message)
+  if (stepsError) throw new Error(stepsError.message)
+  if (checksError) throw new Error(checksError.message)
+
+  const styleByTemplate = new Map(((templatesRaw ?? []) as { id: string; step_style: StepStyle }[]).map((t) => [t.id, t.step_style]))
+  const stepsByTemplate = new Map<string, TaskTemplateStep[]>()
+  for (const step of (stepsRaw ?? []) as TaskTemplateStep[]) {
+    const list = stepsByTemplate.get(step.template_id) ?? []
+    list.push(step)
+    stepsByTemplate.set(step.template_id, list)
+  }
+  const checkedByInstance = new Map<string, string[]>()
+  for (const row of (checksRaw ?? []) as { instance_id: string; step_id: string }[]) {
+    const list = checkedByInstance.get(row.instance_id) ?? []
+    list.push(row.step_id)
+    checkedByInstance.set(row.instance_id, list)
+  }
+
+  return instances.map((i) => ({
+    ...i,
+    step_style: (i.template_id && styleByTemplate.get(i.template_id)) || 'none',
+    steps: (i.template_id && stepsByTemplate.get(i.template_id)) || [],
+    checked_step_ids: checkedByInstance.get(i.id) ?? [],
+  }))
+}
+
+// Gate enforced on the server (not just the UI) so a stale page or a direct
+// API call can't mark a checklist task done with unchecked steps. A
+// 'checklist'-style template with zero steps defined yet is treated as
+// satisfied (nothing to block on) rather than permanently uncompletable.
+export async function canCompleteInstance(db: SupabaseClient, instance: TaskInstance): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!instance.template_id) return { ok: true }
+  const { data: template, error: templateError } = await db
+    .from('task_templates')
+    .select('step_style')
+    .eq('id', instance.template_id)
+    .maybeSingle()
+  if (templateError) return { ok: false, error: templateError.message }
+  if (!template || template.step_style !== 'checklist') return { ok: true }
+
+  const [{ count: totalCount, error: totalError }, { count: checkedCount, error: checkedError }] = await Promise.all([
+    db.from('task_template_steps').select('id', { count: 'exact', head: true }).eq('template_id', instance.template_id),
+    db.from('task_instance_step_checks').select('id', { count: 'exact', head: true }).eq('instance_id', instance.id),
+  ])
+  if (totalError) return { ok: false, error: totalError.message }
+  if (checkedError) return { ok: false, error: checkedError.message }
+  if ((totalCount ?? 0) > 0 && (checkedCount ?? 0) < (totalCount ?? 0)) {
+    return { ok: false, error: 'All steps must be checked off before this task can be completed' }
+  }
+  return { ok: true }
+}
+
+// Checking a step inserts a row (with checked_by); unchecking deletes it.
+// Both validate the step actually belongs to the instance's own template —
+// defense against a stale page or a crafted call checking a step that
+// belongs to some other task entirely.
+async function loadInstanceAndStep(
+  db: SupabaseClient,
+  instanceId: string,
+  stepId: string
+): Promise<{ ok: true; instance: TaskInstance } | { ok: false; error: string; status: number }> {
+  const { data: instance, error: instanceError } = await db.from('task_instances').select('*').eq('id', instanceId).maybeSingle()
+  if (instanceError) return { ok: false, error: instanceError.message, status: 500 }
+  if (!instance) return { ok: false, error: 'Task not found', status: 404 }
+  if (!instance.template_id) return { ok: false, error: 'This task has no steps', status: 400 }
+
+  const { data: step, error: stepError } = await db.from('task_template_steps').select('id, template_id').eq('id', stepId).maybeSingle()
+  if (stepError) return { ok: false, error: stepError.message, status: 500 }
+  if (!step || step.template_id !== instance.template_id) {
+    return { ok: false, error: 'This step does not belong to this task', status: 400 }
+  }
+  return { ok: true, instance: instance as TaskInstance }
+}
+
+export async function checkStep(db: SupabaseClient, instanceId: string, stepId: string, checkedBy: unknown): Promise<TaskWriteResult> {
+  const loaded = await loadInstanceAndStep(db, instanceId, stepId)
+  if (!loaded.ok) return loaded
+  if (!(await isActiveStaff(db, checkedBy))) return { ok: false, error: 'Pick your name from the list', status: 400 }
+
+  const { error } = await db
+    .from('task_instance_step_checks')
+    .upsert({ instance_id: instanceId, step_id: stepId, checked_by: checkedBy }, { onConflict: 'instance_id,step_id', ignoreDuplicates: true })
+  if (error) return { ok: false, error: error.message, status: 500 }
+  return { ok: true }
+}
+
+export async function uncheckStep(db: SupabaseClient, instanceId: string, stepId: string): Promise<TaskWriteResult> {
+  const loaded = await loadInstanceAndStep(db, instanceId, stepId)
+  if (!loaded.ok) return loaded
+  const { error } = await db.from('task_instance_step_checks').delete().eq('instance_id', instanceId).eq('step_id', stepId)
+  if (error) return { ok: false, error: error.message, status: 500 }
+  return { ok: true }
+}
+
+async function renumberSteps(db: SupabaseClient, templateId: string): Promise<TaskTemplateStep[] | { error: string }> {
+  const { data, error } = await db
+    .from('task_template_steps')
+    .select('*')
+    .eq('template_id', templateId)
+    .order('sort_order', { ascending: true })
+  if (error) return { error: error.message }
+  const ordered = (data ?? []) as TaskTemplateStep[]
+  const results = await Promise.all(
+    ordered.map((s, i) => db.from('task_template_steps').update({ sort_order: i + 1 }).eq('id', s.id))
+  )
+  const failed = results.find((r) => r.error)
+  if (failed?.error) return { error: failed.error.message }
+  return ordered.map((s, i) => ({ ...s, sort_order: i + 1 }))
+}
+
+export async function addTemplateStep(db: SupabaseClient, templateId: string, content: string): Promise<TaskWriteResult<{ steps: TaskTemplateStep[] }>> {
+  const trimmed = content.trim()
+  if (!trimmed) return { ok: false, error: "Step text can't be empty", status: 400 }
+  const { data: existing, error: countError } = await db
+    .from('task_template_steps')
+    .select('sort_order')
+    .eq('template_id', templateId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+  if (countError) return { ok: false, error: countError.message, status: 500 }
+  const nextOrder = (existing?.[0]?.sort_order ?? 0) + 1
+  const { error: insertError } = await db
+    .from('task_template_steps')
+    .insert({ template_id: templateId, content: trimmed, sort_order: nextOrder })
+  if (insertError) return { ok: false, error: insertError.message, status: 500 }
+
+  const steps = await renumberSteps(db, templateId)
+  if ('error' in steps) return { ok: false, error: steps.error, status: 500 }
+  return { ok: true, steps }
+}
+
+export async function updateTemplateStepContent(db: SupabaseClient, stepId: string, content: string): Promise<TaskWriteResult<{ steps: TaskTemplateStep[] }>> {
+  const trimmed = content.trim()
+  if (!trimmed) return { ok: false, error: "Step text can't be empty", status: 400 }
+  const { data: step, error: fetchError } = await db.from('task_template_steps').select('template_id').eq('id', stepId).maybeSingle()
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  if (!step) return { ok: false, error: 'Step not found', status: 404 }
+
+  const { error } = await db.from('task_template_steps').update({ content: trimmed }).eq('id', stepId)
+  if (error) return { ok: false, error: error.message, status: 500 }
+
+  const { data: all, error: listError } = await db
+    .from('task_template_steps')
+    .select('*')
+    .eq('template_id', step.template_id)
+    .order('sort_order', { ascending: true })
+  if (listError) return { ok: false, error: listError.message, status: 500 }
+  return { ok: true, steps: (all ?? []) as TaskTemplateStep[] }
+}
+
+export async function deleteTemplateStep(db: SupabaseClient, stepId: string): Promise<TaskWriteResult<{ steps: TaskTemplateStep[] }>> {
+  const { data: step, error: fetchError } = await db.from('task_template_steps').select('template_id').eq('id', stepId).maybeSingle()
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  if (!step) return { ok: false, error: 'Step not found', status: 404 }
+
+  // Cascades to task_instance_step_checks automatically (FK on delete cascade).
+  const { error } = await db.from('task_template_steps').delete().eq('id', stepId)
+  if (error) return { ok: false, error: error.message, status: 500 }
+
+  const steps = await renumberSteps(db, step.template_id)
+  if ('error' in steps) return { ok: false, error: steps.error, status: 500 }
+  return { ok: true, steps }
+}
+
+export async function moveTemplateStep(db: SupabaseClient, stepId: string, direction: 'up' | 'down'): Promise<TaskWriteResult<{ steps: TaskTemplateStep[] }>> {
+  const { data: step, error: fetchError } = await db.from('task_template_steps').select('template_id').eq('id', stepId).maybeSingle()
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  if (!step) return { ok: false, error: 'Step not found', status: 404 }
+
+  const { data: siblingsRaw, error: listError } = await db
+    .from('task_template_steps')
+    .select('*')
+    .eq('template_id', step.template_id)
+    .order('sort_order', { ascending: true })
+  if (listError) return { ok: false, error: listError.message, status: 500 }
+  const siblings = (siblingsRaw ?? []) as TaskTemplateStep[]
+  const index = siblings.findIndex((s) => s.id === stepId)
+  if (index === -1) return { ok: false, error: 'Step not found', status: 404 }
+  const swapWith = direction === 'up' ? index - 1 : index + 1
+  if (swapWith < 0 || swapWith >= siblings.length) {
+    return { ok: false, error: direction === 'up' ? 'Already at the top' : 'Already at the bottom', status: 400 }
+  }
+  ;[siblings[index], siblings[swapWith]] = [siblings[swapWith], siblings[index]]
+
+  const results = await Promise.all(siblings.map((s, i) => db.from('task_template_steps').update({ sort_order: i + 1 }).eq('id', s.id)))
+  const failed = results.find((r) => r.error)
+  if (failed?.error) return { ok: false, error: failed.error.message, status: 500 }
+  return { ok: true, steps: siblings.map((s, i) => ({ ...s, sort_order: i + 1 })) }
 }

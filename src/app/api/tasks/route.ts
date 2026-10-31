@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { todayInTZ, photoFlags, PhotoSetting, Priority } from '@/lib/tasks'
 import {
+  attachStepsToInstances,
+  canCompleteInstance,
+  checkStep,
   deleteOneOffTask,
   editOneOffTask,
   generateInstancesForDate,
@@ -14,6 +17,7 @@ import {
   setInstancePriority,
   sweepMissedInstances,
   TASK_PHOTO_BUCKET,
+  uncheckStep,
   undoCompletion,
 } from '@/lib/task-server'
 
@@ -106,10 +110,17 @@ export async function GET(request: NextRequest) {
   if (doneRes.error) return NextResponse.json({ error: doneRes.error.message }, { status: 500 })
   if (missedCountRes.error) return NextResponse.json({ error: missedCountRes.error.message }, { status: 500 })
 
+  // Steps are read live from each instance's template (not snapshotted) —
+  // History/Missed don't call this, so they never carry step data.
+  const [openWithSteps, doneWithSteps] = await Promise.all([
+    attachStepsToInstances(db, openRes.data ?? []),
+    attachStepsToInstances(db, doneRes.data ?? []),
+  ])
+
   return NextResponse.json({
     today,
-    open: openRes.data ?? [],
-    done: doneRes.data ?? [],
+    open: openWithSteps,
+    done: doneWithSteps,
     missedCount: missedCountRes.count ?? 0,
   })
 }
@@ -158,6 +169,8 @@ export async function POST(request: NextRequest) {
 // action 'move': { id, direction }           action 'priority': { id, priority }  (standalone tasks only)
 // action 'edit': { id, title?, description?, assigned_to?, created_by?, photo_setting?, due_time?, priority? }
 //   (standalone, still-open tasks only — owner-only in the UI, not gated by who created it)
+// action 'check-step': { id, step_id, checked_by }   action 'uncheck-step': { id, step_id }
+//   (checklist-style tasks only; 'complete' is refused server-side until every step is checked)
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
   const { id, action } = body
@@ -176,6 +189,8 @@ export async function PATCH(request: NextRequest) {
     if (task.photo_required && !task.photo_url) {
       return NextResponse.json({ error: 'A photo is required before this can be marked done' }, { status: 400 })
     }
+    const completeCheck = await canCompleteInstance(db, task)
+    if (!completeCheck.ok) return NextResponse.json({ error: completeCheck.error }, { status: 400 })
     const { data, error } = await db
       .from('task_instances')
       .update({ status: 'done', completed_by: body.completed_by, completed_at: new Date().toISOString() })
@@ -186,6 +201,24 @@ export async function PATCH(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!data) return NextResponse.json({ error: 'Already completed' }, { status: 409 })
     return NextResponse.json(data)
+  }
+
+  if (action === 'check-step') {
+    if (typeof body.step_id !== 'string' || !body.step_id) {
+      return NextResponse.json({ error: 'Missing step_id' }, { status: 400 })
+    }
+    const result = await checkStep(db, id, body.step_id, body.checked_by)
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ success: true })
+  }
+
+  if (action === 'uncheck-step') {
+    if (typeof body.step_id !== 'string' || !body.step_id) {
+      return NextResponse.json({ error: 'Missing step_id' }, { status: 400 })
+    }
+    const result = await uncheckStep(db, id, body.step_id)
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ success: true })
   }
 
   if (action === 'undo') {

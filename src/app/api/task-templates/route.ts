@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
-import { todayInTZ, photoFlags, PhotoSetting, Priority } from '@/lib/tasks'
+import { todayInTZ, photoFlags, PhotoSetting, Priority, TaskTemplate, TaskTemplateStep } from '@/lib/tasks'
 import {
   deleteTemplate,
   generateInstancesForDate,
   isValidAssignee,
   isValidCreator,
+  isValidStepStyle,
   nextStandaloneTemplateSortOrder,
   normalizeRecurrence,
   parseDueTime,
@@ -21,12 +22,28 @@ export async function GET() {
     .order('active', { ascending: false })
     .order('created_at', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  // Attach each template's steps (for the template editor) — present whenever
+  // any steps exist, regardless of the template's current step_style, so
+  // switching styles never looks like it silently destroyed saved steps.
+  const templates = (data ?? []) as TaskTemplate[]
+  const ids = templates.map((t) => t.id)
+  const { data: stepsRaw, error: stepsError } = ids.length
+    ? await db.from('task_template_steps').select('*').in('template_id', ids).order('sort_order', { ascending: true })
+    : { data: [] as TaskTemplateStep[], error: null }
+  if (stepsError) return NextResponse.json({ error: stepsError.message }, { status: 500 })
+  const stepsByTemplate = new Map<string, TaskTemplateStep[]>()
+  for (const step of (stepsRaw ?? []) as TaskTemplateStep[]) {
+    const list = stepsByTemplate.get(step.template_id) ?? []
+    list.push(step)
+    stepsByTemplate.set(step.template_id, list)
+  }
+  return NextResponse.json(templates.map((t) => ({ ...t, steps: stepsByTemplate.get(t.id) ?? [] })))
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { title, description, assigned_to, created_by, photo_setting, priority, due_time } = body
+  const { title, description, assigned_to, created_by, photo_setting, priority, due_time, step_style } = body
 
   if (typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'Missing title' }, { status: 400 })
@@ -37,6 +54,9 @@ export async function POST(request: NextRequest) {
   const prio: Priority = priority === 'high' ? 'high' : 'normal'
   const dueTimeResult = parseDueTime(due_time)
   if (!dueTimeResult.ok) return NextResponse.json({ error: dueTimeResult.error }, { status: 400 })
+  if (step_style !== undefined && !isValidStepStyle(step_style)) {
+    return NextResponse.json({ error: 'Invalid step style' }, { status: 400 })
+  }
 
   const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
@@ -58,6 +78,7 @@ export async function POST(request: NextRequest) {
       priority: prio,
       sort_order: await nextStandaloneTemplateSortOrder(db, prio),
       due_time: dueTimeResult.value,
+      ...(step_style !== undefined ? { step_style } : {}),
     })
     .select()
     .single()
@@ -109,6 +130,20 @@ export async function PATCH(request: NextRequest) {
     updates.due_time = ownership.due_time = dueTimeResult.value
   }
   if (typeof body.active === 'boolean') updates.active = body.active
+  // Plain field, no side effects on already-generated instances — moving a
+  // checklist item to a different section mid-day doesn't retroactively
+  // relabel today's already-generated instance (same snapshot-at-generation
+  // behavior as every other template field; see task-server.ts comments).
+  if (body.section !== undefined) {
+    if (typeof body.section !== 'string' || !body.section.trim()) {
+      return NextResponse.json({ error: 'Section cannot be empty' }, { status: 400 })
+    }
+    updates.section = body.section.trim()
+  }
+  if (body.step_style !== undefined) {
+    if (!isValidStepStyle(body.step_style)) return NextResponse.json({ error: 'Invalid step style' }, { status: 400 })
+    updates.step_style = body.step_style
+  }
   if (body.photo_setting !== undefined) {
     if (!['off', 'optional', 'required'].includes(body.photo_setting)) {
       return NextResponse.json({ error: 'Invalid photo setting' }, { status: 400 })
