@@ -7,9 +7,11 @@ import { getOwnerName } from '@/lib/auth'
 import {
   Staff,
   TaskTemplate,
+  TaskTemplateStep,
   TaskInstance,
   PhotoSetting,
   Priority,
+  StepStyle,
   WEEKDAY_LABELS,
   EVERYONE,
   TASK_CREATORS,
@@ -75,9 +77,112 @@ export default function TaskFormModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Steps (patch 28) — only ever relevant for a repeating task (template),
+  // never a one-off. The style itself can be set at creation, but the actual
+  // steps list can't exist until the template row does, so the add/edit/
+  // reorder editor below only renders once `template` is a real saved row.
+  const [stepStyle, setStepStyle] = useState<StepStyle>(template?.step_style ?? 'none')
+  const [steps, setSteps] = useState<TaskTemplateStep[]>(template?.steps ?? [])
+  const [newStepText, setNewStepText] = useState('')
+  const [stepBusy, setStepBusy] = useState(false)
+  const [stepError, setStepError] = useState('')
+  const [deletingStep, setDeletingStep] = useState<TaskTemplateStep | null>(null)
+  // Switching away from 'checklist' while it has steps doesn't delete them
+  // (they just stop being shown) — confirm first so that isn't a surprise.
+  const [pendingStyleSwitch, setPendingStyleSwitch] = useState<StepStyle | null>(null)
+
+  const handleStyleClick = (next: StepStyle) => {
+    if (stepStyle === 'checklist' && steps.length > 0 && next !== 'checklist') setPendingStyleSwitch(next)
+    else setStepStyle(next)
+  }
+
+  const handleAddStep = async () => {
+    if (!template || !newStepText.trim()) return
+    setStepBusy(true)
+    setStepError('')
+    try {
+      const res = await fetch('/api/task-templates/steps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: template.id, content: newStepText.trim() }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || 'Could not add step')
+      setSteps(body.steps)
+      setNewStepText('')
+    } catch (e) {
+      setStepError(e instanceof Error ? e.message : 'Could not add step. Try again.')
+    } finally {
+      setStepBusy(false)
+    }
+  }
+
+  const handleStepBlur = async (step: TaskTemplateStep) => {
+    if (!step.content.trim()) {
+      setStepError("Step text can't be empty")
+      return
+    }
+    setStepBusy(true)
+    setStepError('')
+    try {
+      const res = await fetch('/api/task-templates/steps', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: step.id, content: step.content.trim() }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || 'Could not save step')
+      setSteps(body.steps)
+    } catch (e) {
+      setStepError(e instanceof Error ? e.message : 'Could not save step. Try again.')
+    } finally {
+      setStepBusy(false)
+    }
+  }
+
+  const handleMoveStep = async (id: string, direction: 'up' | 'down') => {
+    setStepBusy(true)
+    setStepError('')
+    try {
+      const res = await fetch('/api/task-templates/steps', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, direction }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || 'Could not reorder')
+      setSteps(body.steps)
+    } catch (e) {
+      setStepError(e instanceof Error ? e.message : 'Could not reorder. Try again.')
+    } finally {
+      setStepBusy(false)
+    }
+  }
+
+  const confirmDeleteStep = async () => {
+    if (!deletingStep) return
+    setStepBusy(true)
+    setStepError('')
+    try {
+      const res = await fetch('/api/task-templates/steps', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deletingStep.id }),
+      })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error || 'Could not delete step')
+      setSteps(body.steps)
+      setDeletingStep(null)
+    } catch (e) {
+      setStepError(e instanceof Error ? e.message : 'Could not delete step. Try again.')
+    } finally {
+      setStepBusy(false)
+    }
+  }
+
   // Editing a one-off instance never offers recurrence — it's a single already-
   // created task, not a template; "repeating" only applies when adding new or
-  // editing a template.
+  // editing a template. Steps are hidden for one-off tasks too — same condition.
   const recurring = !instance && (editing || kind === 'recurring')
 
   // An assignee may no longer be a choice (e.g. someone who has since been removed from
@@ -134,6 +239,7 @@ export default function TaskFormModal({
             ...(createdBy !== template.created_by ? { created_by: createdBy } : {}),
             ...(showPriority && priority !== template.priority ? { priority } : {}),
             ...(dueTime !== (toHM(template.due_time) ?? '') ? { due_time: dueTime || null } : {}),
+            ...(stepStyle !== template.step_style ? { step_style: stepStyle } : {}),
           }),
         })
       } else if (instance) {
@@ -166,6 +272,7 @@ export default function TaskFormModal({
             priority,
             due_time: dueTime || null,
             ...recurrenceFields,
+            ...(recurring ? { step_style: stepStyle } : {}),
           }),
         })
       }
@@ -309,6 +416,86 @@ export default function TaskFormModal({
             </div>
           )}
 
+          {recurring && (
+            <div className="flex flex-col gap-2">
+              <label className="text-xs text-gray-500 font-medium">Steps</label>
+              <div className="flex gap-2">
+                <button type="button" className={segBtn(stepStyle === 'none')} onClick={() => handleStyleClick('none')}>None</button>
+                <button type="button" className={segBtn(stepStyle === 'reference')} onClick={() => handleStyleClick('reference')}>Instructions text</button>
+                <button type="button" className={segBtn(stepStyle === 'checklist')} onClick={() => handleStyleClick('checklist')}>Checkable steps</button>
+              </div>
+
+              {stepStyle === 'reference' && (
+                <p className="text-xs text-gray-400">Shown as an expandable &quot;Instructions&quot; section, using the Details box above.</p>
+              )}
+
+              {stepStyle === 'checklist' && (
+                template ? (
+                  <div className="flex flex-col gap-2 mt-1">
+                    {stepError && <p className="text-red-500 text-sm">{stepError}</p>}
+                    {steps.map((s, i) => (
+                      <div key={s.id} className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={s.content}
+                          onChange={(e) => setSteps((prev) => prev.map((x) => (x.id === s.id ? { ...x, content: e.target.value } : x)))}
+                          onBlur={() => handleStepBlur(s)}
+                          className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-green-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleMoveStep(s.id, 'up')}
+                          disabled={i === 0 || stepBusy}
+                          aria-label="Move step up"
+                          className="w-8 h-8 flex-shrink-0 bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 font-bold rounded-lg text-xs"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveStep(s.id, 'down')}
+                          disabled={i === steps.length - 1 || stepBusy}
+                          aria-label="Move step down"
+                          className="w-8 h-8 flex-shrink-0 bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 font-bold rounded-lg text-xs"
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingStep(s)}
+                          disabled={stepBusy}
+                          aria-label="Delete step"
+                          className="w-8 h-8 flex-shrink-0 bg-red-50 hover:bg-red-100 disabled:opacity-30 text-red-600 font-bold rounded-lg text-xs"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newStepText}
+                        onChange={(e) => setNewStepText(e.target.value)}
+                        placeholder="Add a step…"
+                        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-green-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddStep}
+                        disabled={stepBusy || !newStepText.trim()}
+                        className="flex-shrink-0 px-3 rounded-lg bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 text-sm font-semibold"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">Save this task first, then edit it again to add steps.</p>
+                )
+              )}
+            </div>
+          )}
+
           {error && <p className="text-red-500 text-sm">{error}</p>}
 
           {editing && onDelete && (
@@ -342,6 +529,27 @@ export default function TaskFormModal({
           busy={deleting}
           onConfirm={confirmDelete}
           onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
+
+      {pendingStyleSwitch && (
+        <ConfirmModal
+          message={`Switching away from Checkable steps will hide this task's ${steps.length} existing step${steps.length === 1 ? '' : 's'} — they won't be deleted, and you can switch back later. Continue?`}
+          confirmLabel="Switch"
+          onConfirm={() => {
+            setStepStyle(pendingStyleSwitch)
+            setPendingStyleSwitch(null)
+          }}
+          onCancel={() => setPendingStyleSwitch(null)}
+        />
+      )}
+
+      {deletingStep && (
+        <ConfirmModal
+          message={`Delete this step? Any day's progress on it is removed too. This can't be undone.`}
+          busy={stepBusy}
+          onConfirm={confirmDeleteStep}
+          onCancel={() => setDeletingStep(null)}
         />
       )}
     </div>

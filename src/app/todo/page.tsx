@@ -14,7 +14,7 @@ import TemplatesView from '@/components/todo/TemplatesView'
 import { getRole, getShiftLeadName } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
 import { Role } from '@/lib/types'
-import { Staff, TaskInstance, buildChecklistGroups, formatDateShort, formatDueTime, formatTime, isOverdue, sortStandalone, todayInTZ } from '@/lib/tasks'
+import { Staff, TaskInstance, TaskTemplateStep, buildChecklistGroups, formatDateShort, formatDueTime, formatTime, isOverdue, sortStandalone, todayInTZ } from '@/lib/tasks'
 
 type View = 'today' | 'history' | 'missed' | 'templates'
 
@@ -62,6 +62,12 @@ export default function TodoPage() {
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const [standaloneBusyId, setStandaloneBusyId] = useState<string | null>(null)
   const [undoingId, setUndoingId] = useState<string | null>(null)
+  const [expandedTaskSteps, setExpandedTaskSteps] = useState<Set<string>>(new Set())
+  const [pendingStepKeys, setPendingStepKeys] = useState<Set<string>>(new Set())
+  // Remembers who's been checking off a given task's steps this page load, so
+  // StaffPicker only has to ask once per task, not on every single step tap.
+  const [stepCheckerNames, setStepCheckerNames] = useState<Record<string, string>>({})
+  const [pickingStepFor, setPickingStepFor] = useState<{ task: TaskInstance; step: TaskTemplateStep } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoTargetRef = useRef<string | null>(null)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -115,7 +121,8 @@ export default function TodoPage() {
   useEffect(() => {
     midInteractionRef.current =
       completing !== null || uploadingId !== null || deleting !== null || showAdd ||
-      standaloneBusyId !== null || undoingId !== null || editingTask !== null
+      standaloneBusyId !== null || undoingId !== null || editingTask !== null ||
+      pendingStepKeys.size > 0 || pickingStepFor !== null
   })
 
   // Shared checklist: pick up other people's changes when the tab regains focus,
@@ -159,12 +166,89 @@ export default function TodoPage() {
   }
 
   const handleCheckboxTap = (task: TaskInstance) => {
+    const totalSteps = task.steps?.length ?? 0
+    const checkedSteps = task.checked_step_ids?.length ?? 0
+    if (task.step_style === 'checklist' && totalSteps > 0 && checkedSteps < totalSteps) {
+      flash('✅ Check off all the steps first.')
+      return
+    }
     if (task.photo_required && !task.photo_url) {
       setPhotoNudgeId(task.id)
       flash('📷 This task needs a photo before it can be marked done.')
       return
     }
     setCompleting(task)
+  }
+
+  const toggleTaskSteps = (taskId: string) => {
+    setExpandedTaskSteps((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) next.delete(taskId)
+      else next.add(taskId)
+      return next
+    })
+  }
+
+  // Optimistic check/uncheck: updates local state immediately, fires the API
+  // call, and reverts + flashes an error if it fails. The background 5-min/
+  // visibility refresh is held off (via pendingStepKeys in midInteractionRef)
+  // for as long as any step toggle is in flight, so it can never stomp a tap
+  // that just happened.
+  const performStepToggle = async (task: TaskInstance, step: TaskTemplateStep, check: boolean, checkedBy: string | null) => {
+    const key = `${task.id}:${step.id}`
+    const applyToggle = (add: boolean) => (list: TaskInstance[]) =>
+      list.map((t) => {
+        if (t.id !== task.id) return t
+        const ids = new Set(t.checked_step_ids ?? [])
+        if (add) ids.add(step.id)
+        else ids.delete(step.id)
+        return { ...t, checked_step_ids: Array.from(ids) }
+      })
+
+    setPendingStepKeys((prev) => new Set(prev).add(key))
+    setOpen(applyToggle(check))
+    setDone(applyToggle(check))
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: task.id,
+          action: check ? 'check-step' : 'uncheck-step',
+          step_id: step.id,
+          ...(check ? { checked_by: checkedBy } : {}),
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not save')
+    } catch (e) {
+      setOpen(applyToggle(!check))
+      setDone(applyToggle(!check))
+      flash(e instanceof Error ? e.message : 'Could not save. Try again.')
+    } finally {
+      setPendingStepKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }
+  }
+
+  const handleStepTap = (task: TaskInstance, step: TaskTemplateStep, checked: boolean) => {
+    if (checked) {
+      performStepToggle(task, step, false, null)
+      return
+    }
+    const remembered = stepCheckerNames[task.id]
+    if (remembered) performStepToggle(task, step, true, remembered)
+    else setPickingStepFor({ task, step })
+  }
+
+  const handleStepNamePicked = (name: string) => {
+    if (!pickingStepFor) return
+    const { task, step } = pickingStepFor
+    setStepCheckerNames((prev) => ({ ...prev, [task.id]: name }))
+    setPickingStepFor(null)
+    performStepToggle(task, step, true, name)
   }
 
   const handlePickName = async (name: string) => {
@@ -324,6 +408,53 @@ export default function TodoPage() {
     }
   }
 
+  // Collapsible "Instructions" (reference) or checkbox sub-steps (checklist)
+  // block, shared by open and done cards. Read-only on done cards — once a
+  // task is completed, re-ticking its steps doesn't make sense; use Undo first.
+  const renderStepsBlock = (task: TaskInstance, readOnly: boolean) => {
+    if (!task.step_style || task.step_style === 'none') {
+      return task.description ? <p className="text-sm text-gray-500 mt-0.5">{task.description}</p> : null
+    }
+    const expanded = expandedTaskSteps.has(task.id)
+    const total = task.steps?.length ?? 0
+    const checked = task.checked_step_ids?.length ?? 0
+    return (
+      <div className="mt-1">
+        <button type="button" onClick={() => toggleTaskSteps(task.id)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">
+          {task.step_style === 'checklist' ? `${checked}/${total} steps ` : 'Instructions '}
+          {expanded ? '▲' : '▼'}
+        </button>
+        {expanded && (
+          <div className="mt-1 flex flex-col gap-1.5">
+            {task.description && <p className="text-sm text-gray-500 whitespace-pre-wrap">{task.description}</p>}
+            {task.step_style === 'checklist' &&
+              (task.steps ?? []).map((step) => {
+                const isChecked = (task.checked_step_ids ?? []).includes(step.id)
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    disabled={readOnly || pendingStepKeys.has(`${task.id}:${step.id}`)}
+                    onClick={() => handleStepTap(task, step, isChecked)}
+                    className="flex items-start gap-2 text-left disabled:opacity-80"
+                  >
+                    <span
+                      className={`w-5 h-5 mt-0.5 rounded border-2 flex-shrink-0 flex items-center justify-center text-xs font-bold ${
+                        isChecked ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white'
+                      }`}
+                    >
+                      {isChecked ? '✓' : ''}
+                    </span>
+                    <span className={`text-sm ${isChecked ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{step.content}</span>
+                  </button>
+                )
+              })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // Same card markup whether a task sits in a named checklist's section or in the
   // flat standalone list below — `standalonePos` (only passed in the standalone
   // list) adds the priority star and, for owners, reorder arrows + priority toggle.
@@ -351,7 +482,7 @@ export default function TodoPage() {
           {overdue && (
             <p className="text-xs font-bold text-red-600 mt-0.5">⚠️ Overdue — was due {formatDateShort(task.due_date)}</p>
           )}
-          {task.description && <p className="text-sm text-gray-500 mt-0.5">{task.description}</p>}
+          {renderStepsBlock(task, false)}
           {needsPhoto && <p className="text-xs font-semibold text-amber-700 mt-0.5">📷 Photo required</p>}
           {/* Priority badge — visible to everyone, standalone tasks only */}
           {standalonePos && task.priority === 'high' && (
@@ -436,6 +567,7 @@ export default function TodoPage() {
           {task.completed_at ? ` · ${formatTime(task.completed_at)}` : ''}
         </p>
         {task.due_time && <p className="text-xs text-gray-400 mt-0.5">Due by {formatDueTime(task.due_time)}</p>}
+        {renderStepsBlock(task, true)}
         {/* The API only ever returns tasks due today (and done) here, so every
             card shown is same-day by construction — no extra date check needed
             client-side. History (a separate view, separate query) never renders
@@ -663,6 +795,15 @@ export default function TodoPage() {
           busy={completingBusy}
           onPick={handlePickName}
           onClose={() => setCompleting(null)}
+        />
+      )}
+
+      {pickingStepFor && (
+        <StaffPicker
+          staff={staff}
+          title={`Checking off: ${pickingStepFor.task.title}`}
+          onPick={handleStepNamePicked}
+          onClose={() => setPickingStepFor(null)}
         />
       )}
 
