@@ -25,7 +25,7 @@ Tiers, most to least permissive:
 | `/api/push-debug` | GET | PUBLIC (CRON_SECRET) | debug, no caller |
 | `/api/pins/verify` | POST | PUBLIC | this *is* login (owner/shift_lead); also what the todo page's inline "+Add Task" PinModal calls, which now also grants a real owner session as a side effect |
 | `/api/session` | GET | PUBLIC | tells a device what session (if any) it has, for routing |
-| `/api/session` | POST | PUBLIC | issues a staff session after picking a name from the active list — not a security boundary, just gives the server a role to check |
+| `/api/session` | POST | PUBLIC | issues a staff session with no name, open to anyone — the To-Do List button is intentionally open on main too; not a security boundary, just gives the server a role to check |
 | `/api/logout` | POST | PUBLIC | must work even with an invalid/expired cookie |
 | `/api/checklists` | GET | ANY | read |
 | `/api/checklists` | PATCH | OWNER | due-time editor, owner-only in UI |
@@ -59,7 +59,7 @@ Tiers, most to least permissive:
 | `/api/reports/velocity` | GET | OWNER | Dashboard/History/Reports are all owner-only |
 | `/api/send-push` | POST | ANY | **more permissive than the patch's suggested "owner or shift_lead"** — the todo page's task-completion flow calls this and has no role requirement today (plain staff completes tasks); gating tighter would have silently killed completion push notifications. Flagged. |
 | `/api/shift-leads` | GET/POST/PATCH/DELETE | OWNER | management screen, owner-only in UI |
-| `/api/staff` | GET (default) | PUBLIC | **correction during implementation**: the login page's one-time staff name picker needs this *before* any session exists, to call `POST /api/session` in the first place — gating it to ANY would make that bootstrap step impossible. Just names, nothing sensitive, and was fully public before this patch too, so nothing lost. |
+| `/api/staff` | GET (default) | ANY | active-name pickers used everywhere, including by staff — a staff session now exists before /todo is ever reached (the To-Do List button establishes one silently; no picker on login, see the patch 29 correction), so this doesn't need to be public |
 | `/api/staff` | GET `?all=true` | OWNER | Staff management screen only |
 | `/api/staff` | POST/PATCH | OWNER | same screen |
 | `/api/subscribe` | POST/DELETE | OWNER | "Enable Notifications" only renders in the owner-only More dropdown |

@@ -23,28 +23,22 @@ export async function GET(request: NextRequest) {
   return response
 }
 
-// Issues a 'staff' session after a staff member picks their own name from
-// the active staff list — this is NOT a security boundary (staff have no
-// PIN and this route doesn't ask for one); it only gives the server a role
-// to check so staff-tier routes can require *some* session instead of
-// nothing at all. Sessions last 365 days and are meant to be invisible after
-// the first pick — see requireRole's revocation check (still active=true
-// required) and the auto-renew in middleware-less form at GET /api/session
-// callers, which re-sets the cookie whenever it's read on a page load.
-export async function POST(request: NextRequest) {
-  const { name } = await request.json()
-  if (typeof name !== 'string' || !name.trim()) {
-    return NextResponse.json({ error: 'Pick your name from the list' }, { status: 400 })
-  }
+// Issues a 'staff' session with no name — the To-Do List button on /login
+// is intentionally open to anyone (same as main, pre-patch-29: no PIN, no
+// prompt of any kind), so this route doesn't ask for or store a name
+// either. It's NOT a security boundary; it only gives the server a role to
+// check so staff-tier routes require *some* session instead of nothing at
+// all. Sessions last 365 days and renew on every GET /api/session read
+// (see above). Who is actually doing a given action (completing a task,
+// posting a note, acknowledging one) is still picked fresh at the moment of
+// that action via StaffPicker/isActiveStaff, completely unrelated to this
+// session — unchanged from main.
+export async function POST() {
   if (!sessionSecretConfigured()) {
     return NextResponse.json({ error: 'Login is temporarily unavailable' }, { status: 401 })
   }
-  const db = getServerSupabase()
-  const { data } = await db.from('staff').select('name').eq('name', name.trim()).eq('active', true).maybeSingle()
-  if (!data) return NextResponse.json({ error: 'Pick your name from the list' }, { status: 400 })
-
-  const response = NextResponse.json({ role: 'staff', name: data.name })
-  if (!setSessionCookie(response, 'staff', data.name)) {
+  const response = NextResponse.json({ role: 'staff', name: null })
+  if (!setSessionCookie(response, 'staff', null)) {
     return NextResponse.json({ error: 'Login is temporarily unavailable' }, { status: 401 })
   }
   return response

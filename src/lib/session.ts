@@ -102,8 +102,10 @@ type RoleResult = { ok: true; session: SessionPayload } | { ok: false; status: 4
 // issued (iat) before their most recent PIN change (owners.updated_at /
 // shift_leads.updated_at) — so resetting someone's PIN, or deactivating
 // them, kills their existing sessions immediately rather than waiting 30
-// days for natural expiry. Staff have no PIN, so they're only checked for
-// still being active.
+// days for natural expiry. Staff sessions name no one (the To-Do List
+// button is intentionally open to anyone, matching main — see
+// src/app/api/session/route.ts) and so have nothing to revoke against;
+// they're valid as long as the signature and expiry check out.
 export async function getSession(db: SupabaseClient, request: NextRequest): Promise<SessionResult> {
   const token = request.cookies.get(SESSION_COOKIE)?.value
   const payload = verifySessionToken(token)
@@ -116,9 +118,6 @@ export async function getSession(db: SupabaseClient, request: NextRequest): Prom
     if (new Date(data.updated_at).getTime() > payload.iat * 1000) {
       return { ok: false, status: 401, error: 'PIN changed — please log in again' }
     }
-  } else {
-    const { data } = await db.from('staff').select('active').eq('name', payload.name).maybeSingle()
-    if (!data || !data.active) return { ok: false, status: 401, error: 'No longer an active staff member' }
   }
   return { ok: true, session: payload }
 }

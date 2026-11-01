@@ -6,8 +6,6 @@ import Image from 'next/image'
 import { setRole, setOwnerName, setShiftLeadName, clearRole } from '@/lib/auth'
 import { fetchSession } from '@/lib/client-session'
 import { LOGIN_MESSAGE_KEY } from '@/components/SessionGuard'
-import StaffPicker from '@/components/todo/StaffPicker'
-import type { Staff } from '@/lib/tasks'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -18,9 +16,6 @@ export default function LoginPage() {
   const [verifying, setVerifying] = useState(false)
   const [notice, setNotice] = useState('')
   const [checkingSession, setCheckingSession] = useState(true)
-  const [showStaffPicker, setShowStaffPicker] = useState(false)
-  const [staffList, setStaffList] = useState<Staff[]>([])
-  const [staffBusy, setStaffBusy] = useState(false)
 
   // Patch 29: a device that already has a valid session skips this screen
   // entirely — covers a returning staff device (one-time name pick, then
@@ -64,41 +59,25 @@ export default function LoginPage() {
   }
 
   // To-Do is open to everyone: no owner/shift_lead role is kept (so a
-  // previously stored one can't carry over into the role-less To-Do view).
-  // Patch 29: picking a name here establishes a real 365-day staff session
-  // server-side (POST /api/session) — a one-time step per device; see
-  // src/app/api/session/route.ts.
+  // previously stored one can't carry over into the role-less To-Do view),
+  // and — same as main, pre-patch-29 — no visible prompt of any kind here.
+  // The only addition is a silent POST /api/session first, to give the
+  // server a staff-tier session to check (named no one; see
+  // src/app/api/session/route.ts) so staff-tier routes aren't wide open to
+  // literally anyone with no cookie at all. Awaited (not fire-and-forget) so
+  // the cookie actually exists before landing on /todo — otherwise the
+  // page's first staff-tier fetch could 401 before the cookie arrives. No
+  // loading state is shown for this; it's a single fast same-origin call,
+  // same tap-to-todo feel as before. If it fails, still navigate — To-Do
+  // stays reachable regardless, same as it always was.
   const handleTodo = async () => {
-    setError('')
+    clearRole()
     try {
-      const res = await fetch('/api/staff')
-      const list = await res.json()
-      if (!res.ok) throw new Error()
-      setStaffList(list)
-      setShowStaffPicker(true)
+      await fetch('/api/session', { method: 'POST' })
     } catch {
-      setError('Could not load the staff list. Check your connection and try again.')
+      // ignore — navigate anyway, see comment above
     }
-  }
-
-  const handleStaffNamePicked = async (name: string) => {
-    setStaffBusy(true)
-    try {
-      const res = await fetch('/api/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
-      if (!res.ok) throw new Error()
-      clearRole()
-      setShowStaffPicker(false)
-      router.push('/todo')
-    } catch {
-      setError('Could not log in. Try again.')
-      setShowStaffPicker(false)
-    } finally {
-      setStaffBusy(false)
-    }
+    router.push('/todo')
   }
 
   // Both roles now check against named, individual PINs (owners: Josh/Gina;
@@ -224,16 +203,6 @@ export default function LoginPage() {
           </div>
         )}
       </div>
-
-      {showStaffPicker && (
-        <StaffPicker
-          staff={staffList}
-          title="Who are you?"
-          busy={staffBusy}
-          onPick={handleStaffNamePicked}
-          onClose={() => setShowStaffPicker(false)}
-        />
-      )}
     </div>
   )
 }
