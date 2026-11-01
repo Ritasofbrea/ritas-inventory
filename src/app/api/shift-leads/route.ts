@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
 const PIN_RE = /^\d{4,6}$/
 
 // Owner-only management screen's list — deliberately never selects `pin`.
-export async function GET() {
+// Patch 29: now server-enforced on all four methods — this was the single
+// worst gap the audit found (a PATCH here could reset any shift lead's PIN
+// with no secret required at all).
+export async function GET(request: NextRequest) {
   const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { data, error } = await db.from('shift_leads').select('id, name, active, created_at, updated_at').order('name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
 
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { name, pin } = await request.json()
   if (typeof name !== 'string' || !name.trim()) {
     return NextResponse.json({ error: 'Missing name' }, { status: 400 })
@@ -19,7 +28,6 @@ export async function POST(request: NextRequest) {
   if (typeof pin !== 'string' || !PIN_RE.test(pin)) {
     return NextResponse.json({ error: 'PIN must be 4-6 digits' }, { status: 400 })
   }
-  const db = getServerSupabase()
   const { data, error } = await db
     .from('shift_leads')
     .insert({ name: name.trim(), pin })
@@ -37,6 +45,9 @@ export async function POST(request: NextRequest) {
 // self-service /api/pins PATCH, since reaching this at all already requires
 // being logged in as owner (ShiftLeadView is an owner-only tab).
 export async function PATCH(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { id, active, pin } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -51,7 +62,6 @@ export async function PATCH(request: NextRequest) {
   }
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
-  const db = getServerSupabase()
   const { data, error } = await db
     .from('shift_leads')
     .update(updates)
@@ -67,9 +77,11 @@ export async function PATCH(request: NextRequest) {
 // have to be deactivated first (which already blocks login on its own).
 // Unlike deactivate, there's no undo once this runs.
 export async function DELETE(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { id } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
-  const db = getServerSupabase()
   const { data: row, error: fetchError } = await db.from('shift_leads').select('active').eq('id', id).maybeSingle()
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
   if (!row) return NextResponse.json({ error: 'Shift lead not found' }, { status: 404 })

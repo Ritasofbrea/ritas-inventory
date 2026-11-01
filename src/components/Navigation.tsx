@@ -103,7 +103,12 @@ export default function Navigation() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // Patch 29 B3: also clears the server-side session cookie, not just the
+  // local role cache — fire-and-forget is fine, the cookie is httpOnly so
+  // nothing client-side could race it, and navigating to /login happens
+  // either way.
   const handleLogout = () => {
+    fetch('/api/logout', { method: 'POST' }).catch(() => {})
     clearRole()
     router.push('/login')
   }

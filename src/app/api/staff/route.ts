@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
+// ?all=true (Staff management screen) is owner-only; the plain active-only
+// list is used by name-pickers all over the app (task completion, step
+// checking, notes). The To-Do List button now establishes a staff session
+// before ever reaching /todo (see /api/session and src/app/login/page.tsx),
+// so this no longer needs to be reachable pre-session — ANY tier.
 export async function GET(request: NextRequest) {
-  const all = new URL(request.url).searchParams.get('all') === 'true'
   const db = getServerSupabase()
+  const all = new URL(request.url).searchParams.get('all') === 'true'
+  const auth = await requireRole(db, request, all ? ['owner'] : ['owner', 'shift_lead', 'staff'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   let query = db.from('staff').select('*').order('name')
   if (!all) query = query.eq('active', true)
   const { data, error } = await query
@@ -12,11 +20,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { name } = await request.json()
   if (typeof name !== 'string' || !name.trim()) {
     return NextResponse.json({ error: 'Missing name' }, { status: 400 })
   }
-  const db = getServerSupabase()
   const { data, error } = await db.from('staff').insert({ name: name.trim() }).select().single()
   if (error) {
     if (error.code === '23505') return NextResponse.json({ error: 'That name is already on the list' }, { status: 409 })
@@ -26,6 +36,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { id, name, active, color } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -40,7 +53,6 @@ export async function PATCH(request: NextRequest) {
   }
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
 
-  const db = getServerSupabase()
   const { data, error } = await db.from('staff').update(updates).eq('id', id).select().single()
   if (error) {
     if (error.code === '23505') return NextResponse.json({ error: 'That name is already on the list' }, { status: 409 })

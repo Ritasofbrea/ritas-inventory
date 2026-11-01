@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
 export async function GET(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { searchParams } = new URL(request.url)
   const start = searchParams.get('start')
   const end = searchParams.get('end')
@@ -13,8 +17,6 @@ export async function GET(request: NextRequest) {
   // Fetch all count records up through the end date, newest first
   const startMs = new Date(start).setHours(23, 59, 59, 999)
   const endMs = new Date(end).setHours(23, 59, 59, 999)
-
-  const db = getServerSupabase()
   const { data, error } = await db
     .from('inventory_counts')
     .select('item_id, count, created_at, items(name, category, unit)')

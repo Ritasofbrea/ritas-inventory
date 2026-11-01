@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 
 const SEED_ITEMS = [
@@ -23,7 +23,16 @@ const SEED_ITEMS = [
   { name: 'Graham Cracker Crumbles', category: 'Toppings - Dry', unit: 'bags',        par_level: 1, sort_order: 60 },
 ]
 
-export async function POST() {
+// One-time setup route — nothing in the app calls this (confirmed by grep).
+// Patch 29 A2: gated behind the same CRON_SECRET bearer check as the cron
+// routes, same fail-closed behavior if it's unset. Not deleted per Joshua's
+// instruction, just no longer reachable by an anonymous caller.
+export async function POST(request: NextRequest) {
+  const secret = process.env.CRON_SECRET
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const db = getServerSupabase()
 
   // Check if items already exist

@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
 type MappingRow = {
   id: string
@@ -16,8 +17,10 @@ type CloverItemRow = {
   clover_item_mappings: MappingRow[]
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { data, error } = await db
     .from('clover_items')
     .select(`

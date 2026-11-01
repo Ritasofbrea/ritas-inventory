@@ -20,6 +20,7 @@ import {
   uncheckStep,
   undoCompletion,
 } from '@/lib/task-server'
+import { requireRole } from '@/lib/session'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -28,6 +29,10 @@ export async function GET(request: NextRequest) {
   const view = searchParams.get('view') || 'today'
   const today = todayInTZ()
   const db = getServerSupabase()
+  // view=missed is owner-only; every other view (today/badge/history) is the
+  // To-Do board itself, which has no role requirement in the UI.
+  const auth = await requireRole(db, request, view === 'missed' ? ['owner'] : ['owner', 'shift_lead', 'staff'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   // Nav badge: open tasks due today. Missed (past-due, never completed) tasks
   // are a separate bucket now and intentionally excluded from this count.
@@ -125,8 +130,13 @@ export async function GET(request: NextRequest) {
   })
 }
 
-// Create a one-off task (due today, no template)
+// Create a one-off task (due today, no template). SL+ — gated by the todo
+// page's canManage (owner/shift_lead, or staff who unlocked via the real
+// owner PIN through PinModal, which now also grants a real owner session).
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { title, description, assigned_to, created_by, photo_setting, priority, due_time } = body
 
@@ -138,7 +148,6 @@ export async function POST(request: NextRequest) {
   const dueTimeResult = parseDueTime(due_time)
   if (!dueTimeResult.ok) return NextResponse.json({ error: dueTimeResult.error }, { status: 400 })
 
-  const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
     return NextResponse.json({ error: 'Pick who this is assigned to' }, { status: 400 })
   }
@@ -172,11 +181,24 @@ export async function POST(request: NextRequest) {
 // action 'check-step': { id, step_id, checked_by }   action 'uncheck-step': { id, step_id }
 //   (checklist-style tasks only; 'complete' is refused server-side until every step is checked)
 export async function PATCH(request: NextRequest) {
+  const db = getServerSupabase()
+  // Baseline: any valid session can reach this route at all (complete/undo/
+  // check-step/uncheck-step/photo are all open to plain staff in the UI
+  // today). move/priority/edit are additionally gated to owner below, and
+  // undo to owner-or-shift_lead — see route-access.md.
+  const auth = await requireRole(db, request, ['owner', 'shift_lead', 'staff'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { id, action } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const db = getServerSupabase()
+  if (['undo', 'move', 'priority', 'edit'].includes(action) && auth.session.role === 'staff') {
+    return NextResponse.json({ error: 'Not allowed for your role' }, { status: 403 })
+  }
+  if (['move', 'priority', 'edit'].includes(action) && auth.session.role !== 'owner') {
+    return NextResponse.json({ error: 'Not allowed for your role' }, { status: 403 })
+  }
+
   const { data: task, error: fetchError } = await db.from('task_instances').select('*').eq('id', id).maybeSingle()
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
@@ -267,9 +289,12 @@ export async function PATCH(request: NextRequest) {
 
 // Permanently delete a one-off task (the UI only offers this to owners)
 export async function DELETE(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { id } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
-  const result = await deleteOneOffTask(getServerSupabase(), id)
+  const result = await deleteOneOffTask(db, id)
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
   return NextResponse.json({ success: true })
 }

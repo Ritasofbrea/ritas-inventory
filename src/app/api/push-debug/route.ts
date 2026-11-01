@@ -1,11 +1,19 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { generateVAPIDKeys } from 'web-push'
 
 const PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
 const PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? ''
 const SUBJECT = (process.env.VAPID_EMAIL ?? '').trim()
 
-export async function GET() {
+// Debug route — dumps VAPID key diagnostics, nothing in the app calls this
+// (confirmed by grep). Patch 29 A2: same CRON_SECRET bearer gate as the
+// cron routes — this one especially shouldn't be publicly reachable since
+// it echoes key-derivation internals.
+export async function GET(request: NextRequest) {
+  const secret = process.env.CRON_SECRET
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   const pubBytes = PUBLIC_KEY ? Buffer.from(PUBLIC_KEY, 'base64url') : null
   const privBytes = PRIVATE_KEY ? Buffer.from(PRIVATE_KEY, 'base64url') : null
 

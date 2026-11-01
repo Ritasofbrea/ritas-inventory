@@ -13,9 +13,13 @@ import {
   removeOpenInstanceForDeactivatedTemplate,
   syncOpenInstanceOwnership,
 } from '@/lib/task-server'
+import { requireRole } from '@/lib/session'
 
-export async function GET() {
+// Owner-only across every method — the Repeating tab is owner-only in the UI.
+export async function GET(request: NextRequest) {
   const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { data, error } = await db
     .from('task_templates')
     .select('*')
@@ -42,6 +46,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { title, description, assigned_to, created_by, photo_setting, priority, due_time, step_style } = body
 
@@ -58,7 +65,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid step style' }, { status: 400 })
   }
 
-  const db = getServerSupabase()
   if (!(await isValidAssignee(db, assigned_to))) {
     return NextResponse.json({ error: 'Pick who this is assigned to' }, { status: 400 })
   }
@@ -95,11 +101,13 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { id } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const db = getServerSupabase()
   const updates: Record<string, string | boolean | number | number[] | null> = {}
   // Ownership fields also carry over to this template's open (not yet done) tasks below
   const ownership: Record<string, string | null> = {}
@@ -206,9 +214,12 @@ export async function PATCH(request: NextRequest) {
 
 // Permanently delete a repeating task and its open tasks; completed ones stay in History
 export async function DELETE(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { id } = await request.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
-  const result = await deleteTemplate(getServerSupabase(), id)
+  const result = await deleteTemplate(db, id)
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
   return NextResponse.json({ success: true, deletedOpen: result.deletedOpen ?? 0 })
 }

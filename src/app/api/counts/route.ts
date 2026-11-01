@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
 export async function GET(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { searchParams } = new URL(request.url)
   const limit = parseInt(searchParams.get('limit') || '200')
   const itemId = searchParams.get('item_id')
 
-  const db = getServerSupabase()
   let query = db
     .from('inventory_counts')
     .select('*, items(name, category, unit)')
@@ -22,6 +25,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { counts, entered_by, is_test_data } = body
   // counts: Array<{ item_id: string; count: number }>
@@ -30,7 +36,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No counts provided' }, { status: 400 })
   }
 
-  const db = getServerSupabase()
   const isTestData = !!is_test_data
 
   // Insert history records

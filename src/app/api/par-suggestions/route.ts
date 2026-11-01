@@ -1,10 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
 // Suggest par = ceil(weekly_avg_consumption * 1.5), minimum 1 week of buffer.
 // Only returns items with at least 2 count records in the last 90 days.
-export async function GET() {
+export async function GET(request: NextRequest) {
   const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
   const { data, error } = await db

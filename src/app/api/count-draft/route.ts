@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
 const DRAFT_EXPIRY_MS = 4 * 60 * 60 * 1000
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { data, error } = await db
     .from('count_draft')
     .select('*')
@@ -23,10 +26,12 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
   const { counts, secondary_counts, counted_by, is_test_count } = body
 
-  const db = getServerSupabase()
   const { data, error } = await db
     .from('count_draft')
     .upsert({
@@ -44,8 +49,10 @@ export async function PUT(request: NextRequest) {
   return NextResponse.json(data)
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { error } = await db.from('count_draft').delete().eq('id', 'current')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

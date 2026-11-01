@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { setRole, setOwnerName, setShiftLeadName, clearRole } from '@/lib/auth'
+import { fetchSession } from '@/lib/client-session'
+import { LOGIN_MESSAGE_KEY } from '@/components/SessionGuard'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -12,6 +14,35 @@ export default function LoginPage() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [verifying, setVerifying] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  // Patch 29: a device that already has a valid session skips this screen
+  // entirely — covers a returning staff device (one-time name pick, then
+  // never again for 365 days) and anyone who navigates here while still
+  // logged in elsewhere.
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem(LOGIN_MESSAGE_KEY)
+      if (msg) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve once on mount, this app's standard page-load pattern
+        setNotice(msg)
+        sessionStorage.removeItem(LOGIN_MESSAGE_KEY)
+      }
+    } catch {
+      // ignore
+    }
+    fetchSession().then(({ role }) => {
+      if (role === 'owner' || role === 'shift_lead') {
+        setRole(role)
+        router.replace(role === 'owner' ? '/dashboard' : '/count')
+      } else if (role === 'staff') {
+        router.replace('/todo')
+      } else {
+        setCheckingSession(false)
+      }
+    })
+  }, [router])
 
   const handleShiftLead = () => {
     setPinRole('shift_lead')
@@ -27,10 +58,25 @@ export default function LoginPage() {
     setPin('')
   }
 
-  // To-Do is open to everyone: no PIN, and no role is kept (so a previously stored
-  // owner/shift-lead role can't carry over into the role-less To-Do view).
-  const handleTodo = () => {
+  // To-Do is open to everyone: no owner/shift_lead role is kept (so a
+  // previously stored one can't carry over into the role-less To-Do view),
+  // and — same as main, pre-patch-29 — no visible prompt of any kind here.
+  // The only addition is a silent POST /api/session first, to give the
+  // server a staff-tier session to check (named no one; see
+  // src/app/api/session/route.ts) so staff-tier routes aren't wide open to
+  // literally anyone with no cookie at all. Awaited (not fire-and-forget) so
+  // the cookie actually exists before landing on /todo — otherwise the
+  // page's first staff-tier fetch could 401 before the cookie arrives. No
+  // loading state is shown for this; it's a single fast same-origin call,
+  // same tap-to-todo feel as before. If it fails, still navigate — To-Do
+  // stays reachable regardless, same as it always was.
+  const handleTodo = async () => {
     clearRole()
+    try {
+      await fetch('/api/session', { method: 'POST' })
+    } catch {
+      // ignore — navigate anyway, see comment above
+    }
     router.push('/todo')
   }
 
@@ -61,11 +107,19 @@ export default function LoginPage() {
         setError('Wrong PIN. Try again.')
         setPin('')
       }
-    } catch {
-      setError('Could not check the PIN. Check your connection and try again.')
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : 'Could not check the PIN. Check your connection and try again.')
     } finally {
       setVerifying(false)
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-[100dvh] bg-[#1a7a3c] flex items-center justify-center">
+        <p className="text-green-100">Loading…</p>
+      </div>
+    )
   }
 
   return (
@@ -78,6 +132,10 @@ export default function LoginPage() {
           </div>
           <p className="text-green-200 mt-1 font-medium tracking-wide">Brea Location – Inventory</p>
         </div>
+
+        {notice && (
+          <p className="text-center text-yellow-200 bg-black/20 rounded-xl py-2 px-3 mb-4 text-sm font-medium">{notice}</p>
+        )}
 
         {!showPinEntry ? (
           <div className="flex flex-col gap-4">
@@ -103,6 +161,10 @@ export default function LoginPage() {
             >
               To-Do List
             </button>
+
+            {error && (
+              <p className="text-center text-[#c8102e] bg-white rounded-xl py-2 px-3 font-medium">{error}</p>
+            )}
           </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-xl p-6">

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
+import { requireRole } from '@/lib/session'
 
 // One week's filled slots, sparse (an empty slot just has no row — see
 // supabase/add-flavors.sql). A week that's never had a slot touched has no
 // flavor_weeks row at all yet, which just means an empty slot list here.
 export async function GET(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead', 'staff'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const weekStart = new URL(request.url).searchParams.get('week_start')
   if (!weekStart) return NextResponse.json({ error: 'Missing week_start' }, { status: 400 })
 
-  const db = getServerSupabase()
   const { data: week, error: weekError } = await db
     .from('flavor_weeks')
     .select('id')
@@ -27,10 +30,13 @@ export async function GET(request: NextRequest) {
 }
 
 // Fill, change, or clear one slot. flavor_id: null clears it (deletes the
-// row). Owner/shift-lead gating (same tier as "+ Add Task") is enforced
-// client-side only — the picker is hidden from regular staff — same as
-// every other owner-only action in this app.
+// row). Owner/shift-lead gating (same tier as "+ Add Task"; patch 29: now
+// server-enforced — Flavors page's canManage has no staff PIN-unlock escape
+// hatch, unlike the todo page, so this is a clean SL+ gate).
 export async function PATCH(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner', 'shift_lead'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const { week_start, slot_number, flavor_id } = await request.json()
   if (typeof week_start !== 'string' || !week_start) {
     return NextResponse.json({ error: 'Missing week_start' }, { status: 400 })
@@ -39,7 +45,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'slot_number must be between 1 and 12' }, { status: 400 })
   }
 
-  const db = getServerSupabase()
   const { data: week, error: weekError } = await db
     .from('flavor_weeks')
     .upsert({ week_start }, { onConflict: 'week_start' })
