@@ -70,12 +70,19 @@ export function verifySessionToken(token: string | undefined | null): SessionPay
   }
 }
 
+// `next dev` runs with NODE_ENV=development; every Vercel build (both
+// Preview and Production use `next build`) runs with NODE_ENV=production.
+// A Secure cookie is silently dropped by the browser over plain http, so
+// this has to be conditional for local testing to work at all — it's still
+// Secure everywhere actually deployed.
+const COOKIE_SECURE = process.env.NODE_ENV === 'production'
+
 export function setSessionCookie(response: NextResponse, role: SessionRole, name: string | null, maxAgeDays?: number): boolean {
   const created = createSessionToken(role, name, maxAgeDays)
   if (!created) return false
   response.cookies.set(SESSION_COOKIE, created.token, {
     httpOnly: true,
-    secure: true,
+    secure: COOKIE_SECURE,
     sameSite: 'lax',
     path: '/',
     maxAge: created.maxAgeSeconds,
@@ -84,7 +91,7 @@ export function setSessionCookie(response: NextResponse, role: SessionRole, name
 }
 
 export function clearSessionCookie(response: NextResponse) {
-  response.cookies.set(SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 })
+  response.cookies.set(SESSION_COOKIE, '', { httpOnly: true, secure: COOKIE_SECURE, sameSite: 'lax', path: '/', maxAge: 0 })
 }
 
 type SessionResult = { ok: true; session: SessionPayload } | { ok: false; status: 401; error: string }
