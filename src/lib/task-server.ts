@@ -802,14 +802,18 @@ async function loadInstanceAndStep(
   return { ok: true, instance: instance as TaskInstance }
 }
 
-export async function checkStep(db: SupabaseClient, instanceId: string, stepId: string, checkedBy: unknown): Promise<TaskWriteResult> {
+// Anonymous — anyone with a session can check a step, no name required or
+// stored. checked_by is always null; any value the client sends is ignored
+// rather than trusted. Steps are never attributed to anyone — only the main
+// task's completed_by (set via the normal complete action) records who did
+// the work.
+export async function checkStep(db: SupabaseClient, instanceId: string, stepId: string): Promise<TaskWriteResult> {
   const loaded = await loadInstanceAndStep(db, instanceId, stepId)
   if (!loaded.ok) return loaded
-  if (!(await isActiveStaff(db, checkedBy))) return { ok: false, error: 'Pick your name from the list', status: 400 }
 
   const { error } = await db
     .from('task_instance_step_checks')
-    .upsert({ instance_id: instanceId, step_id: stepId, checked_by: checkedBy }, { onConflict: 'instance_id,step_id', ignoreDuplicates: true })
+    .upsert({ instance_id: instanceId, step_id: stepId, checked_by: null }, { onConflict: 'instance_id,step_id', ignoreDuplicates: true })
   if (error) return { ok: false, error: error.message, status: 500 }
   return { ok: true }
 }

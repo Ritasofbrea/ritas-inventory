@@ -178,8 +178,9 @@ export async function POST(request: NextRequest) {
 // action 'move': { id, direction }           action 'priority': { id, priority }  (standalone tasks only)
 // action 'edit': { id, title?, description?, assigned_to?, created_by?, photo_setting?, due_time?, priority? }
 //   (standalone, still-open tasks only — owner-only in the UI, not gated by who created it)
-// action 'check-step': { id, step_id, checked_by }   action 'uncheck-step': { id, step_id }
-//   (checklist-style tasks only; 'complete' is refused server-side until every step is checked)
+// action 'check-step': { id, step_id }   action 'uncheck-step': { id, step_id }
+//   (checklist-style tasks only; anonymous — no name required or stored;
+//   'complete' is refused server-side until every step is checked)
 export async function PATCH(request: NextRequest) {
   const db = getServerSupabase()
   // Baseline: any valid session can reach this route at all (complete/undo/
@@ -229,7 +230,7 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.step_id !== 'string' || !body.step_id) {
       return NextResponse.json({ error: 'Missing step_id' }, { status: 400 })
     }
-    const result = await checkStep(db, id, body.step_id, body.checked_by)
+    const result = await checkStep(db, id, body.step_id)
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
     return NextResponse.json({ success: true })
   }

@@ -64,10 +64,6 @@ export default function TodoPage() {
   const [undoingId, setUndoingId] = useState<string | null>(null)
   const [expandedTaskSteps, setExpandedTaskSteps] = useState<Set<string>>(new Set())
   const [pendingStepKeys, setPendingStepKeys] = useState<Set<string>>(new Set())
-  // Remembers who's been checking off a given task's steps this page load, so
-  // StaffPicker only has to ask once per task, not on every single step tap.
-  const [stepCheckerNames, setStepCheckerNames] = useState<Record<string, string>>({})
-  const [pickingStepFor, setPickingStepFor] = useState<{ task: TaskInstance; step: TaskTemplateStep } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const photoTargetRef = useRef<string | null>(null)
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -122,7 +118,7 @@ export default function TodoPage() {
     midInteractionRef.current =
       completing !== null || uploadingId !== null || deleting !== null || showAdd ||
       standaloneBusyId !== null || undoingId !== null || editingTask !== null ||
-      pendingStepKeys.size > 0 || pickingStepFor !== null
+      pendingStepKeys.size > 0
   })
 
   // Shared checklist: pick up other people's changes when the tab regains focus,
@@ -194,7 +190,10 @@ export default function TodoPage() {
   // visibility refresh is held off (via pendingStepKeys in midInteractionRef)
   // for as long as any step toggle is in flight, so it can never stomp a tap
   // that just happened.
-  const performStepToggle = async (task: TaskInstance, step: TaskTemplateStep, check: boolean, checkedBy: string | null) => {
+  // Step checks are anonymous — anyone can tick a step, no name is asked or
+  // stored (unlike completing the main task itself, below, which still asks
+  // once via StaffPicker and records completed_by).
+  const performStepToggle = async (task: TaskInstance, step: TaskTemplateStep, check: boolean) => {
     const key = `${task.id}:${step.id}`
     const applyToggle = (add: boolean) => (list: TaskInstance[]) =>
       list.map((t) => {
@@ -212,12 +211,7 @@ export default function TodoPage() {
       const res = await fetch('/api/tasks', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: task.id,
-          action: check ? 'check-step' : 'uncheck-step',
-          step_id: step.id,
-          ...(check ? { checked_by: checkedBy } : {}),
-        }),
+        body: JSON.stringify({ id: task.id, action: check ? 'check-step' : 'uncheck-step', step_id: step.id }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not save')
     } catch (e) {
@@ -234,21 +228,7 @@ export default function TodoPage() {
   }
 
   const handleStepTap = (task: TaskInstance, step: TaskTemplateStep, checked: boolean) => {
-    if (checked) {
-      performStepToggle(task, step, false, null)
-      return
-    }
-    const remembered = stepCheckerNames[task.id]
-    if (remembered) performStepToggle(task, step, true, remembered)
-    else setPickingStepFor({ task, step })
-  }
-
-  const handleStepNamePicked = (name: string) => {
-    if (!pickingStepFor) return
-    const { task, step } = pickingStepFor
-    setStepCheckerNames((prev) => ({ ...prev, [task.id]: name }))
-    setPickingStepFor(null)
-    performStepToggle(task, step, true, name)
+    performStepToggle(task, step, !checked)
   }
 
   const handlePickName = async (name: string) => {
@@ -795,15 +775,6 @@ export default function TodoPage() {
           busy={completingBusy}
           onPick={handlePickName}
           onClose={() => setCompleting(null)}
-        />
-      )}
-
-      {pickingStepFor && (
-        <StaffPicker
-          staff={staff}
-          title={`Checking off: ${pickingStepFor.task.title}`}
-          onPick={handleStepNamePicked}
-          onClose={() => setPickingStepFor(null)}
         />
       )}
 
