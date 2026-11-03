@@ -17,10 +17,16 @@ export default function LoginPage() {
   const [notice, setNotice] = useState('')
   const [checkingSession, setCheckingSession] = useState(true)
 
-  // Patch 29: a device that already has a valid session skips this screen
-  // entirely — covers a returning staff device (one-time name pick, then
-  // never again for 365 days) and anyone who navigates here while still
-  // logged in elsewhere.
+  // Patch 29 added auto-skip for ANY valid session here; patch 30's fix
+  // narrows it back to staff only. Staff auto-skip is the point of a
+  // returning store-screen device (one-time pick, then never again for 365
+  // days) and is safe now that Home/Switch (Navigation.tsx) awaits the
+  // logout call before navigating here — so a deliberate logout always
+  // clears the cookie first. Owner and shift_lead sessions now match how
+  // this screen behaved before patch 29: always show the three buttons,
+  // never auto-skip, even if a valid owner/shift_lead cookie exists — so
+  // tapping Switch/Home can never bounce back to a page the person is
+  // trying to leave, no race possible either way.
   useEffect(() => {
     try {
       const msg = sessionStorage.getItem(LOGIN_MESSAGE_KEY)
@@ -33,10 +39,7 @@ export default function LoginPage() {
       // ignore
     }
     fetchSession().then(({ role }) => {
-      if (role === 'owner' || role === 'shift_lead') {
-        setRole(role)
-        router.replace(role === 'owner' ? '/dashboard' : '/count')
-      } else if (role === 'staff') {
+      if (role === 'staff') {
         router.replace('/todo')
       } else {
         setCheckingSession(false)

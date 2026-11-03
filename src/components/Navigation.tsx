@@ -103,12 +103,21 @@ export default function Navigation() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Patch 29 B3: also clears the server-side session cookie, not just the
-  // local role cache — fire-and-forget is fine, the cookie is httpOnly so
-  // nothing client-side could race it, and navigating to /login happens
-  // either way.
-  const handleLogout = () => {
-    fetch('/api/logout', { method: 'POST' }).catch(() => {})
+  // Patch 30 fix: must AWAIT the logout call before navigating. Firing it
+  // and immediately pushing to /login (the old code) raced /login's own
+  // session check against the cookie actually being cleared — if the GET
+  // /api/session on /login's mount won that race, it would see the
+  // still-valid old cookie and bounce straight back to that role's page
+  // (most visibly: a staff session always wins that race back to /todo,
+  // since /login auto-skips any valid staff session unconditionally,
+  // making Home/Switch look like it does nothing). Awaiting guarantees the
+  // cookie is gone, server- and browser-side, before /login ever checks.
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST' })
+    } catch {
+      // ignore -- clear local state and navigate regardless
+    }
     clearRole()
     router.push('/login')
   }
