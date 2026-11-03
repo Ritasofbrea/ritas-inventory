@@ -5,6 +5,18 @@ import { clearRole } from '@/lib/auth'
 
 export const LOGIN_MESSAGE_KEY = 'ritas_login_message'
 
+// Set by a deliberate Home/Switch tap (Navigation.tsx) right before it
+// navigates to /login. If POST /api/logout failed or timed out, the cookie
+// may still be a valid staff session when /login's own check runs a moment
+// later — and /login auto-skips any valid staff session straight back to
+// /todo (intentional for a *returning* device, see login/page.tsx), which
+// would make a deliberate Home tap look like it does nothing, same symptom
+// as the original bug but from a genuine network failure instead of a race.
+// This flag tells /login to skip that one check this one time, so a
+// deliberate exit always reaches the three buttons regardless of whether
+// the server-side cookie actually got cleared.
+export const SKIP_LOGIN_AUTOSKIP_KEY = 'ritas_skip_login_autoskip'
+
 let patched = false
 
 // Patch 29 B8: wraps window.fetch once, globally, so ANY 401 response from

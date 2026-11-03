@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { clearRole, getRole } from '@/lib/auth'
 import { useEffect, useRef, useState } from 'react'
 import { Role } from '@/lib/types'
+import { SKIP_LOGIN_AUTOSKIP_KEY } from '@/components/SessionGuard'
 
 const MORE_DROPDOWN_MARGIN = 16
 
@@ -112,13 +113,37 @@ export default function Navigation() {
   // since /login auto-skips any valid staff session unconditionally,
   // making Home/Switch look like it does nothing). Awaiting guarantees the
   // cookie is gone, server- and browser-side, before /login ever checks.
+  //
+  // Hardening: a hung or failed request must never strand someone on this
+  // page with a dead button. A 3s AbortController timeout bounds the wait,
+  // and the try/catch covers both a network failure and that abort — either
+  // way we still clear local state and navigate to /login. If the request
+  // never actually reached the server, the cookie may still exist — for
+  // owner/shift_lead that's fine (/login no longer auto-skips those), but a
+  // lingering STAFF cookie would otherwise auto-skip straight back to
+  // /todo, reproducing the original symptom via a real network failure
+  // instead of a race. SKIP_LOGIN_AUTOSKIP_KEY tells /login to show the
+  // three buttons this one time regardless, so a deliberate Home/Switch tap
+  // always works even when logout couldn't actually reach the server.
   const handleLogout = async () => {
     try {
-      await fetch('/api/logout', { method: 'POST' })
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 3000)
+      try {
+        await fetch('/api/logout', { method: 'POST', signal: controller.signal })
+      } finally {
+        clearTimeout(timeout)
+      }
     } catch {
-      // ignore -- clear local state and navigate regardless
+      // ignore -- timed out or failed; clear local state and navigate regardless
     }
     clearRole()
+    try {
+      sessionStorage.setItem(SKIP_LOGIN_AUTOSKIP_KEY, '1')
+    } catch {
+      // ignore — private browsing / storage blocked; worst case is the old
+      // staff-auto-skip behavior if the logout request also failed
+    }
     router.push('/login')
   }
 

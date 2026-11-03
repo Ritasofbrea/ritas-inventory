@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { setRole, setOwnerName, setShiftLeadName, clearRole } from '@/lib/auth'
 import { fetchSession } from '@/lib/client-session'
-import { LOGIN_MESSAGE_KEY } from '@/components/SessionGuard'
+import { LOGIN_MESSAGE_KEY, SKIP_LOGIN_AUTOSKIP_KEY } from '@/components/SessionGuard'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -37,6 +37,26 @@ export default function LoginPage() {
       }
     } catch {
       // ignore
+    }
+    // A deliberate Home/Switch tap (Navigation.tsx) sets this right before
+    // navigating here, in case its logout request failed or timed out and
+    // left a still-valid staff cookie behind — without this, the check
+    // below would auto-skip straight back to /todo, making the tap look
+    // like it did nothing (see the comment in Navigation.tsx). Skipping the
+    // session fetch entirely here also avoids a "Loading…" flash for what
+    // is already a known, deliberate exit.
+    let skipAutoskip = false
+    try {
+      if (sessionStorage.getItem(SKIP_LOGIN_AUTOSKIP_KEY)) {
+        skipAutoskip = true
+        sessionStorage.removeItem(SKIP_LOGIN_AUTOSKIP_KEY)
+      }
+    } catch {
+      // ignore
+    }
+    if (skipAutoskip) {
+      setCheckingSession(false)
+      return
     }
     fetchSession().then(({ role }) => {
       if (role === 'staff') {
