@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { Staff } from '@/lib/tasks'
 import { uploadNotePhoto } from '@/lib/photo'
+import { useBlockReload } from '@/lib/reload-guard'
 
 // Small add-note form: free text plus a tap-to-pick name grid (same idea as
 // StaffPicker — whoever's adding the note picks their own name, no typing,
@@ -27,6 +28,7 @@ export default function AddNoteModal({
   onClose: () => void
   onSaved: (message: string) => void
 }) {
+  useBlockReload(true) // patch 30: open modal (covers the in-modal photo upload too), never auto-reload while it is
   const [content, setContent] = useState('')
   const [createdBy, setCreatedBy] = useState('')
   const [requiresAck, setRequiresAck] = useState(false)

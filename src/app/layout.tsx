@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration'
 import SessionGuard from '@/components/SessionGuard'
+import AutoReloadWatcher from '@/components/AutoReloadWatcher'
 
 export const metadata: Metadata = {
   title: "Brea's Inventory – Rita's Italian Ice",
@@ -32,6 +33,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col" style={{ background: '#1a7a3c' }}>
         <ServiceWorkerRegistration />
         <SessionGuard />
+        <AutoReloadWatcher />
         {children}
       </body>
     </html>

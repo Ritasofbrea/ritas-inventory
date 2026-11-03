@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import ConfirmModal from './ConfirmModal'
+import { useBlockReload } from '@/lib/reload-guard'
 
 // Renaming to a name that already exists elsewhere in the same checklist merges
 // the two sections (server-side, see renameChecklistSection) — allowed, since
@@ -20,6 +21,7 @@ export default function RenameSectionModal({
   onClose: () => void
   onSaved: () => void
 }) {
+  useBlockReload(true) // patch 30: open modal (template editor), never auto-reload while it is
   const [name, setName] = useState(currentSection)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import { getRole, getShiftLeadName } from '@/lib/auth'
 import { Item, InventoryCount, CATEGORIES, Category } from '@/lib/types'
+import { useBlockReload } from '@/lib/reload-guard'
 
 interface CountDraft {
   [itemId: string]: string
@@ -110,6 +111,10 @@ export default function CountPage() {
   const [showSummary, setShowSummary] = useState(false)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [recountFilterIds, setRecountFilterIds] = useState<Set<string> | null>(null)
+  // Patch 30: Count Entry is one of the explicitly required screens for the
+  // auto-reload watcher — never reload mid-submit or while the save summary
+  // is showing.
+  useBlockReload(saving || showSummary)
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blurTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 

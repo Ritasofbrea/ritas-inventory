@@ -6,6 +6,7 @@ import PhotoLightbox from './PhotoLightbox'
 import { staffColorFor, pastelTint, computeAckDenominator } from '@/lib/staffColor'
 import { Staff, formatDateShort, formatDateTime } from '@/lib/tasks'
 import { Note, groupArchivedNotesByDay, notesVisibilityParams } from '@/lib/notes'
+import { useBlockReload } from '@/lib/reload-guard'
 
 // Read-only record of every archived note (manual Delete, or auto-archived
 // the moment an ack-required note's acknowledgment count hit its required
@@ -25,6 +26,7 @@ export default function NotesHistoryModal({
   isOwner: boolean
   onClose: () => void
 }) {
+  useBlockReload(true) // patch 30: open modal, never auto-reload while it is
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')

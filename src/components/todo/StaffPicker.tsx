@@ -1,6 +1,7 @@
 'use client'
 
 import { Staff } from '@/lib/tasks'
+import { useBlockReload } from '@/lib/reload-guard'
 
 // Bottom-sheet list of big name buttons — no typing, one tap picks a name.
 export default function StaffPicker({
@@ -16,6 +17,7 @@ export default function StaffPicker({
   onPick: (name: string) => void
   onClose: () => void
 }) {
+  useBlockReload(true) // patch 30: open picker, never auto-reload while it is
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4" onClick={onClose}>
       <div

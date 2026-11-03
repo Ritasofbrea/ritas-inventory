@@ -1,6 +1,7 @@
 'use client'
 
 import { FLAVOR_TYPE_LABELS, Flavor, groupFlavorsByType } from '@/lib/flavors'
+import { useBlockReload } from '@/lib/reload-guard'
 
 // Bottom-sheet list of flavor buttons for one week's slot — same pattern as
 // StaffPicker, plus a "Clear this slot" option when it's already filled.
@@ -24,6 +25,7 @@ export default function FlavorSlotPicker({
   onPick: (flavorId: string | null) => void
   onClose: () => void
 }) {
+  useBlockReload(true) // patch 30: open picker, never auto-reload while it is
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4" onClick={onClose}>
       <div

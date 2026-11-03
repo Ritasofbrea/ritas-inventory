@@ -1,10 +1,13 @@
 'use client'
 
+import { useBlockReload } from '@/lib/reload-guard'
+
 // Simple tap-to-enlarge modal for a note's reference photo (patch 22) —
 // task-completion photos don't have an in-app lightbox of their own (they
 // just open in a new tab), so this is a fresh, minimal pattern rather than
 // reusing something that doesn't exist yet.
 export default function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useBlockReload(true) // patch 30: open photo viewer, never auto-reload while it is
   return (
     <div
       className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4"

@@ -13,6 +13,7 @@ import MissedView from '@/components/todo/MissedView'
 import TemplatesView from '@/components/todo/TemplatesView'
 import { getRole, getShiftLeadName } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
+import { useBlockReload } from '@/lib/reload-guard'
 import { Role } from '@/lib/types'
 import { Staff, TaskInstance, TaskTemplateStep, buildChecklistGroups, formatDateShort, formatDueTime, formatTime, isOverdue, sortStandalone, todayInTZ } from '@/lib/tasks'
 
@@ -120,6 +121,17 @@ export default function TodoPage() {
       standaloneBusyId !== null || undoingId !== null || editingTask !== null ||
       pendingStepKeys.size > 0
   })
+  // Patch 30: same "something's in flight" signal as above, also feeds the
+  // auto-reload watcher (src/components/AutoReloadWatcher.tsx) so it never
+  // reloads mid-action here. PinModal/TaskFormModal/StaffPicker/etc. each
+  // block on their own while mounted (see reload-guard.ts) — this covers the
+  // states above that have no modal component of their own (photo upload,
+  // undo, reorder, step toggles).
+  useBlockReload(
+    completing !== null || uploadingId !== null || deleting !== null || showAdd ||
+    standaloneBusyId !== null || undoingId !== null || editingTask !== null ||
+    pendingStepKeys.size > 0
+  )
 
   // Shared checklist: pick up other people's changes when the tab regains focus,
   // and every 5 minutes in the background otherwise (a device left open at the

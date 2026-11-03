@@ -1,5 +1,7 @@
 'use client'
 
+import { useBlockReload } from '@/lib/reload-guard'
+
 // Simple "Are you sure?" dialog used before any permanent delete.
 export default function ConfirmModal({
   message,
@@ -14,6 +16,7 @@ export default function ConfirmModal({
   onConfirm: () => void
   onCancel: () => void
 }) {
+  useBlockReload(true) // patch 30: open modal, never auto-reload while it is
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={busy ? undefined : onCancel}>
       <div

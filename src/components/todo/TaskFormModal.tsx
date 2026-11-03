@@ -4,6 +4,7 @@ import { useState } from 'react'
 import ConfirmModal from './ConfirmModal'
 import TimeField from './TimeField'
 import { getOwnerName } from '@/lib/auth'
+import { useBlockReload } from '@/lib/reload-guard'
 import {
   Staff,
   TaskTemplate,
@@ -46,6 +47,7 @@ export default function TaskFormModal({
   // Only passed by the owner-only Repeating view; when absent no Delete button is shown
   onDelete?: () => Promise<void>
 }) {
+  useBlockReload(true) // patch 30: open modal (Add Task / template editor), never auto-reload while it is
   const source = template ?? instance
   const editing = !!source
   const [assignedTo, setAssignedTo] = useState(source?.assigned_to ?? '')

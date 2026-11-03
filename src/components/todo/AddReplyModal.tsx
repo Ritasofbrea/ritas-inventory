@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Staff } from '@/lib/tasks'
+import { useBlockReload } from '@/lib/reload-guard'
 
 // Short follow-up on an existing note — same pattern as AddNoteModal (free
 // text + tap-to-pick name grid, no PIN), just a single-line field and scoped
@@ -17,6 +18,7 @@ export default function AddReplyModal({
   onClose: () => void
   onSaved: (message: string) => void
 }) {
+  useBlockReload(true) // patch 30: open modal, never auto-reload while it is
   const [content, setContent] = useState('')
   const [createdBy, setCreatedBy] = useState('')
   const [saving, setSaving] = useState(false)

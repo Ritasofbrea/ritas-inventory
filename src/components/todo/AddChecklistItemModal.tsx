@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { getOwnerName } from '@/lib/auth'
+import { useBlockReload } from '@/lib/reload-guard'
 import { Staff, EVERYONE, TASK_CREATORS, PhotoSetting, Recurrence, WEEKDAY_LABELS } from '@/lib/tasks'
 import TimeField from './TimeField'
 
@@ -36,6 +37,7 @@ export default function AddChecklistItemModal({
   onClose: () => void
   onSaved: () => void
 }) {
+  useBlockReload(true) // patch 30: open modal (template editor), never auto-reload while it is
   const [section, setSection] = useState(sections[0] ?? '')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')

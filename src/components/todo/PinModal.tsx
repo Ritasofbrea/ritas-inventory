@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { useBlockReload } from '@/lib/reload-guard'
 
 // Same owner-PIN check the login screen uses, against the `pins` table.
 export default function PinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) {
+  useBlockReload(true) // patch 30: open modal, never auto-reload while it is
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [verifying, setVerifying] = useState(false)

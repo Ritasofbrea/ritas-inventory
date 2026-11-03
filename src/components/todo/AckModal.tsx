@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Staff } from '@/lib/tasks'
+import { useBlockReload } from '@/lib/reload-guard'
 
 // One-tap "I Understand" for an ack-required note — same tap-to-pick name
 // grid as AddNoteModal/AddReplyModal, but no text entry: picking a name logs
@@ -21,6 +22,7 @@ export default function AckModal({
   onClose: () => void
   onSaved: (message: string) => void
 }) {
+  useBlockReload(true) // patch 30: open modal, never auto-reload while it is
   const [staffName, setStaffName] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
