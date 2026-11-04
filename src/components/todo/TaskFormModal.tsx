@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import ConfirmModal from './ConfirmModal'
 import TimeField from './TimeField'
 import { getOwnerName } from '@/lib/auth'
@@ -10,15 +10,19 @@ import {
   TaskTemplate,
   TaskTemplateStep,
   TaskInstance,
+  Checklist,
   PhotoSetting,
   Priority,
   StepStyle,
   WEEKDAY_LABELS,
   EVERYONE,
   TASK_CREATORS,
+  buildTemplateChecklistGroups,
   photoSettingOf,
   toHM,
 } from '@/lib/tasks'
+
+const NEW_SECTION = '__new__'
 
 type Kind = 'one-off' | 'recurring'
 type Freq = 'daily' | 'weekly' | 'custom'
@@ -35,6 +39,8 @@ export default function TaskFormModal({
   staff,
   template,
   instance,
+  isOwner,
+  checklists,
   onClose,
   onSaved,
   onDelete,
@@ -42,6 +48,13 @@ export default function TaskFormModal({
   staff: Staff[]
   template?: TaskTemplate
   instance?: TaskInstance
+  // Patch 36: owners adding a brand-new recurring task get a List + Section
+  // picker (shift leads/staff never do — lists are owner-only, same as
+  // everything else about them). `checklists` is the active-lists list this
+  // page already has for its own cards; not needed/passed when neither prop
+  // applies (editing, or a non-owner opening Add Task).
+  isOwner?: boolean
+  checklists?: Checklist[]
   onClose: () => void
   onSaved: (message: string) => void
   // Only passed by the owner-only Repeating view; when absent no Delete button is shown
@@ -62,9 +75,6 @@ export default function TaskFormModal({
   const [kind, setKind] = useState<Kind>('one-off')
   const [photo, setPhoto] = useState<PhotoSetting>(source ? photoSettingOf(source) : 'optional')
   const [priority, setPriority] = useState<Priority>(source?.priority ?? 'normal')
-  // Named-checklist items ignore priority entirely — this form is never used to
-  // CREATE one (that's AddChecklistItemModal), but it IS used to edit one.
-  const showPriority = !source || !source.checklist_name
   const [dueTime, setDueTime] = useState(toHM(source?.due_time) ?? '')
   // Checklist items can inherit their checklist's default due time, so the
   // label makes that explicit; standalone tasks have no checklist to inherit from.
@@ -92,6 +102,38 @@ export default function TaskFormModal({
   // Switching away from 'checklist' while it has steps doesn't delete them
   // (they just stop being shown) — confirm first so that isn't a surprise.
   const [pendingStyleSwitch, setPendingStyleSwitch] = useState<StepStyle | null>(null)
+
+  // Patch 36: List + Section picker, owner-only, only when adding a brand-new
+  // recurring task (never shown editing an existing template — moving an
+  // existing task to a different list/section isn't part of this form).
+  // Default list: "Standalone" unless there's exactly one active list, which
+  // is the only case with one truly obvious choice.
+  const activeChecklists = (checklists ?? []).filter((c) => c.active)
+  const [listChoice, setListChoice] = useState(() => (activeChecklists.length === 1 ? activeChecklists[0].name : ''))
+  const [sectionsByList, setSectionsByList] = useState<Record<string, string[]>>({})
+  const [sectionChoice, setSectionChoice] = useState('')
+  const [newSectionName, setNewSectionName] = useState('')
+
+  useEffect(() => {
+    if (!isOwner || editing) return
+    fetch('/api/task-templates')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((allTemplates: TaskTemplate[]) => {
+        const groups = buildTemplateChecklistGroups(allTemplates, checklists ?? [])
+        const map: Record<string, string[]> = {}
+        for (const g of groups) map[g.name] = g.sections.map((s) => s.name)
+        setSectionsByList(map)
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once on mount; isOwner/editing don't change within one modal's lifetime
+  }, [])
+
+  const handleListChange = (name: string) => {
+    setListChoice(name)
+    const sections = sectionsByList[name] ?? []
+    setSectionChoice(sections[0] ?? (name ? NEW_SECTION : ''))
+    setNewSectionName('')
+  }
 
   const handleStyleClick = (next: StepStyle) => {
     if (stepStyle === 'checklist' && steps.length > 0 && next !== 'checklist') setPendingStyleSwitch(next)
@@ -186,6 +228,8 @@ export default function TaskFormModal({
   // created task, not a template; "repeating" only applies when adding new or
   // editing a template. Steps are hidden for one-off tasks too — same condition.
   const recurring = !instance && (editing || kind === 'recurring')
+  // Patch 36: shown only for a brand-new recurring task, owner only.
+  const showListPicker = isOwner && !editing && recurring
 
   // An assignee may no longer be a choice (e.g. someone who has since been removed from
   // staff) — keep showing it rather than a blank select. "Added by" has no such fallback:
@@ -211,6 +255,13 @@ export default function TaskFormModal({
   const toggleCustomDay = (d: number) =>
     setCustomDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]))
 
+  const addingToList = showListPicker && listChoice !== ''
+  const sectionValue = sectionChoice === NEW_SECTION ? newSectionName.trim() : sectionChoice
+  // Named-checklist items ignore priority entirely — this form is never used to
+  // CREATE one with a list already picked (priority has nothing to attach to
+  // there), but it IS used to edit an existing one, where it's hidden too.
+  const showPriority = (!source || !source.checklist_name) && !addingToList
+
   const save = async () => {
     setError('')
     if (!editing && !assignedTo) return setError('Pick who this is assigned to.')
@@ -218,6 +269,7 @@ export default function TaskFormModal({
     if (!title.trim()) return setError('Give the task a title.')
     if (recurring && freq === 'weekly' && weekday === null) return setError('Pick a day of the week.')
     if (recurring && freq === 'custom' && customDays.length === 0) return setError('Pick at least one day.')
+    if (addingToList && !sectionValue) return setError('Pick or name a section.')
 
     const recurrenceFields = recurring
       ? { recurrence: freq, weekday: freq === 'weekly' ? weekday : null, custom_days: freq === 'custom' ? customDays : null }
@@ -226,7 +278,24 @@ export default function TaskFormModal({
     setSaving(true)
     try {
       let res: Response
-      if (template) {
+      if (addingToList) {
+        res = await fetch('/api/task-templates/checklist-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            checklist_name: listChoice,
+            section: sectionValue,
+            title,
+            description,
+            assigned_to: assignedTo,
+            created_by: createdBy,
+            photo_setting: photo,
+            due_time: dueTime || null,
+            step_style: stepStyle,
+            ...recurrenceFields,
+          }),
+        })
+      } else if (template) {
         res = await fetch('/api/task-templates', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -357,6 +426,50 @@ export default function TaskFormModal({
                 <button type="button" className={segBtn(kind === 'one-off')} onClick={() => setKind('one-off')}>Just today</button>
                 <button type="button" className={segBtn(kind === 'recurring')} onClick={() => setKind('recurring')}>Repeats</button>
               </div>
+            </div>
+          )}
+
+          {showListPicker && (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 font-medium">List</label>
+                <select
+                  value={listChoice}
+                  onChange={(e) => handleListChange(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
+                >
+                  <option value="">Standalone (not on a list)</option>
+                  {activeChecklists.map((c) => (
+                    <option key={c.name} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              {listChoice && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500 font-medium">Section</label>
+                  <select
+                    value={sectionChoice}
+                    onChange={(e) => setSectionChoice(e.target.value)}
+                    className="border border-gray-200 rounded-xl px-3 py-3 text-base text-gray-900 bg-white focus:outline-none focus:border-green-500"
+                  >
+                    {(sectionsByList[listChoice] ?? []).map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                    <option value={NEW_SECTION}>+ New section…</option>
+                  </select>
+                  {sectionChoice === NEW_SECTION && (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={newSectionName}
+                      onChange={(e) => setNewSectionName(e.target.value)}
+                      placeholder="Section name"
+                      className="mt-1 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 focus:outline-none focus:border-green-500"
+                    />
+                  )}
+                  <p className="text-xs text-gray-400">Added at the end of this section.</p>
+                </div>
+              )}
             </div>
           )}
 

@@ -7,6 +7,7 @@ import {
   TaskTemplateStep,
   TaskInstance,
   Checklist,
+  normalizeListName,
   Recurrence,
   Priority,
   PhotoSetting,
@@ -56,12 +57,12 @@ export async function generateInstancesForDate(
   const { data, error } = await query
   if (error) throw new Error(error.message)
 
-  const matching = ((data ?? []) as TaskTemplate[]).filter((t) => templateMatchesDate(t, dateStr))
-  if (matching.length === 0) return { matched: 0, created: 0 }
+  const dateMatched = ((data ?? []) as TaskTemplate[]).filter((t) => templateMatchesDate(t, dateStr))
+  if (dateMatched.length === 0) return { matched: 0, created: 0 }
 
   const [{ data: existing, error: existingError }, { data: checklistsRaw, error: checklistsError }] = await Promise.all([
-    db.from('task_instances').select('template_id').eq('due_date', dateStr).in('template_id', matching.map((t) => t.id)),
-    db.from('checklists').select('name, due_time'),
+    db.from('task_instances').select('template_id').eq('due_date', dateStr).in('template_id', dateMatched.map((t) => t.id)),
+    db.from('checklists').select('*'),
   ])
   if (existingError) throw new Error(existingError.message)
   if (checklistsError) throw new Error(checklistsError.message)
@@ -69,7 +70,15 @@ export async function generateInstancesForDate(
   // Effective due time = the item's own due_time, else its checklist's current
   // default, else none — resolved now and copied onto the instance, so a later
   // change to the checklist default doesn't retroactively change this instance.
-  const checklistDueTimes = new Map(((checklistsRaw ?? []) as Checklist[]).map((c) => [c.name, c.due_time]))
+  const checklists = (checklistsRaw ?? []) as Checklist[]
+  const checklistDueTimes = new Map(checklists.map((c) => [c.name, c.due_time]))
+  // Patch 36: a turned-off list's templates never generate new instances
+  // while it's off — this is the one place that decides, so the daily cron,
+  // the self-heal-on-page-load call, and "generate right away on create/
+  // reactivate" all get it for free.
+  const inactiveListNames = new Set(checklists.filter((c) => !c.active).map((c) => c.name))
+  const matching = dateMatched.filter((t) => !t.checklist_name || !inactiveListNames.has(t.checklist_name))
+  if (matching.length === 0) return { matched: 0, created: 0 }
 
   const have = new Set((existing ?? []).map((r: { template_id: string }) => r.template_id))
   const rows = matching
@@ -358,15 +367,28 @@ export async function addChecklistItem(
     recurrence: Recurrence
     weekday: number | null
     custom_days: number[] | null
+    step_style?: StepStyle
   }
 ): Promise<TaskWriteResult<{ template: TaskTemplate }>> {
+  // Patch 36: existence used to be inferred from "does at least one sibling
+  // template already exist" — which broke for a brand-new, still-empty list
+  // (its first item would always fail with "not found"). Checks the actual
+  // checklists row now, and rejects a turned-off list with a clear 400.
+  const { data: list, error: listError } = await db
+    .from('checklists')
+    .select('active')
+    .eq('name', params.checklist_name)
+    .maybeSingle()
+  if (listError) return { ok: false, error: listError.message, status: 500 }
+  if (!list) return { ok: false, error: 'That list was not found', status: 400 }
+  if (!list.active) return { ok: false, error: 'That list is turned off', status: 400 }
+
   const { data: siblingsRaw, error: fetchError } = await db
     .from('task_templates')
     .select('*')
     .eq('checklist_name', params.checklist_name)
   if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
   const siblings = (siblingsRaw ?? []) as TaskTemplate[]
-  if (siblings.length === 0) return { ok: false, error: 'That checklist was not found', status: 400 }
   const sibling = siblings.find((t) => t.section === params.section)
 
   const { data: inserted, error: insertError } = await db
@@ -385,6 +407,7 @@ export async function addChecklistItem(
       photo_required: params.photo_required,
       photo_allowed: params.photo_allowed,
       due_time: params.due_time ?? null,
+      ...(params.step_style !== undefined ? { step_style: params.step_style } : {}),
     })
     .select()
     .single()
@@ -410,8 +433,47 @@ export async function addChecklistItem(
   return { ok: true, template: final }
 }
 
+// Patch 36 (item 3b): task_instances snapshot checklist_name/section/sort_order
+// from their template at the moment they're generated — not a live join — so
+// a reorder (or a cross-section move) needs to separately push the new values
+// onto today's already-generated instances, or it would only take effect
+// starting tomorrow.
+//
+// Unlike renameChecklistSection (which only touches 'open' instances, since
+// checklist_name/section there are real historical facts about a completed
+// task), this also updates a 'done' instance's sort_order: it's a same-day
+// display detail only — History orders by due_date/created_at, never
+// sort_order — so leaving a done item's position stale would let it collide
+// with an open sibling's newly-synced value (both landing on the same
+// sort_order) and render in the wrong spot relative to it on today's card.
+// A same-day instance is always 'open' or 'done', never 'missed' (the sweep
+// only ever flips a PAST day's instance), so no extra status filter is
+// needed beyond today's date.
+async function syncOpenInstanceOrder(db: SupabaseClient, templateIds: string[]): Promise<string | null> {
+  if (templateIds.length === 0) return null
+  const today = todayInTZ()
+  const { data: templatesRaw, error: templatesError } = await db
+    .from('task_templates')
+    .select('id, section, sort_order')
+    .in('id', templateIds)
+  if (templatesError) return templatesError.message
+  const templates = (templatesRaw ?? []) as { id: string; section: string | null; sort_order: number }[]
+  const results = await Promise.all(
+    templates.map((t) =>
+      db
+        .from('task_instances')
+        .update({ section: t.section, sort_order: t.sort_order })
+        .eq('template_id', t.id)
+        .eq('due_date', today)
+    )
+  )
+  const failed = results.find((r) => r.error)
+  return failed?.error ? failed.error.message : null
+}
+
 // Swaps a template with its neighbor within its own section (never crosses
-// into another section — that's a rename/merge concern, not a reorder one).
+// into another section — that's renameChecklistSection's or
+// moveTemplateToSection's concern, not this one's).
 export async function moveChecklistItem(
   db: SupabaseClient,
   templateId: string,
@@ -453,7 +515,171 @@ export async function moveChecklistItem(
 
   const renumberError = await renumberChecklist(db, orderedIds)
   if (renumberError) return { ok: false, error: renumberError, status: 500 }
+  const syncError = await syncOpenInstanceOrder(db, orderedIds)
+  if (syncError) return { ok: false, error: syncError, status: 500 }
   return { ok: true }
+}
+
+// Moves a template to a different section of the SAME list — appended at the
+// end of the destination section, same placement rule as addChecklistItem.
+// Renumbers the whole list afterward (new section can be brand-new) and syncs
+// today's open instances, same as moveChecklistItem.
+export async function moveTemplateToSection(
+  db: SupabaseClient,
+  templateId: string,
+  newSection: string
+): Promise<TaskWriteResult> {
+  const trimmed = newSection.trim()
+  if (!trimmed) return { ok: false, error: 'Section name cannot be empty', status: 400 }
+
+  const { data: target, error: targetError } = await db.from('task_templates').select('*').eq('id', templateId).maybeSingle()
+  if (targetError) return { ok: false, error: targetError.message, status: 500 }
+  if (!target) return { ok: false, error: 'Task not found', status: 404 }
+  if (!target.checklist_name) return { ok: false, error: 'This task is not part of a checklist', status: 400 }
+  if (target.section === trimmed) return { ok: true }
+
+  const { data: siblingsRaw, error: fetchError } = await db
+    .from('task_templates')
+    .select('*')
+    .eq('checklist_name', target.checklist_name)
+    .neq('id', templateId)
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+
+  const { error: sectionUpdateError } = await db.from('task_templates').update({ section: trimmed }).eq('id', templateId)
+  if (sectionUpdateError) return { ok: false, error: sectionUpdateError.message, status: 500 }
+
+  const siblings = (siblingsRaw ?? []) as TaskTemplate[]
+  const existingOrdered = canonicalOrder(siblings)
+  let insertAt = existingOrdered.length
+  const hasDestSection = existingOrdered.some((t) => t.section === trimmed)
+  if (hasDestSection) {
+    for (let i = existingOrdered.length - 1; i >= 0; i--) {
+      if (existingOrdered[i].section === trimmed) {
+        insertAt = i + 1
+        break
+      }
+    }
+  }
+  // else: brand-new section for this list — insertAt stays at the very end.
+  const ordered = [...existingOrdered.slice(0, insertAt), { ...target, section: trimmed }, ...existingOrdered.slice(insertAt)]
+  const renumberError = await renumberChecklist(db, ordered.map((t) => t.id))
+  if (renumberError) return { ok: false, error: renumberError, status: 500 }
+  const syncError = await syncOpenInstanceOrder(db, ordered.map((t) => t.id))
+  if (syncError) return { ok: false, error: syncError, status: 500 }
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Lists (patch 36): the `checklists` table itself — create, rename, reorder,
+// turn off/on. `name` is its primary key; nothing has a foreign key on it
+// (checklist_name on task_templates/task_instances is a plain matching text
+// column), so these only ever touch exactly the rows named below.
+// ---------------------------------------------------------------------------
+
+// sort_order is one global counter across every list (active or not), so a
+// brand-new one always sorts after everything that already exists, active or
+// turned off, and never collides with a number freed up by anything else.
+export async function createChecklist(db: SupabaseClient, name: unknown): Promise<TaskWriteResult<{ checklist: Checklist }>> {
+  if (typeof name !== 'string') return { ok: false, error: 'Give the list a name', status: 400 }
+  const trimmed = name.trim()
+  if (!trimmed) return { ok: false, error: 'Give the list a name', status: 400 }
+  if (trimmed.length > 60) return { ok: false, error: 'List name is too long', status: 400 }
+
+  const { data: allRaw, error: fetchError } = await db.from('checklists').select('name, sort_order')
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  const all = (allRaw ?? []) as { name: string; sort_order: number }[]
+  const normalized = normalizeListName(trimmed)
+  // Case/whitespace-insensitive (patch 36, item 4) — `name` as a primary key
+  // only catches an exact-text duplicate on insert, not "opening checklist"
+  // vs "Opening Checklist", so this is checked explicitly first. Checked
+  // against EVERY list, including turned-off ones: a list is never hard-
+  // deleted, so its name stays taken — bring the old one back with Turn On
+  // instead of creating a same-named new one.
+  if (all.some((c) => normalizeListName(c.name) === normalized)) {
+    return { ok: false, error: 'A list with that name already exists', status: 409 }
+  }
+  const maxSortOrder = all.reduce((m, c) => Math.max(m, c.sort_order), 0)
+
+  const { data, error } = await db
+    .from('checklists')
+    .insert({ name: trimmed, active: true, sort_order: maxSortOrder + 1 })
+    .select()
+    .single()
+  if (error) {
+    if (error.code === '23505') return { ok: false, error: 'A list with that name already exists', status: 409 }
+    return { ok: false, error: error.message, status: 500 }
+  }
+  return { ok: true, checklist: data as Checklist }
+}
+
+// Swaps a list with its neighbor among active lists only (an inactive one
+// sitting between them, if any, is skipped — reordering only ever applies to
+// what's actually visible to order).
+export async function moveChecklistList(db: SupabaseClient, name: string, direction: 'up' | 'down'): Promise<TaskWriteResult> {
+  const { data: allRaw, error: fetchError } = await db.from('checklists').select('*').eq('active', true).order('sort_order', { ascending: true })
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  const all = (allRaw ?? []) as Checklist[]
+  const index = all.findIndex((c) => c.name === name)
+  if (index === -1) return { ok: false, error: 'List not found (or turned off)', status: 404 }
+
+  const swapWith = direction === 'up' ? index - 1 : index + 1
+  if (swapWith < 0 || swapWith >= all.length) {
+    return { ok: false, error: direction === 'up' ? 'Already at the top' : 'Already at the bottom', status: 400 }
+  }
+  const a = all[index]
+  const b = all[swapWith]
+  const results = await Promise.all([
+    db.from('checklists').update({ sort_order: b.sort_order }).eq('name', a.name),
+    db.from('checklists').update({ sort_order: a.sort_order }).eq('name', b.name),
+  ])
+  const failed = results.find((r) => r.error)
+  return failed?.error ? { ok: false, error: failed.error.message, status: 500 } : { ok: true }
+}
+
+// Renames a list: the checklists row's own name (its primary key), every
+// task_templates row filed under the old name, and open/not-done
+// task_instances (so today's/overdue cards update immediately) — same
+// reasoning and same completed-instances-stay-as-history rule as
+// renameChecklistSection, one level up.
+export async function renameChecklistList(
+  db: SupabaseClient,
+  oldName: string,
+  newName: unknown
+): Promise<TaskWriteResult<{ checklist: Checklist }>> {
+  if (typeof newName !== 'string') return { ok: false, error: 'Give the list a name', status: 400 }
+  const trimmed = newName.trim()
+  if (!trimmed) return { ok: false, error: 'List name cannot be empty', status: 400 }
+  if (trimmed.length > 60) return { ok: false, error: 'List name is too long', status: 400 }
+
+  const { data: allRaw, error: fetchError } = await db.from('checklists').select('name')
+  if (fetchError) return { ok: false, error: fetchError.message, status: 500 }
+  const all = (allRaw ?? []) as { name: string }[]
+  if (!all.some((c) => c.name === oldName)) return { ok: false, error: 'List not found', status: 404 }
+
+  const normalized = normalizeListName(trimmed)
+  if (normalized !== normalizeListName(oldName) && all.some((c) => normalizeListName(c.name) === normalized)) {
+    return { ok: false, error: 'A list with that name already exists', status: 409 }
+  }
+  if (trimmed === oldName) {
+    const { data, error } = await db.from('checklists').select('*').eq('name', oldName).single()
+    if (error) return { ok: false, error: error.message, status: 500 }
+    return { ok: true, checklist: data as Checklist }
+  }
+
+  const { data: renamed, error: renameError } = await db.from('checklists').update({ name: trimmed }).eq('name', oldName).select().single()
+  if (renameError) return { ok: false, error: renameError.message, status: 500 }
+
+  const { error: templatesError } = await db.from('task_templates').update({ checklist_name: trimmed }).eq('checklist_name', oldName)
+  if (templatesError) return { ok: false, error: templatesError.message, status: 500 }
+
+  const { error: instancesError } = await db
+    .from('task_instances')
+    .update({ checklist_name: trimmed })
+    .eq('checklist_name', oldName)
+    .eq('status', 'open')
+  if (instancesError) return { ok: false, error: instancesError.message, status: 500 }
+
+  return { ok: true, checklist: renamed as Checklist }
 }
 
 // Renames a section's label across every template that has it, and across

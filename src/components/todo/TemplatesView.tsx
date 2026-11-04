@@ -2,25 +2,29 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import StaffName from '@/components/StaffName'
-import { Staff, TaskTemplate, Recurrence, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf, formatDueTime } from '@/lib/tasks'
+import { Staff, TaskTemplate, Checklist, Recurrence, buildTemplateChecklistGroups, describeRecurrence, photoSettingOf, formatDueTime } from '@/lib/tasks'
 import TaskFormModal from './TaskFormModal'
 import AddChecklistItemModal from './AddChecklistItemModal'
 import RenameSectionModal from './RenameSectionModal'
+import ManageListModal from './ManageListModal'
 import TimeField from './TimeField'
 
 // Owner-only: edit or deactivate recurring task templates (never hard-deleted),
-// plus — for the three named checklists — add a new line item to an existing
-// section, reorder items within a section, rename a section's label, and set
-// the checklist's default due time.
+// plus — for named checklists ("lists") — add a new line item to an existing
+// section, reorder items within a section (or move one to a different
+// section), rename a section's label, set the checklist's default due time,
+// and (patch 36) create a new list, rename/reorder/turn off or back on any
+// list.
 export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; onChanged: () => void }) {
   const [templates, setTemplates] = useState<TaskTemplate[]>([])
-  const [checklistDefaults, setChecklistDefaults] = useState<Record<string, string | null>>({})
+  const [checklists, setChecklists] = useState<Checklist[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<TaskTemplate | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [moveBusyId, setMoveBusyId] = useState<string | null>(null)
   const [savingDefault, setSavingDefault] = useState<string | null>(null)
+  const [listBusyName, setListBusyName] = useState<string | null>(null)
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set())
   const [addingTo, setAddingTo] = useState<{
     checklistName: string
@@ -28,16 +32,14 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
     sectionRecurrence: Record<string, { recurrence: Recurrence; weekday: number | null; custom_days: number[] | null }>
   } | null>(null)
   const [renaming, setRenaming] = useState<{ checklistName: string; section: string; otherSections: string[] } | null>(null)
+  const [managingList, setManagingList] = useState<{ mode: 'create' } | { mode: 'rename'; name: string } | null>(null)
 
   const load = useCallback(async () => {
     try {
       const [templatesRes, checklistsRes] = await Promise.all([fetch('/api/task-templates'), fetch('/api/checklists')])
       if (!templatesRes.ok) throw new Error()
       setTemplates(await templatesRes.json())
-      if (checklistsRes.ok) {
-        const rows: { name: string; due_time: string | null }[] = await checklistsRes.json()
-        setChecklistDefaults(Object.fromEntries(rows.map((r) => [r.name, r.due_time])))
-      }
+      if (checklistsRes.ok) setChecklists(await checklistsRes.json())
       setError('')
     } catch {
       setError('Could not load recurring tasks. Try again.')
@@ -60,12 +62,53 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
         body: JSON.stringify({ name, due_time }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not save. Try again.')
-      setChecklistDefaults((prev) => ({ ...prev, [name]: due_time }))
+      setChecklists((prev) => prev.map((c) => (c.name === name ? { ...c, due_time } : c)))
       onChanged()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save. Try again.')
     } finally {
       setSavingDefault(null)
+    }
+  }
+
+  // Patch 36: turn a list off or back on. Its templates and their own
+  // `active` flag are untouched either way — only the list's own `active`
+  // flag changes, so nothing is orphaned or deleted.
+  const toggleListActive = async (c: Checklist) => {
+    setListBusyName(c.name)
+    setError('')
+    try {
+      const res = await fetch('/api/checklists', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: c.name, active: !c.active }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not update. Try again.')
+      setChecklists((prev) => prev.map((x) => (x.name === c.name ? { ...x, active: !c.active } : x)))
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update. Try again.')
+    } finally {
+      setListBusyName(null)
+    }
+  }
+
+  const moveList = async (name: string, direction: 'up' | 'down') => {
+    setListBusyName(name)
+    setError('')
+    try {
+      const res = await fetch('/api/checklists', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, direction }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not reorder. Try again.')
+      await load()
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not reorder. Try again.')
+    } finally {
+      setListBusyName(null)
     }
   }
 
@@ -125,23 +168,55 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
     }
   }
 
+  // Patch 36 (item 3b): move a task to a different section of the same list.
+  // Sends the caller's belief of where it currently is (checklist_name,
+  // section) so the server can reject a stale move with a clear 400.
+  const moveToSection = async (t: TaskTemplate, newSection: string) => {
+    if (newSection === t.section) return
+    setMoveBusyId(t.id)
+    try {
+      const res = await fetch('/api/task-templates/checklist-item', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: t.id, checklist_name: t.checklist_name, section: t.section, move_to_section: newSection }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not move. Try again.')
+      await load()
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not move. Try again.')
+    } finally {
+      setMoveBusyId(null)
+    }
+  }
+
   if (loading) return <p className="text-gray-400 text-center py-10">Loading…</p>
 
-  const checklistGroups = buildTemplateChecklistGroups(templates)
+  const checklistGroups = buildTemplateChecklistGroups(templates, checklists)
   const standalone = templates.filter((t) => t.checklist_name === null)
   const activeStandalone = standalone.filter((t) => t.active)
+  const inactiveListNames = new Set(checklists.filter((c) => !c.active).map((c) => c.name))
+  const checklistByName = new Map(checklists.map((c) => [c.name, c]))
+  const activeLists = checklists.filter((c) => c.active).sort((a, b) => a.sort_order - b.sort_order)
 
   // Patch 34: turned-off tasks move to one block at the bottom of the whole
   // page (not one per section — the point is not scrolling past them), in
   // their same relative order (walking checklists, then sections, then
   // standalone, top to bottom — the same order they'd appear in above if
   // nothing were turned off). Each carries where it came from, since it's no
-  // longer sitting inside that section to show it implicitly.
+  // longer sitting inside that section to show it implicitly. Patch 36: a
+  // turned-off LIST sinks its tasks here too, even though the tasks
+  // themselves are each still individually `active` — same reasoning, same
+  // "don't make me scroll past what I can't act on right now" goal.
   const turnedOff: { template: TaskTemplate; contextLabel: string }[] = []
   for (const group of checklistGroups) {
+    const listOff = inactiveListNames.has(group.name)
     for (const section of group.sections) {
       for (const t of section.items) {
-        if (!t.active) turnedOff.push({ template: t, contextLabel: `${group.name} — ${section.name}` })
+        if (!t.active || listOff) {
+          const suffix = listOff ? ' (list off)' : ''
+          turnedOff.push({ template: t, contextLabel: `${group.name} — ${section.name}${suffix}` })
+        }
       }
     }
   }
@@ -151,11 +226,15 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
 
   // Same card for a checklist item or a plain standalone recurring task — `pos`
   // (only passed for an active item within its own section) adds the
-  // within-section reorder arrows; those don't apply once a card has moved to
-  // the turned-off block below, since it's no longer sitting in that section.
-  // `contextLabel` (patch 34, turned-off block only) names the checklist/
-  // section a turned-off card came from, since it's no longer visibly inside it.
-  const renderCard = (t: TaskTemplate, pos?: { isFirst: boolean; isLast: boolean }, contextLabel?: string) => (
+  // within-section reorder arrows and the move-to-section picker; those don't
+  // apply once a card has moved to the turned-off block below, since it's no
+  // longer sitting in that section. `contextLabel` (patch 34, turned-off
+  // block only) names the checklist/section a turned-off card came from.
+  const renderCard = (
+    t: TaskTemplate,
+    pos?: { isFirst: boolean; isLast: boolean; sections: string[] },
+    contextLabel?: string
+  ) => (
     <div key={t.id} className={`bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3 ${t.active ? '' : 'opacity-60'}`}>
       <div className="flex items-center gap-2 flex-wrap">
         <p className="font-semibold text-gray-900">{t.title}</p>
@@ -167,6 +246,21 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
       </p>
       {t.due_time && <p className="text-sm text-gray-400 mt-0.5">Due by {formatDueTime(t.due_time)}</p>}
       {t.description && <p className="text-sm text-gray-400 mt-0.5">{t.description}</p>}
+      {pos && pos.sections.length > 1 && (
+        <div className="flex items-center gap-2 mt-2">
+          <label className="text-xs text-gray-400 font-medium flex-shrink-0">Section</label>
+          <select
+            value={t.section ?? ''}
+            onChange={(e) => moveToSection(t, e.target.value)}
+            disabled={moveBusyId === t.id}
+            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-gray-900 bg-white focus:outline-none focus:border-green-500 disabled:opacity-50"
+          >
+            {pos.sections.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="flex gap-2 mt-3">
         {pos && (
           <div className="flex gap-1 flex-shrink-0">
@@ -210,25 +304,38 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   return (
     <div>
       {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">{error}</div>}
-      {templates.length === 0 && !error && (
+      {templates.length === 0 && checklists.length === 0 && !error && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10 text-center">
           <p className="text-gray-400">No recurring tasks yet. Use “+ Add Task” and choose “Repeats”.</p>
         </div>
       )}
 
+      <button
+        onClick={() => setManagingList({ mode: 'create' })}
+        className="w-full min-h-[48px] mb-4 bg-white border-2 border-dashed border-gray-200 hover:border-green-400 text-gray-500 hover:text-green-700 font-semibold rounded-xl text-sm transition-colors"
+      >
+        + New List
+      </button>
+
       <div className="flex flex-col gap-4">
         {checklistGroups.map((group) => {
           const expanded = expandedChecklists.has(group.name)
           const sectionNames = group.sections.map((s) => s.name)
+          const listMeta = checklistByName.get(group.name)
+          const listActive = listMeta?.active ?? true
+          const listIndex = activeLists.findIndex((c) => c.name === group.name)
           return (
             <section key={group.name}>
               <button
                 type="button"
                 onClick={() => toggleChecklist(group.name)}
                 aria-expanded={expanded}
-                className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-3 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
+                className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-2 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
               >
-                <span className="text-sm font-bold text-gray-900">{group.name}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-gray-900">{group.name}</span>
+                  {!listActive && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-500">OFF</span>}
+                </span>
                 <svg
                   className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`}
                   fill="none"
@@ -238,12 +345,51 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
+
+              {/* Patch 36: list management — a separate row below the collapse
+                  toggle (never nested inside it; a button can't contain one). */}
+              {listMeta && (
+                <div className="flex items-center gap-1.5 mb-3 px-1 flex-wrap">
+                  <button
+                    onClick={() => moveList(group.name, 'up')}
+                    disabled={!listActive || listIndex <= 0 || listBusyName === group.name}
+                    aria-label={`Move "${group.name}" list up`}
+                    className="min-w-[36px] min-h-[36px] px-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 font-bold rounded-lg text-sm"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    onClick={() => moveList(group.name, 'down')}
+                    disabled={!listActive || listIndex === -1 || listIndex >= activeLists.length - 1 || listBusyName === group.name}
+                    aria-label={`Move "${group.name}" list down`}
+                    className="min-w-[36px] min-h-[36px] px-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 font-bold rounded-lg text-sm"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    onClick={() => setManagingList({ mode: 'rename', name: group.name })}
+                    className="min-h-[36px] px-3 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-lg text-xs"
+                  >
+                    Rename list
+                  </button>
+                  <button
+                    onClick={() => toggleListActive(listMeta)}
+                    disabled={listBusyName === group.name}
+                    className={`min-h-[36px] px-3 font-semibold rounded-lg text-xs disabled:opacity-50 ${
+                      listActive ? 'bg-red-50 hover:bg-red-100 text-red-600' : 'bg-green-50 hover:bg-green-100 text-green-700'
+                    }`}
+                  >
+                    {listActive ? 'Turn off list' : 'Turn on list'}
+                  </button>
+                </div>
+              )}
+
               {expanded && (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
                     <label className="text-xs font-semibold text-gray-500 flex-1">Default due time</label>
                     <TimeField
-                      value={checklistDefaults[group.name] ?? null}
+                      value={listMeta?.due_time ?? null}
                       onChange={(value) => saveDefaultDueTime(group.name, value || null)}
                       disabled={savingDefault === group.name}
                     />
@@ -274,7 +420,9 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                         </div>
                         <div className="flex flex-col gap-2">
                           {activeItems.length > 0
-                            ? activeItems.map((t, i) => renderCard(t, { isFirst: i === 0, isLast: i === activeItems.length - 1 }))
+                            ? activeItems.map((t, i) =>
+                                renderCard(t, { isFirst: i === 0, isLast: i === activeItems.length - 1, sections: sectionNames })
+                              )
                             : <p className="text-sm text-gray-400">No active items — see Turned off below.</p>}
                         </div>
                       </div>
@@ -305,6 +453,75 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
             </section>
           )
         })}
+
+        {/* Patch 36: an active list with zero templates at all yet doesn't
+            show up in checklistGroups (that's built from templates), so it
+            needs its own empty-state card here. */}
+        {activeLists
+          .filter((c) => !checklistGroups.some((g) => g.name === c.name))
+          .map((c) => (
+            <section key={c.name}>
+              <div className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-2 bg-white rounded-xl border border-gray-100 shadow-sm">
+                <span className="text-sm font-bold text-gray-900">{c.name}</span>
+              </div>
+              <div className="flex items-center gap-1.5 mb-3 px-1 flex-wrap">
+                <button
+                  onClick={() => moveList(c.name, 'up')}
+                  disabled={activeLists.findIndex((x) => x.name === c.name) <= 0 || listBusyName === c.name}
+                  aria-label={`Move "${c.name}" list up`}
+                  className="min-w-[36px] min-h-[36px] px-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 font-bold rounded-lg text-sm"
+                >
+                  ↑
+                </button>
+                <button
+                  onClick={() => moveList(c.name, 'down')}
+                  disabled={activeLists.findIndex((x) => x.name === c.name) >= activeLists.length - 1 || listBusyName === c.name}
+                  aria-label={`Move "${c.name}" list down`}
+                  className="min-w-[36px] min-h-[36px] px-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-30 text-gray-600 font-bold rounded-lg text-sm"
+                >
+                  ↓
+                </button>
+                <button
+                  onClick={() => setManagingList({ mode: 'rename', name: c.name })}
+                  className="min-h-[36px] px-3 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-lg text-xs"
+                >
+                  Rename list
+                </button>
+                <button
+                  onClick={() => toggleListActive(c)}
+                  disabled={listBusyName === c.name}
+                  className="min-h-[36px] px-3 font-semibold rounded-lg text-xs disabled:opacity-50 bg-red-50 hover:bg-red-100 text-red-600"
+                >
+                  Turn off list
+                </button>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-8 text-center">
+                <p className="text-gray-400 text-sm">No tasks yet, add one.</p>
+              </div>
+            </section>
+          ))}
+
+        {checklists
+          .filter((c) => !c.active && !checklistGroups.some((g) => g.name === c.name))
+          .map((c) => (
+            <section key={c.name}>
+              <div className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-2 bg-white rounded-xl border border-gray-100 shadow-sm">
+                <span className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-gray-900">{c.name}</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-500">OFF</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 mb-3 px-1 flex-wrap">
+                <button
+                  onClick={() => toggleListActive(c)}
+                  disabled={listBusyName === c.name}
+                  className="min-h-[36px] px-3 font-semibold rounded-lg text-xs disabled:opacity-50 bg-green-50 hover:bg-green-100 text-green-700"
+                >
+                  Turn on list
+                </button>
+              </div>
+            </section>
+          ))}
 
         {activeStandalone.length > 0 && (
           <div className="flex flex-col gap-2">
@@ -382,6 +599,19 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
           onClose={() => setRenaming(null)}
           onSaved={() => {
             setRenaming(null)
+            load()
+            onChanged()
+          }}
+        />
+      )}
+
+      {managingList && (
+        <ManageListModal
+          mode={managingList.mode}
+          currentName={managingList.mode === 'rename' ? managingList.name : undefined}
+          onClose={() => setManagingList(null)}
+          onSaved={() => {
+            setManagingList(null)
             load()
             onChanged()
           }}

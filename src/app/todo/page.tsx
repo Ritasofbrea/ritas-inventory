@@ -16,7 +16,20 @@ import { getRole, getShiftLeadName } from '@/lib/auth'
 import { uploadTaskPhoto } from '@/lib/photo'
 import { useBlockReload } from '@/lib/reload-guard'
 import { Role } from '@/lib/types'
-import { Staff, TaskInstance, TaskTemplateStep, buildChecklistGroups, formatDateShort, formatDueTime, formatTime, isOverdue, sortStandalone, todayInTZ } from '@/lib/tasks'
+import {
+  Staff,
+  TaskInstance,
+  TaskInstanceChecklistGroup,
+  TaskTemplateStep,
+  Checklist,
+  buildChecklistGroups,
+  formatDateShort,
+  formatDueTime,
+  formatTime,
+  isOverdue,
+  sortStandalone,
+  todayInTZ,
+} from '@/lib/tasks'
 
 type View = 'today' | 'history' | 'missed' | 'templates'
 
@@ -46,6 +59,7 @@ export default function TodoPage() {
   const [done, setDone] = useState<TaskInstance[]>([])
   const [missedCount, setMissedCount] = useState(0)
   const [staff, setStaff] = useState<Staff[]>([])
+  const [checklists, setChecklists] = useState<Checklist[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -102,6 +116,19 @@ export default function TodoPage() {
     }
   }, [])
 
+  // Patch 36: lists' active/sort_order (for display order and for the owner-
+  // only New List / Add Task List picker) and an empty active list's own
+  // card below — the tasks fetch above only knows about lists that already
+  // have at least one instance today.
+  const loadChecklists = useCallback(async () => {
+    try {
+      const res = await fetch('/api/checklists')
+      if (res.ok) setChecklists(await res.json())
+    } catch {
+      // ordering just falls back to alphabetical; the tasks list still works
+    }
+  }, [])
+
   useEffect(() => {
     // To-Do works with no role at all (the login screen's "To-Do List" button);
     // a role only unlocks the owner views and skips the Add Task PIN.
@@ -109,7 +136,18 @@ export default function TodoPage() {
     setRole(getRole())
     loadTasks()
     loadStaff()
-  }, [loadTasks, loadStaff])
+    loadChecklists()
+  }, [loadTasks, loadStaff, loadChecklists])
+
+  // Patch 36: a list created/renamed/reordered/turned off from the Repeating
+  // tab (view==='templates', same page, no reload) must also refresh this
+  // page's own `checklists` — otherwise the Today view and the Add Task List
+  // picker would keep showing stale data until a real page reload. Reuses
+  // the same 'tasks-changed' event Navigation's badge already listens for.
+  useEffect(() => {
+    window.addEventListener('tasks-changed', loadChecklists)
+    return () => window.removeEventListener('tasks-changed', loadChecklists)
+  }, [loadChecklists])
 
   // A background refetch would yank the task list out from under someone
   // mid-action (staff name picker open, a photo mid-upload, a delete/add
@@ -584,7 +622,26 @@ export default function TodoPage() {
     </div>
   )
 
-  const checklistGroups = buildChecklistGroups(open, done)
+  const baseChecklistGroups = buildChecklistGroups(open, done, checklists)
+  // Patch 36: a brand-new active list with zero tasks ever (no instance has
+  // ever been generated for it) wouldn't produce a group above — give owners
+  // an empty-state card for it so the list doesn't look like it was never
+  // created; never shown to shift_lead/staff (nothing for them to do there
+  // yet, and it'd just be clutter). A turned-off list simply has no instances
+  // reaching this page at all (filtered server-side in GET /api/tasks), so
+  // it needs no special-casing here.
+  const presentGroupNames = new Set(baseChecklistGroups.map((g) => g.name))
+  const emptyOwnerGroups: TaskInstanceChecklistGroup[] = isOwner
+    ? checklists.filter((c) => c.active && !presentGroupNames.has(c.name)).map((c) => ({ name: c.name, sections: [], total: 0, done: 0 }))
+    : []
+  const checklistGroups =
+    emptyOwnerGroups.length === 0
+      ? baseChecklistGroups
+      : [...baseChecklistGroups, ...emptyOwnerGroups].sort((a, b) => {
+          const oa = checklists.find((c) => c.name === a.name)?.sort_order
+          const ob = checklists.find((c) => c.name === b.name)?.sort_order
+          return (oa ?? Infinity) - (ob ?? Infinity)
+        })
   const standaloneOpen = sortStandalone(open.filter((t) => t.checklist_name === null))
   const standaloneDone = done.filter((t) => t.checklist_name === null)
 
@@ -713,6 +770,12 @@ export default function TodoPage() {
                       </button>
                       {expanded && (
                         <div className="flex flex-col gap-4">
+                          {/* Patch 36: a brand-new list with no tasks yet (owners only, see emptyOwnerGroups above) */}
+                          {group.sections.length === 0 && (
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-8 text-center">
+                              <p className="text-gray-400 text-sm">No tasks yet, add one.</p>
+                            </div>
+                          )}
                           {group.sections.map((section) => (
                             <div key={section.name}>
                               {section.name && (
@@ -811,7 +874,15 @@ export default function TodoPage() {
         />
       )}
 
-      {showAdd && <TaskFormModal staff={staff} onClose={() => setShowAdd(false)} onSaved={afterTaskSaved} />}
+      {showAdd && (
+        <TaskFormModal
+          staff={staff}
+          isOwner={isOwner}
+          checklists={checklists}
+          onClose={() => setShowAdd(false)}
+          onSaved={afterTaskSaved}
+        />
+      )}
 
       {editingTask && (
         <TaskFormModal

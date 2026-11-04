@@ -36,14 +36,20 @@ export async function GET(request: NextRequest) {
 
   // Nav badge: open tasks due today. Missed (past-due, never completed) tasks
   // are a separate bucket now and intentionally excluded from this count.
+  // Patch 36: a turned-off list's open instances don't count either — filtered
+  // in JS after the fetch (not a DB `not in (...)` filter) because a real list
+  // name can contain a comma ("Time to Lean, Time to Clean"), which would
+  // break PostgREST's in-list syntax; this table is tiny either way.
   if (view === 'badge') {
-    const { count, error } = await db
-      .from('task_instances')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'open')
-      .eq('due_date', today)
+    const [{ data: rows, error }, { data: checklistsRaw, error: checklistsError }] = await Promise.all([
+      db.from('task_instances').select('checklist_name').eq('status', 'open').eq('due_date', today),
+      db.from('checklists').select('name, active'),
+    ])
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ count: count ?? 0 })
+    if (checklistsError) return NextResponse.json({ error: checklistsError.message }, { status: 500 })
+    const inactiveNames = new Set((checklistsRaw ?? []).filter((c) => !c.active).map((c) => c.name))
+    const count = (rows ?? []).filter((r) => !r.checklist_name || !inactiveNames.has(r.checklist_name)).length
+    return NextResponse.json({ count })
   }
 
   // History is the full "done" record — missed tasks have their own dedicated
@@ -95,7 +101,7 @@ export async function GET(request: NextRequest) {
     console.error('task generation on load failed:', e)
   }
 
-  const [openRes, doneRes, missedCountRes] = await Promise.all([
+  const [openRes, doneRes, missedCountRes, checklistsRes] = await Promise.all([
     db
       .from('task_instances')
       .select('*')
@@ -110,16 +116,29 @@ export async function GET(request: NextRequest) {
       .eq('due_date', today)
       .order('completed_at', { ascending: false }),
     db.from('task_instances').select('id', { count: 'exact', head: true }).eq('status', 'missed'),
+    db.from('checklists').select('name, active'),
   ])
   if (openRes.error) return NextResponse.json({ error: openRes.error.message }, { status: 500 })
   if (doneRes.error) return NextResponse.json({ error: doneRes.error.message }, { status: 500 })
   if (missedCountRes.error) return NextResponse.json({ error: missedCountRes.error.message }, { status: 500 })
+  if (checklistsRes.error) return NextResponse.json({ error: checklistsRes.error.message }, { status: 500 })
+
+  // Patch 36: a turned-off list is excluded from today's shared To-Do view
+  // entirely — both its open AND its already-completed-today instances —
+  // rather than leaving a card with only "done" items and no "open" ones
+  // mid-day. The templates themselves, and every day before today, are
+  // untouched (Repeating tab, History); this only shapes what today's card
+  // view shows right now. Filtered in JS, same reasoning as the badge count
+  // above (a real list name can contain a comma).
+  const inactiveNames = new Set((checklistsRes.data ?? []).filter((c) => !c.active).map((c) => c.name))
+  const visible = <T extends { checklist_name: string | null }>(rows: T[]) =>
+    rows.filter((r) => !r.checklist_name || !inactiveNames.has(r.checklist_name))
 
   // Steps are read live from each instance's template (not snapshotted) —
   // History/Missed don't call this, so they never carry step data.
   const [openWithSteps, doneWithSteps] = await Promise.all([
-    attachStepsToInstances(db, openRes.data ?? []),
-    attachStepsToInstances(db, doneRes.data ?? []),
+    attachStepsToInstances(db, visible(openRes.data ?? [])),
+    attachStepsToInstances(db, visible(doneRes.data ?? [])),
   ])
 
   return NextResponse.json({

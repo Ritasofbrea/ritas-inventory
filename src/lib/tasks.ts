@@ -92,10 +92,23 @@ export interface TaskInstance {
   checked_step_ids?: string[]
 }
 
-// One row per named checklist, holding its default due time (null = none set).
+// One row per named checklist ("list"), holding its default due time (null =
+// none set), whether it's currently shown to the team (patch 36), and its
+// display position among other lists (patch 36 — replaces the old hardcoded
+// CHECKLIST_ORDER constant).
 export interface Checklist {
   name: string
   due_time: string | null
+  active: boolean
+  sort_order: number
+}
+
+// Case- and whitespace-insensitive comparison for list names (patch 36) —
+// "Opening  Checklist" and "opening checklist" count as the same name for
+// duplicate checking, even though `checklists.name` (the primary key) is
+// plain-text and case-sensitive on its own.
+export function normalizeListName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
 export const photoFlags = (setting: PhotoSetting) => ({
@@ -224,14 +237,21 @@ export function isOverdue(
   return false
 }
 
-// Fixed display order for known named checklists; anything else (future checklists
-// added as data) sorts alphabetically after these, so the order stays stable run to run.
-const CHECKLIST_ORDER = ['Opening Checklist', 'Closing Checklist', 'Time to Lean, Time to Clean']
-
-export function sortChecklistNames(names: string[]): string[] {
-  const known = CHECKLIST_ORDER.filter((n) => names.includes(n))
-  const rest = names.filter((n) => !CHECKLIST_ORDER.includes(n)).sort((a, b) => a.localeCompare(b))
-  return [...known, ...rest]
+// Display order for named checklists now comes from checklists.sort_order
+// (patch 36 — replaces a hardcoded name list, so a newly created list sorts
+// in correctly with no code change). A name with no matching checklists row
+// (shouldn't normally happen) sorts after every known one, alphabetically
+// among its own kind, so the order still never changes from run to run.
+export function sortChecklistNames(names: string[], checklists: Checklist[] = []): string[] {
+  const orderOf = new Map(checklists.map((c) => [c.name, c.sort_order]))
+  return [...names].sort((a, b) => {
+    const oa = orderOf.get(a)
+    const ob = orderOf.get(b)
+    if (oa !== undefined && ob !== undefined) return oa - ob
+    if (oa !== undefined) return -1
+    if (ob !== undefined) return 1
+    return a.localeCompare(b)
+  })
 }
 
 interface ChecklistShaped {
@@ -272,9 +292,13 @@ function groupSections<T extends ChecklistShaped>(
   return sections
 }
 
-function buildGroups<T extends ChecklistShaped>(items: T[], tiebreak?: (a: T, b: T) => number): ChecklistGroup<T>[] {
+function buildGroups<T extends ChecklistShaped>(
+  items: T[],
+  checklists: Checklist[],
+  tiebreak?: (a: T, b: T) => number
+): ChecklistGroup<T>[] {
   const named = items.filter((t) => t.checklist_name !== null)
-  const names = sortChecklistNames(Array.from(new Set(named.map((t) => t.checklist_name as string))))
+  const names = sortChecklistNames(Array.from(new Set(named.map((t) => t.checklist_name as string))), checklists)
   return names.map((name) => ({
     name,
     sections: groupSections(named.filter((t) => t.checklist_name === name), tiebreak),
@@ -288,9 +312,11 @@ export interface TaskInstanceChecklistGroup extends ChecklistGroup<TaskInstance>
 
 // Builds the named-checklist groups for Today's Tasks from the open + done lists
 // the API already returns. Items with no checklist_name are the caller's concern
-// (they render in the existing flat "To-Do" block, unchanged).
-export function buildChecklistGroups(open: TaskInstance[], done: TaskInstance[]): TaskInstanceChecklistGroup[] {
-  const groups = buildGroups([...open, ...done], (a, b) => a.due_date.localeCompare(b.due_date))
+// (they render in the existing flat "To-Do" block, unchanged). `checklists`
+// only affects display order here — a turned-off list's instances are already
+// excluded server-side (GET /api/tasks?view=today), so none reach this function.
+export function buildChecklistGroups(open: TaskInstance[], done: TaskInstance[], checklists: Checklist[] = []): TaskInstanceChecklistGroup[] {
+  const groups = buildGroups([...open, ...done], checklists, (a, b) => a.due_date.localeCompare(b.due_date))
   return groups.map((g) => {
     const items = g.sections.flatMap((s) => s.items)
     return { ...g, total: items.length, done: items.filter((t) => t.status === 'done').length }
@@ -299,9 +325,10 @@ export function buildChecklistGroups(open: TaskInstance[], done: TaskInstance[])
 
 // Same grouping for the Repeating (owner) view — one entry per template, no
 // open/done concept. Ties (shouldn't normally happen; sort_order is kept
-// unique per checklist by the server helpers) break by title.
-export function buildTemplateChecklistGroups(templates: TaskTemplate[]): ChecklistGroup<TaskTemplate>[] {
-  return buildGroups(templates, (a, b) => a.title.localeCompare(b.title))
+// unique per checklist by the server helpers) break by title. Includes
+// turned-off lists' templates too (the owner still manages those here).
+export function buildTemplateChecklistGroups(templates: TaskTemplate[], checklists: Checklist[] = []): ChecklistGroup<TaskTemplate>[] {
+  return buildGroups(templates, checklists, (a, b) => a.title.localeCompare(b.title))
 }
 
 // Standalone (non-checklist) task display order: high priority above normal,

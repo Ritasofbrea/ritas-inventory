@@ -6,7 +6,9 @@ import {
   generateInstancesForDate,
   isValidAssignee,
   isValidCreator,
+  isValidStepStyle,
   moveChecklistItem,
+  moveTemplateToSection,
   normalizeRecurrence,
   parseDueTime,
 } from '@/lib/task-server'
@@ -21,7 +23,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole(db, request, ['owner'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
-  const { checklist_name, section, title, description, assigned_to, created_by, photo_setting, due_time } = body
+  const { checklist_name, section, title, description, assigned_to, created_by, photo_setting, due_time, step_style } = body
 
   if (typeof checklist_name !== 'string' || !checklist_name.trim()) {
     return NextResponse.json({ error: 'Missing checklist' }, { status: 400 })
@@ -35,6 +37,9 @@ export async function POST(request: NextRequest) {
   const setting: PhotoSetting = ['off', 'optional', 'required'].includes(photo_setting) ? photo_setting : 'optional'
   const dueTimeResult = parseDueTime(due_time)
   if (!dueTimeResult.ok) return NextResponse.json({ error: dueTimeResult.error }, { status: 400 })
+  if (step_style !== undefined && !isValidStepStyle(step_style)) {
+    return NextResponse.json({ error: 'Invalid step style' }, { status: 400 })
+  }
   // Per-item recurrence, explicit from the form (pre-filled from the section's
   // existing cadence client-side, but always sent explicitly) — not inherited
   // server-side anymore, so a one-off exception is possible at creation time.
@@ -58,6 +63,7 @@ export async function POST(request: NextRequest) {
     due_time: dueTimeResult.value,
     ...photoFlags(setting),
     ...recurrenceResult,
+    ...(step_style !== undefined ? { step_style } : {}),
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
 
@@ -72,13 +78,41 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ template: result.template, generated })
 }
 
-// Reorders a checklist item within its own section (swap with the item above/below).
+// Reorders a checklist item within its own section (swap with the item
+// above/below) — `{ id, direction }`. Patch 36 (item 3b) also supports moving
+// a task to a different section of the SAME list — `{ id, checklist_name,
+// section, move_to_section }` — where checklist_name/section are the
+// caller's belief about where the task currently is, checked against the
+// real row first so a stale picker (someone else just moved/renamed it)
+// fails with a clear 400 instead of silently moving the wrong thing.
 export async function PATCH(request: NextRequest) {
   const db = getServerSupabase()
   const auth = await requireRole(db, request, ['owner'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
-  const { id, direction } = await request.json()
+  const body = await request.json()
+  const { id } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+
+  if (typeof body.move_to_section === 'string') {
+    const { data: current, error: currentError } = await db
+      .from('task_templates')
+      .select('checklist_name, section')
+      .eq('id', id)
+      .maybeSingle()
+    if (currentError) return NextResponse.json({ error: currentError.message }, { status: 500 })
+    if (!current) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    if (
+      (body.checklist_name !== undefined && current.checklist_name !== body.checklist_name) ||
+      (body.section !== undefined && current.section !== body.section)
+    ) {
+      return NextResponse.json({ error: 'This task has moved — reload and try again' }, { status: 400 })
+    }
+    const result = await moveTemplateToSection(db, id, body.move_to_section)
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+    return NextResponse.json({ success: true })
+  }
+
+  const { direction } = body
   if (direction !== 'up' && direction !== 'down') {
     return NextResponse.json({ error: 'direction must be "up" or "down"' }, { status: 400 })
   }
