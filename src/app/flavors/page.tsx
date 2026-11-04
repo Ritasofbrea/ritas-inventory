@@ -118,7 +118,12 @@ export default function FlavorsPage() {
 
   // Shared slot-card look, used by every section (patch 32) — same filled
   // vs. empty styling, same disabled behavior, for ice and the two new
-  // sections alike.
+  // sections alike. Patch 35: the numbered circle badge is gone (slot_number
+  // still exists everywhere underneath -- DB, API, shared constants -- this
+  // is display only), so the flavor name gets that space to wrap less.
+  // Empty slots keep the same dashed look, "Empty" label, and tap target
+  // size as before -- card padding/min-height is unchanged, only the badge
+  // that used to sit at the start of the row is removed.
   const renderSlotButton = (slotNum: number) => {
     const slot = slotMap.get(slotNum)
     const filled = !!slot
@@ -132,9 +137,6 @@ export default function FlavorsPage() {
           filled ? 'bg-white border-gray-100' : 'bg-gray-50 border-dashed border-gray-200'
         }`}
       >
-        <span className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 text-gray-500 font-bold flex items-center justify-center text-sm">
-          {slotNum}
-        </span>
         <span className={`flex-1 font-semibold ${filled ? 'text-gray-900' : 'text-gray-400'}`}>
           {slot?.flavor_name ?? 'Empty'}
         </span>

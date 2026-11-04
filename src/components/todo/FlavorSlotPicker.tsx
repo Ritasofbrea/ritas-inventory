@@ -1,7 +1,11 @@
 'use client'
 
-import { FLAVOR_TYPE_LABELS, Flavor, groupFlavorsByType } from '@/lib/flavors'
+import { FLAVOR_TYPE_LABELS, Flavor, groupFlavorsByType, sectionForSlot } from '@/lib/flavors'
 import { useBlockReload } from '@/lib/reload-guard'
+
+// "an Ice flavor" vs "a Soft Serve flavor" -- the only vowel-led section
+// label today is Ice; this reads correctly for any future one too.
+const articleFor = (label: string) => (/^[aeiou]/i.test(label) ? 'an' : 'a')
 
 // Bottom-sheet list of flavor buttons for one week's slot — same pattern as
 // StaffPicker, plus a "Clear this slot" option when it's already filled.
@@ -26,6 +30,12 @@ export default function FlavorSlotPicker({
   onClose: () => void
 }) {
   useBlockReload(true) // patch 30: open picker, never auto-reload while it is
+  // Patch 35: the slot number doesn't show anywhere in the UI anymore --
+  // this title named it ("Slot 7"); now it names the section instead
+  // ("Pick an Ice flavor"), which is the thing a person actually needs to
+  // know here. slot_number itself is unchanged in the DB/API/props.
+  const section = sectionForSlot(slotNumber)
+  const title = section ? `Pick ${articleFor(section.label)} ${section.label} flavor` : 'Pick a flavor'
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4" onClick={onClose}>
       <div
@@ -33,10 +43,8 @@ export default function FlavorSlotPicker({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 pt-6 pb-3 flex-shrink-0">
-          <h2 className="text-xl font-bold text-gray-900">Slot {slotNumber}</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {currentFlavorName ? `Currently: ${currentFlavorName}` : 'Pick a flavor'}
-          </p>
+          <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+          {currentFlavorName && <p className="text-sm text-gray-500 mt-1">Currently: {currentFlavorName}</p>}
         </div>
         <div className="flex-1 overflow-y-auto px-6 pb-2 flex flex-col gap-2">
           {currentFlavorId && (
