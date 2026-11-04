@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
-import { createChecklist, moveChecklistList, parseDueTime, renameChecklistList } from '@/lib/task-server'
+import { createChecklist, deleteChecklistList, moveChecklistList, parseDueTime, renameChecklistList } from '@/lib/task-server'
 import { requireRole } from '@/lib/session'
 
 // Open to every role — this is a small table (a handful of lists, never
@@ -70,4 +70,20 @@ export async function PATCH(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Checklist not found' }, { status: 404 })
   return NextResponse.json(data)
+}
+
+// Owner-only (patch 29: server-enforced). Permanently deletes a list AND
+// every one of its templates (cascade) -- see deleteChecklistList for the
+// exact per-template rule (same as a single task's existing hard delete).
+export async function DELETE(request: NextRequest) {
+  const db = getServerSupabase()
+  const auth = await requireRole(db, request, ['owner'])
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const { name } = await request.json()
+  if (typeof name !== 'string' || !name.trim()) {
+    return NextResponse.json({ error: 'Missing checklist name' }, { status: 400 })
+  }
+  const result = await deleteChecklistList(db, name)
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  return NextResponse.json({ success: true, deletedTemplates: result.deletedTemplates, deletedOpen: result.deletedOpen })
 }

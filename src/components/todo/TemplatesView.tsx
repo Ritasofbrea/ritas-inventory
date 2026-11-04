@@ -7,6 +7,7 @@ import TaskFormModal from './TaskFormModal'
 import AddChecklistItemModal from './AddChecklistItemModal'
 import RenameSectionModal from './RenameSectionModal'
 import ManageListModal from './ManageListModal'
+import ConfirmModal from './ConfirmModal'
 import TimeField from './TimeField'
 
 // Owner-only: edit or deactivate recurring task templates (never hard-deleted),
@@ -33,6 +34,8 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
   } | null>(null)
   const [renaming, setRenaming] = useState<{ checklistName: string; section: string; otherSections: string[] } | null>(null)
   const [managingList, setManagingList] = useState<{ mode: 'create' } | { mode: 'rename'; name: string } | null>(null)
+  const [deletingList, setDeletingList] = useState<Checklist | null>(null)
+  const [deletingListBusy, setDeletingListBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -109,6 +112,33 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
       setError(e instanceof Error ? e.message : 'Could not reorder. Try again.')
     } finally {
       setListBusyName(null)
+    }
+  }
+
+  // Permanently deletes a list and every one of its templates (cascade --
+  // confirmed with the user). Each template follows the exact same rule a
+  // single task's existing hard delete already does: open work is deleted,
+  // anything already completed stays in History. Not optimistic -- this one
+  // reloads from the server on success so the whole page reflects every
+  // template that's now gone, not just the list header.
+  const deleteList = async () => {
+    if (!deletingList) return
+    setDeletingListBusy(true)
+    setError('')
+    try {
+      const res = await fetch('/api/checklists', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: deletingList.name }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || 'Could not delete. Try again.')
+      setDeletingList(null)
+      await load()
+      onChanged()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete. Try again.')
+    } finally {
+      setDeletingListBusy(false)
     }
   }
 
@@ -381,6 +411,12 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                   >
                     {listActive ? 'Turn off list' : 'Turn on list'}
                   </button>
+                  <button
+                    onClick={() => setDeletingList(listMeta)}
+                    className="min-h-[36px] px-3 font-semibold rounded-lg text-xs bg-red-100 hover:bg-red-200 text-red-700"
+                  >
+                    Delete list
+                  </button>
                 </div>
               )}
 
@@ -494,6 +530,12 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                 >
                   Turn off list
                 </button>
+                <button
+                  onClick={() => setDeletingList(c)}
+                  className="min-h-[36px] px-3 font-semibold rounded-lg text-xs bg-red-100 hover:bg-red-200 text-red-700"
+                >
+                  Delete list
+                </button>
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-8 text-center">
                 <p className="text-gray-400 text-sm">No tasks yet, add one.</p>
@@ -518,6 +560,12 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                   className="min-h-[36px] px-3 font-semibold rounded-lg text-xs disabled:opacity-50 bg-green-50 hover:bg-green-100 text-green-700"
                 >
                   Turn on list
+                </button>
+                <button
+                  onClick={() => setDeletingList(c)}
+                  className="min-h-[36px] px-3 font-semibold rounded-lg text-xs bg-red-100 hover:bg-red-200 text-red-700"
+                >
+                  Delete list
                 </button>
               </div>
             </section>
@@ -615,6 +663,20 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
             load()
             onChanged()
           }}
+        />
+      )}
+
+      {deletingList && (
+        <ConfirmModal
+          message={(() => {
+            const count = templates.filter((t) => t.checklist_name === deletingList.name).length
+            return count === 0
+              ? `Permanently delete "${deletingList.name}"? It has no tasks on it. This can't be undone.`
+              : `Permanently delete "${deletingList.name}" and all ${count} task${count === 1 ? '' : 's'} on it? Any open work on them is deleted too. Anything already completed today stays in History. This can't be undone.`
+          })()}
+          busy={deletingListBusy}
+          onConfirm={deleteList}
+          onCancel={() => setDeletingList(null)}
         />
       )}
     </div>

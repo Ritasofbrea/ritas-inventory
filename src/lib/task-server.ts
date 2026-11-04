@@ -682,6 +682,39 @@ export async function renameChecklistList(
   return { ok: true, checklist: renamed as Checklist }
 }
 
+// Permanently deletes a list and every one of its templates (cascade,
+// confirmed with the user before building this) -- reuses deleteTemplate
+// per template, so each one follows the exact same rule a single task's
+// hard delete already does: open instances (and their photos) are deleted,
+// done/missed instances are detached (template_id set null) and kept as
+// History, since their own checklist_name/section/title are already a
+// frozen snapshot independent of the template row. The checklists row
+// itself is removed last, once every template under it is gone.
+export async function deleteChecklistList(
+  db: SupabaseClient,
+  name: string
+): Promise<TaskWriteResult<{ deletedTemplates: number; deletedOpen: number }>> {
+  const { data: list, error: listError } = await db.from('checklists').select('name').eq('name', name).maybeSingle()
+  if (listError) return { ok: false, error: listError.message, status: 500 }
+  if (!list) return { ok: false, error: 'List not found', status: 404 }
+
+  const { data: templatesRaw, error: templatesError } = await db.from('task_templates').select('id').eq('checklist_name', name)
+  if (templatesError) return { ok: false, error: templatesError.message, status: 500 }
+  const templates = (templatesRaw ?? []) as { id: string }[]
+
+  let deletedOpen = 0
+  for (const t of templates) {
+    const result = await deleteTemplate(db, t.id)
+    if (!result.ok) return { ok: false, error: result.error, status: result.status }
+    deletedOpen += result.deletedOpen ?? 0
+  }
+
+  const { error: deleteListError } = await db.from('checklists').delete().eq('name', name)
+  if (deleteListError) return { ok: false, error: deleteListError.message, status: 500 }
+
+  return { ok: true, deletedTemplates: templates.length, deletedOpen }
+}
+
 // Renames a section's label across every template that has it, and across
 // already-generated, not-yet-done instances (so today's/overdue cards update
 // immediately rather than waiting for tomorrow's regeneration — completed
