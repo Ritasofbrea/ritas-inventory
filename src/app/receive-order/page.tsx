@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import ScrollToSaveButton from '@/components/ScrollToSaveButton'
+import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 
@@ -52,19 +54,6 @@ export default function ReceiveOrderPage() {
   }
 
   const submitRef = useRef<HTMLDivElement>(null)
-  const [showScrollBtn, setShowScrollBtn] = useState(false)
-
-  useEffect(() => {
-    const el = submitRef.current
-    if (!el) return
-    const obs = new IntersectionObserver(([e]) => setShowScrollBtn(!e.isIntersecting), { threshold: 0.1 })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [step])
-
-  const scrollToSave = useCallback(() => {
-    submitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [])
 
   const fetchItems = async () => {
     const res = await fetch('/api/items')
@@ -517,17 +506,10 @@ export default function ReceiveOrderPage() {
         </div>
       </main>
 
-      {showScrollBtn && step === 'enter' && (
-        <button
-          onClick={scrollToSave}
-          className="fixed bottom-6 right-5 z-40 bg-[#c8102e] hover:bg-[#a00d24] active:bg-[#7a0a1b] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-colors"
-          aria-label="Scroll to save"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-      )}
+      <ScrollToSaveButton targetRef={submitRef} show={step === 'enter'} retryKey={step} />
+      {/* Patch 34: back-to-top stacks above the scroll-to-save button so
+          neither one covers the other. */}
+      <BackToTop bottomOffsetPx={96} />
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
 
@@ -541,6 +542,7 @@ export default function OrderListPage() {
           </>
         )}
       </main>
+      <BackToTop />
     </div>
   )
 }

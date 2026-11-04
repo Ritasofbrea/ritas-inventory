@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import StaffView from '@/components/todo/StaffView'
 import { getRole } from '@/lib/auth'
 
@@ -41,6 +42,7 @@ export default function StaffPage() {
 
         <StaffView onChanged={() => {}} />
       </main>
+      <BackToTop />
     </div>
   )
 }

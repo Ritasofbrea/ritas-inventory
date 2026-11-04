@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item } from '@/lib/types'
 
@@ -292,6 +293,7 @@ export default function CloverMappingPage() {
           </div>
         )}
       </main>
+      <BackToTop />
     </div>
   )
 }

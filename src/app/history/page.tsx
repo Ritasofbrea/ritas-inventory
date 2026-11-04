@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { InventoryCount } from '@/lib/types'
 
@@ -282,6 +283,7 @@ export default function HistoryPage() {
           </div>
         )}
       </main>
+      <BackToTop />
     </div>
   )
 }

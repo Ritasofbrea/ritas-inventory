@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import FlavorSlotPicker from '@/components/todo/FlavorSlotPicker'
 import { getRole } from '@/lib/auth'
 import { Role } from '@/lib/types'
@@ -215,6 +216,7 @@ export default function FlavorsPage() {
           onClose={() => setEditingSlot(null)}
         />
       )}
+      <BackToTop />
     </div>
   )
 }

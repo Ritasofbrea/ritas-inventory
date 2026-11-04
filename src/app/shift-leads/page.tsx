@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import ShiftLeadView from '@/components/todo/ShiftLeadView'
 import { getRole } from '@/lib/auth'
 
@@ -41,6 +42,7 @@ export default function ShiftLeadsPage() {
 
         <ShiftLeadView />
       </main>
+      <BackToTop />
     </div>
   )
 }

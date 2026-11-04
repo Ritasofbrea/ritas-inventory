@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { CATEGORIES, Category } from '@/lib/types'
 
@@ -234,6 +235,7 @@ export default function ReportsPage() {
           </div>
         )}
       </main>
+      <BackToTop />
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import FlavorCatalogView from '@/components/todo/FlavorCatalogView'
 import { getRole } from '@/lib/auth'
 
@@ -40,6 +41,7 @@ export default function FlavorsCatalogPage() {
 
         <FlavorCatalogView />
       </main>
+      <BackToTop />
     </div>
   )
 }

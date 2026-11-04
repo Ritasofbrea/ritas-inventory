@@ -69,19 +69,30 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
     }
   }
 
+  // Patch 34: flips `active` in local state immediately, before the request
+  // resolves, so the card jumps to the active block or the turned-off block
+  // right away on tap -- no page reload, and no waiting on the round-trip.
+  // Reconciles with the server's response on success (in case anything else
+  // about the row changed); reverts the optimistic flip on failure.
   const toggleActive = async (t: TaskTemplate) => {
     setBusyId(t.id)
+    setError('')
+    const nextActive = !t.active
+    setTemplates((prev) => prev.map((x) => (x.id === t.id ? { ...x, active: nextActive } : x)))
     try {
       const res = await fetch('/api/task-templates', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: t.id, active: !t.active }),
+        body: JSON.stringify({ id: t.id, active: nextActive }),
       })
-      if (!res.ok) throw new Error()
-      await load()
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error || 'Could not update. Try again.')
+      const saved: TaskTemplate = body.template
+      setTemplates((prev) => prev.map((x) => (x.id === t.id ? { ...x, ...saved } : x)))
       onChanged()
-    } catch {
-      setError('Could not update. Try again.')
+    } catch (e) {
+      setTemplates((prev) => prev.map((x) => (x.id === t.id ? { ...x, active: t.active } : x)))
+      setError(e instanceof Error ? e.message : 'Could not update. Try again.')
     } finally {
       setBusyId(null)
     }
@@ -118,15 +129,39 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
 
   const checklistGroups = buildTemplateChecklistGroups(templates)
   const standalone = templates.filter((t) => t.checklist_name === null)
+  const activeStandalone = standalone.filter((t) => t.active)
+
+  // Patch 34: turned-off tasks move to one block at the bottom of the whole
+  // page (not one per section — the point is not scrolling past them), in
+  // their same relative order (walking checklists, then sections, then
+  // standalone, top to bottom — the same order they'd appear in above if
+  // nothing were turned off). Each carries where it came from, since it's no
+  // longer sitting inside that section to show it implicitly.
+  const turnedOff: { template: TaskTemplate; contextLabel: string }[] = []
+  for (const group of checklistGroups) {
+    for (const section of group.sections) {
+      for (const t of section.items) {
+        if (!t.active) turnedOff.push({ template: t, contextLabel: `${group.name} — ${section.name}` })
+      }
+    }
+  }
+  for (const t of standalone) {
+    if (!t.active) turnedOff.push({ template: t, contextLabel: 'Other Repeating Tasks' })
+  }
 
   // Same card for a checklist item or a plain standalone recurring task — `pos`
-  // (only passed for checklist items) adds the within-section reorder arrows.
-  const renderCard = (t: TaskTemplate, pos?: { isFirst: boolean; isLast: boolean }) => (
+  // (only passed for an active item within its own section) adds the
+  // within-section reorder arrows; those don't apply once a card has moved to
+  // the turned-off block below, since it's no longer sitting in that section.
+  // `contextLabel` (patch 34, turned-off block only) names the checklist/
+  // section a turned-off card came from, since it's no longer visibly inside it.
+  const renderCard = (t: TaskTemplate, pos?: { isFirst: boolean; isLast: boolean }, contextLabel?: string) => (
     <div key={t.id} className={`bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3 ${t.active ? '' : 'opacity-60'}`}>
       <div className="flex items-center gap-2 flex-wrap">
         <p className="font-semibold text-gray-900">{t.title}</p>
         {!t.active && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-500">OFF</span>}
       </div>
+      {contextLabel && <p className="text-xs font-semibold text-gray-400 mt-0.5">{contextLabel}</p>}
       <p className="text-sm text-gray-500 mt-0.5">
         {describeRecurrence(t)} · photo {photoSettingOf(t)} · assigned to <StaffName name={t.assigned_to} staff={staff} />
       </p>
@@ -213,30 +248,38 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
                       disabled={savingDefault === group.name}
                     />
                   </div>
-                  {group.sections.map((section) => (
-                    <div key={section.name}>
-                      <div className="flex items-center justify-between gap-3 mb-2">
-                        <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{section.name}</p>
-                        <button
-                          onClick={() =>
-                            setRenaming({
-                              checklistName: group.name,
-                              section: section.name,
-                              otherSections: sectionNames.filter((n) => n !== section.name),
-                            })
-                          }
-                          className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex-shrink-0"
-                        >
-                          Rename
-                        </button>
+                  {group.sections.map((section) => {
+                    // Patch 34: only active items render here, in their
+                    // existing order; a turned-off item moves to the block at
+                    // the bottom of the page instead. isFirst/isLast (for the
+                    // reorder arrows) are computed against this same active-
+                    // only list, since that's what's actually showing.
+                    const activeItems = section.items.filter((t) => t.active)
+                    return (
+                      <div key={section.name}>
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">{section.name}</p>
+                          <button
+                            onClick={() =>
+                              setRenaming({
+                                checklistName: group.name,
+                                section: section.name,
+                                otherSections: sectionNames.filter((n) => n !== section.name),
+                              })
+                            }
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex-shrink-0"
+                          >
+                            Rename
+                          </button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {activeItems.length > 0
+                            ? activeItems.map((t, i) => renderCard(t, { isFirst: i === 0, isLast: i === activeItems.length - 1 }))
+                            : <p className="text-sm text-gray-400">No active items — see Turned off below.</p>}
+                        </div>
                       </div>
-                      <div className="flex flex-col gap-2">
-                        {section.items.map((t, i) =>
-                          renderCard(t, { isFirst: i === 0, isLast: i === section.items.length - 1 })
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                   <button
                     onClick={() =>
                       setAddingTo({
@@ -263,12 +306,30 @@ export default function TemplatesView({ staff, onChanged }: { staff: Staff[]; on
           )
         })}
 
-        {standalone.length > 0 && (
+        {activeStandalone.length > 0 && (
           <div className="flex flex-col gap-2">
             {checklistGroups.length > 0 && (
               <p className="text-xs font-bold uppercase tracking-widest text-gray-400 -mb-2">Other Repeating Tasks</p>
             )}
-            {standalone.map((t) => renderCard(t))}
+            {activeStandalone.map((t) => renderCard(t))}
+          </div>
+        )}
+
+        {turnedOff.length > 0 && (
+          <div>
+            {/* Quiet divider -- gray/muted, not red/green/amber/blue/purple/pink/
+                teal, so it doesn't borrow a color meaning already used elsewhere
+                on this page (off-badge gray stays consistent, not a new meaning). */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-400 flex-shrink-0">
+                Turned off ({turnedOff.length})
+              </span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+            <div className="flex flex-col gap-2">
+              {turnedOff.map(({ template, contextLabel }) => renderCard(template, undefined, contextLabel))}
+            </div>
           </div>
         )}
       </div>

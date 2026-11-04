@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Navigation from '@/components/Navigation'
+import BackToTop from '@/components/BackToTop'
 import StaffName from '@/components/StaffName'
 import StaffPicker from '@/components/todo/StaffPicker'
 import PinModal from '@/components/todo/PinModal'
@@ -820,6 +821,7 @@ export default function TodoPage() {
           onSaved={afterTaskSaved}
         />
       )}
+      <BackToTop />
     </div>
   )
 }
