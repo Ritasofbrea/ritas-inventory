@@ -117,7 +117,7 @@ export default function FlavorCatalogView() {
           placeholder="Flavor name…"
           className="border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-green-500"
         />
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {FLAVOR_TYPES.map((t) => (
             <button
               key={t}

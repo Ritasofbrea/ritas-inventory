@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { requireRole } from '@/lib/session'
+import { sectionForSlot } from '@/lib/flavors'
 
 // One week's filled slots, sparse (an empty slot just has no row — see
 // supabase/add-flavors.sql). A week that's never had a slot touched has no
@@ -41,8 +42,15 @@ export async function PATCH(request: NextRequest) {
   if (typeof week_start !== 'string' || !week_start) {
     return NextResponse.json({ error: 'Missing week_start' }, { status: 400 })
   }
-  if (typeof slot_number !== 'number' || slot_number < 1 || slot_number > 12) {
-    return NextResponse.json({ error: 'slot_number must be between 1 and 12' }, { status: 400 })
+  if (typeof slot_number !== 'number') {
+    return NextResponse.json({ error: 'Missing slot_number' }, { status: 400 })
+  }
+  // Patch 32: slot_number must fall in one of the three sections' current
+  // ranges (ice 1-12, soft serve 101-103, HS custard 201-212) — not just
+  // the wider range the DB's CHECK constraint allows for future growth.
+  const section = sectionForSlot(slot_number)
+  if (!section) {
+    return NextResponse.json({ error: 'slot_number is not in a valid section range' }, { status: 400 })
   }
 
   const { data: week, error: weekError } = await db
@@ -72,6 +80,9 @@ export async function PATCH(request: NextRequest) {
     .maybeSingle()
   if (flavorError) return NextResponse.json({ error: flavorError.message }, { status: 500 })
   if (!flavor) return NextResponse.json({ error: 'Flavor not found' }, { status: 404 })
+  if (!section.types.includes(flavor.type)) {
+    return NextResponse.json({ error: `That flavor isn't a ${section.label} flavor` }, { status: 400 })
+  }
 
   const { data, error } = await db
     .from('flavor_week_slots')

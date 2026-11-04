@@ -7,14 +7,20 @@ import { getRole } from '@/lib/auth'
 import { Role } from '@/lib/types'
 import { addDays, todayInTZ } from '@/lib/tasks'
 import {
-  FLAVOR_SLOT_COUNT,
+  FLAVOR_SECTIONS,
   FLAVOR_TYPE_BADGE,
   FLAVOR_TYPE_BADGE_CLASS,
   Flavor,
+  FlavorSection,
   FlavorWeekSlot,
   formatWeekLabel,
+  sectionForSlot,
+  slotNumbersForSection,
   startOfWeek,
 } from '@/lib/flavors'
+
+const ICE_SECTION = FLAVOR_SECTIONS.find((s) => s.key === 'ice')!
+const OTHER_SECTIONS = FLAVOR_SECTIONS.filter((s) => s.key !== 'ice')
 
 // Weekly flavor planning board (patch 20) — open to everyone, like /todo:
 // owners and shift leads (canManage, same tier as "+ Add Task") can
@@ -91,17 +97,71 @@ export default function FlavorsPage() {
 
   const slotMap = new Map(slots.map((s) => [s.slot_number, s]))
   const editingSlotData = editingSlot !== null ? slotMap.get(editingSlot) : undefined
+  const editingSection = editingSlot !== null ? sectionForSlot(editingSlot) : undefined
+  // Each section's picker only offers its own flavor types (patch 32) — the
+  // ice picker is filtered here too, now that the catalog holds soft serve
+  // and custard flavors as well, so it still lists exactly the ice types it
+  // always has.
+  const pickerFlavors = editingSection ? flavors.filter((f) => editingSection.types.includes(f.type)) : []
+
   // Glance-able hint only (patch 26) — Joshua always wants at least one
   // sugar-free and tries to have a cream ice represented, but a week can
-  // still be saved/used without either.
-  const hasSugarFree = slots.some((s) => s.flavor_type === 'sugar_free')
-  const hasCreamIce = slots.some((s) => s.flavor_type === 'cream_ice')
+  // still be saved/used without either. Ice section only (patch 32) — these
+  // two types only ever live in ice slots, but the slot-number check keeps
+  // this banner from drifting onto the new sections even if that changes.
+  const iceSlots = slots.filter((s) => sectionForSlot(s.slot_number)?.key === 'ice')
+  const hasSugarFree = iceSlots.some((s) => s.flavor_type === 'sugar_free')
+  const hasCreamIce = iceSlots.some((s) => s.flavor_type === 'cream_ice')
+
+  // Shared slot-card look, used by every section (patch 32) — same filled
+  // vs. empty styling, same disabled behavior, for ice and the two new
+  // sections alike.
+  const renderSlotButton = (slotNum: number) => {
+    const slot = slotMap.get(slotNum)
+    const filled = !!slot
+    return (
+      <button
+        key={slotNum}
+        type="button"
+        onClick={() => canManage && setEditingSlot(slotNum)}
+        disabled={!canManage || savingSlot === slotNum}
+        className={`rounded-2xl shadow-sm border px-4 py-3 flex items-center gap-3 text-left transition-colors disabled:opacity-60 ${
+          filled ? 'bg-white border-gray-100' : 'bg-gray-50 border-dashed border-gray-200'
+        }`}
+      >
+        <span className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 text-gray-500 font-bold flex items-center justify-center text-sm">
+          {slotNum}
+        </span>
+        <span className={`flex-1 font-semibold ${filled ? 'text-gray-900' : 'text-gray-400'}`}>
+          {slot?.flavor_name ?? 'Empty'}
+        </span>
+        {slot?.flavor_type && (
+          <span
+            className={`flex-shrink-0 text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${FLAVOR_TYPE_BADGE_CLASS[slot.flavor_type]}`}
+          >
+            {FLAVOR_TYPE_BADGE[slot.flavor_type]}
+          </span>
+        )}
+        {canManage && <span className="text-gray-300 flex-shrink-0">›</span>}
+      </button>
+    )
+  }
+
+  const renderSection = (section: FlavorSection) => (
+    <div key={section.key} className="mb-6">
+      <h2 className="text-lg font-bold text-gray-900 mb-1">{section.label}</h2>
+      {section.alwaysOnNote && <p className="text-xs text-gray-500 mb-2">{section.alwaysOnNote}</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+        {slotNumbersForSection(section).map(renderSlotButton)}
+      </div>
+    </div>
+  )
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
       <Navigation />
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-5">Flavors</h1>
 
         <div className="flex items-center justify-between mb-5 bg-white rounded-xl border border-gray-100 p-2">
@@ -136,44 +196,21 @@ export default function FlavorsPage() {
         {!roleLoaded || loading ? (
           <p className="text-gray-400 text-center py-10">Loading…</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: FLAVOR_SLOT_COUNT }, (_, i) => i + 1).map((slotNum) => {
-              const slot = slotMap.get(slotNum)
-              const filled = !!slot
-              return (
-                <button
-                  key={slotNum}
-                  type="button"
-                  onClick={() => canManage && setEditingSlot(slotNum)}
-                  disabled={!canManage || savingSlot === slotNum}
-                  className={`rounded-2xl shadow-sm border px-4 py-3 flex items-center gap-3 text-left transition-colors disabled:opacity-60 ${
-                    filled ? 'bg-white border-gray-100' : 'bg-gray-50 border-dashed border-gray-200'
-                  }`}
-                >
-                  <span className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 text-gray-500 font-bold flex items-center justify-center text-sm">
-                    {slotNum}
-                  </span>
-                  <span className={`flex-1 font-semibold ${filled ? 'text-gray-900' : 'text-gray-400'}`}>
-                    {slot?.flavor_name ?? 'Empty'}
-                  </span>
-                  {slot?.flavor_type && (
-                    <span
-                      className={`flex-shrink-0 text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${FLAVOR_TYPE_BADGE_CLASS[slot.flavor_type]}`}
-                    >
-                      {FLAVOR_TYPE_BADGE[slot.flavor_type]}
-                    </span>
-                  )}
-                  {canManage && <span className="text-gray-300 flex-shrink-0">›</span>}
-                </button>
-              )
-            })}
-          </div>
+          <>
+            {/* Ice — unchanged from before patch 32: same layout, same behavior */}
+            <div className="mb-6">
+              <h2 className="text-lg font-bold text-gray-900 mb-2">{ICE_SECTION.label}</h2>
+              <div className="flex flex-col gap-2">{slotNumbersForSection(ICE_SECTION).map(renderSlotButton)}</div>
+            </div>
+
+            {OTHER_SECTIONS.map(renderSection)}
+          </>
         )}
       </main>
 
       {editingSlot !== null && (
         <FlavorSlotPicker
-          flavors={flavors}
+          flavors={pickerFlavors}
           slotNumber={editingSlot}
           currentFlavorId={editingSlotData?.flavor_id ?? null}
           currentFlavorName={editingSlotData?.flavor_name ?? null}
