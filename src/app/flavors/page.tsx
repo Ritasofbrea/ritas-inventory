@@ -19,8 +19,10 @@ import {
   startOfWeek,
 } from '@/lib/flavors'
 
-const ICE_SECTION = FLAVOR_SECTIONS.find((s) => s.key === 'ice')!
-const OTHER_SECTIONS = FLAVOR_SECTIONS.filter((s) => s.key !== 'ice')
+// Patch 33: the one grid every section's slots render in -- 1 column on a
+// phone-width screen, 2 at tablet width, 3 from laptop width up (the ViewSonic
+// store touchscreen included), so the three sections can't drift apart again.
+const SLOT_GRID_CLASS = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2'
 
 // Weekly flavor planning board (patch 20) — open to everyone, like /todo:
 // owners and shift leads (canManage, same tier as "+ Add Task") can
@@ -151,9 +153,7 @@ export default function FlavorsPage() {
     <div key={section.key} className="mb-6">
       <h2 className="text-lg font-bold text-gray-900 mb-1">{section.label}</h2>
       {section.alwaysOnNote && <p className="text-xs text-gray-500 mb-2">{section.alwaysOnNote}</p>}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-        {slotNumbersForSection(section).map(renderSlotButton)}
-      </div>
+      <div className={`${SLOT_GRID_CLASS} mt-2`}>{slotNumbersForSection(section).map(renderSlotButton)}</div>
     </div>
   )
 
@@ -193,18 +193,14 @@ export default function FlavorsPage() {
           </div>
         )}
 
+        {/* Patch 33: Ice now renders through the exact same renderSection/
+            SLOT_GRID_CLASS as Soft Serve and Hand Scoop Custard -- one shared
+            grid for all three, so they can't drift apart again. Slot numbers,
+            fill/change/clear, the picker, and the banner above are untouched. */}
         {!roleLoaded || loading ? (
           <p className="text-gray-400 text-center py-10">Loading…</p>
         ) : (
-          <>
-            {/* Ice — unchanged from before patch 32: same layout, same behavior */}
-            <div className="mb-6">
-              <h2 className="text-lg font-bold text-gray-900 mb-2">{ICE_SECTION.label}</h2>
-              <div className="flex flex-col gap-2">{slotNumbersForSection(ICE_SECTION).map(renderSlotButton)}</div>
-            </div>
-
-            {OTHER_SECTIONS.map(renderSection)}
-          </>
+          <>{FLAVOR_SECTIONS.map(renderSection)}</>
         )}
       </main>
 
