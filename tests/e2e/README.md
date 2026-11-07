@@ -31,10 +31,22 @@ npm install
 npx playwright install chromium   # only needed for logout-race.mjs
 ```
 
-Add these to your existing `.env.local` (gitignored, never commit it):
+**These scripts never use a real person's PIN.** `role-checks.mjs` and
+`step-checks.mjs` log in as two dedicated test accounts — `ZZTEST Owner`
+and `ZZTEST Shift Lead` — created by `supabase/e2e-test-accounts.sql` (run
+once in the Supabase SQL Editor; idempotent, safe to re-run). That file
+creates both rows with `active = false` and a placeholder PIN; before your
+first run, replace the placeholders with test PINs of your own choosing
+(anything, as long as they don't collide with a real PIN):
+```sql
+update owners set pin = '<your test PIN>' where name = 'ZZTEST Owner';
+update shift_leads set pin = '<your test PIN>' where name = 'ZZTEST Shift Lead';
 ```
-E2E_OWNER_PIN=<a real, currently-active owner's PIN>
-E2E_SHIFT_LEAD_PIN=<a real, currently-active shift lead's PIN>
+
+Add those same two PINs to `.env.local` (gitignored, never commit it):
+```
+E2E_OWNER_PIN=<the ZZTEST Owner's test PIN>
+E2E_SHIFT_LEAD_PIN=<the ZZTEST Shift Lead's test PIN>
 E2E_BASE_URL=http://localhost:3000   # optional, this is the default
 ```
 `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are already in
@@ -42,15 +54,34 @@ E2E_BASE_URL=http://localhost:3000   # optional, this is the default
 contains a secret, PIN, or key — every credential is read from
 `process.env` at run time.
 
+As an extra safety net, `/api/pins/verify` doesn't take a name — only a
+PIN — so a stale or wrong env var could in principle match a real owner's
+or shift lead's PIN instead. `helpers/auth.mjs` checks who actually
+matched and **refuses to continue** unless that account's name starts with
+`ZZTEST`. If you ever see `REFUSING TO CONTINUE`, stop and check
+`E2E_OWNER_PIN`/`E2E_SHIFT_LEAD_PIN` before touching anything else.
+
 Then start the dev server in another terminal: `npm run dev`.
 
 ## Running
+Both ZZTEST accounts are `active = false` by default so they never show up
+anywhere a real name would (Added by lists, "Last changed" displays, etc).
+**Before running `role-checks.mjs` or `step-checks.mjs`, turn them on; turn
+them back off when you're done:**
+```sql
+update owners set active = true where name = 'ZZTEST Owner';
+update shift_leads set active = true where name = 'ZZTEST Shift Lead';
+```
 ```
 npm run test:e2e                 # all three, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
-npm run test:e2e:logout-race
+npm run test:e2e:logout-race     # doesn't need either ZZTEST account
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
+```
+```sql
+update owners set active = false where name = 'ZZTEST Owner';
+update shift_leads set active = false where name = 'ZZTEST Shift Lead';
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and
 exits non-zero on any failure.

@@ -11,8 +11,15 @@ function sessionCookieFrom(res) {
 }
 
 // PINs come from env vars (E2E_OWNER_PIN / E2E_SHIFT_LEAD_PIN) -- set them
-// in .env.local to a real, currently-active owner's / shift lead's PIN.
-// Never hardcode a PIN here or anywhere else in this suite.
+// in .env.local to the test PIN you chose for the dedicated ZZTEST Owner /
+// ZZTEST Shift Lead accounts (see supabase/e2e-test-accounts.sql and
+// ../README.md). Never a real person's PIN, and never hardcoded here.
+//
+// /api/pins/verify doesn't take a name, only a PIN -- whichever account's
+// PIN matches is who you're logged in as. That means a wrong/stale env var
+// could just as easily match a REAL owner or shift lead as the ZZTEST one,
+// so every login here is checked against who it actually matched: refuse
+// outright unless that name starts with "ZZTEST".
 async function loginWithPin(roleName) {
   const pin = roleName === 'owner' ? requiredEnv('E2E_OWNER_PIN') : requiredEnv('E2E_SHIFT_LEAD_PIN')
   const res = await fetch(`${BASE_URL}/api/pins/verify`, {
@@ -22,7 +29,18 @@ async function loginWithPin(roleName) {
   })
   const body = await res.json()
   if (!body.valid) {
-    throw new Error(`login failed for ${roleName} -- check E2E_${roleName.toUpperCase()}_PIN in .env.local is a real, active PIN`)
+    throw new Error(
+      `login failed for ${roleName} -- E2E_${roleName.toUpperCase()}_PIN must match the ZZTEST ${
+        roleName === 'owner' ? 'Owner' : 'Shift Lead'
+      } account's PIN, and that account must have active = true right now. See tests/e2e/README.md and supabase/e2e-test-accounts.sql.`
+    )
+  }
+  if (!body.name || !body.name.startsWith('ZZTEST')) {
+    throw new Error(
+      `REFUSING TO CONTINUE: E2E_${roleName.toUpperCase()}_PIN matched a REAL account ("${body.name}"), not a ZZTEST one. ` +
+        `These scripts must only ever log in as ZZTEST Owner / ZZTEST Shift Lead. Double-check E2E_${roleName.toUpperCase()}_PIN in .env.local -- ` +
+        `see supabase/e2e-test-accounts.sql.`
+    )
   }
   const cookie = sessionCookieFrom(res)
   if (!cookie) throw new Error(`no session cookie returned for ${roleName}`)
