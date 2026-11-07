@@ -34,7 +34,7 @@ export default function CurrentStockPage() {
   const [lastCounts, setLastCounts] = useState<Record<string, LastCount>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'all' | 'out' | 'low' | 'ok' | 'stale'>('all')
+  const [filter, setFilter] = useState<'all' | 'out' | 'low' | 'ok' | 'off' | 'stale'>('all')
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
 
@@ -77,16 +77,22 @@ export default function CurrentStockPage() {
 
   const staleCount = items.filter((i) => isStale(lastCounts[i.id])).length
 
+  // Patch 37: off items never count toward or appear under the Out/Low/OK
+  // filters/pills — they get their own Off filter instead. Sort position
+  // (below) still uses the real computed status unchanged; only this
+  // filter/count partition excludes them.
   const visible = items.filter((i) => {
     if (searchTerm && !i.name.toLowerCase().includes(searchTerm)) return false
     if (filter === 'stale') return isStale(lastCounts[i.id])
-    if (filter !== 'all' && getStockStatus(i) !== filter) return false
+    if (filter === 'off') return i.is_off
+    if (filter !== 'all') return !i.is_off && getStockStatus(i) === filter
     return true
   })
 
-  const outCount = items.filter((i) => getStockStatus(i) === 'out').length
-  const lowCount = items.filter((i) => getStockStatus(i) === 'low').length
-  const okCount = items.filter((i) => getStockStatus(i) === 'ok').length
+  const outCount = items.filter((i) => !i.is_off && getStockStatus(i) === 'out').length
+  const lowCount = items.filter((i) => !i.is_off && getStockStatus(i) === 'low').length
+  const okCount = items.filter((i) => !i.is_off && getStockStatus(i) === 'ok').length
+  const offCount = items.filter((i) => i.is_off).length
 
   const byCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
     const catItems = visible
@@ -120,20 +126,23 @@ export default function CurrentStockPage() {
 
         {/* Summary pills */}
         <div className="flex gap-2 mb-4 flex-wrap">
-          {(['all', 'out', 'low', 'ok', 'stale'] as const).map((f) => {
+          {(['all', 'out', 'low', 'ok', 'off', 'stale'] as const).map((f) => {
             const label = f === 'all' ? `All (${items.length})`
               : f === 'out' ? `Out (${outCount})`
               : f === 'low' ? `Low (${lowCount})`
               : f === 'ok' ? `OK (${okCount})`
+              : f === 'off' ? `❄️ Off (${offCount})`
               : `Stale (${staleCount})`
             const activeClass = f === 'out' ? 'bg-red-600 text-white border-red-600'
               : f === 'low' ? 'bg-amber-500 text-white border-amber-500'
               : f === 'ok' ? 'bg-green-600 text-white border-green-600'
+              : f === 'off' ? 'bg-indigo-500 text-white border-indigo-500'
               : f === 'stale' ? 'bg-orange-500 text-white border-orange-500'
               : 'bg-gray-800 text-white border-gray-800'
             const inactiveClass = f === 'out' ? 'bg-red-50 text-red-700 border-red-200'
               : f === 'low' ? 'bg-amber-50 text-amber-700 border-amber-200'
               : f === 'ok' ? 'bg-green-50 text-green-700 border-green-200'
+              : f === 'off' ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
               : f === 'stale' ? 'bg-orange-50 text-orange-700 border-orange-200'
               : 'bg-white text-gray-600 border-gray-200'
             return (
@@ -183,16 +192,27 @@ export default function CurrentStockPage() {
                 {expanded && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   {byCategory[category].map((item, idx, arr) => {
+                    // Patch 37: `status` still drives sort position (see
+                    // byCategory above) and the on-hand number's color
+                    // unchanged -- off items keep the exact same place in
+                    // the list. Only the displayed badge is overridden to
+                    // "OFF" instead of OUT/LOW/OK, since that chip is the
+                    // thing that must never read as a low/out alert.
                     const status = getStockStatus(item)
                     const stale = isStale(lastCounts[item.id])
                     return (
                       <div
                         key={item.id}
-                        className={`flex items-center gap-4 px-5 py-3.5 ${stale ? 'bg-orange-50' : ''} ${idx < arr.length - 1 ? 'border-b border-gray-100' : ''}`}
+                        className={`flex items-center gap-4 px-5 py-3.5 ${item.is_off ? 'opacity-50 bg-gray-50' : stale ? 'bg-orange-50' : ''} ${idx < arr.length - 1 ? 'border-b border-gray-100' : ''}`}
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 text-sm">{item.name}</p>
-                          <p className={`text-xs mt-0.5 ${stale ? 'text-orange-500' : 'text-gray-400'}`}>
+                          <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+                            {item.name}
+                            {item.is_off && (
+                              <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">❄️ OFF</span>
+                            )}
+                          </p>
+                          <p className={`text-xs mt-0.5 ${stale && !item.is_off ? 'text-orange-500' : 'text-gray-400'}`}>
                             par {item.par_level} {item.unit}
                             {item.secondary_unit ? ` · ${item.secondary_count} ${item.secondary_unit}` : ''}
                             {lastCounts[item.id]
@@ -213,13 +233,17 @@ export default function CurrentStockPage() {
                             )}
                           </p>
                         </div>
-                        <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg w-10 text-center ${
-                          status === 'out' ? 'bg-red-100 text-red-700'
-                          : status === 'low' ? 'bg-amber-100 text-amber-700'
-                          : 'bg-green-100 text-green-700'
-                        }`}>
-                          {status === 'out' ? 'OUT' : status === 'low' ? 'LOW' : 'OK'}
-                        </span>
+                        {item.is_off ? (
+                          <span className="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg w-10 text-center bg-indigo-100 text-indigo-700">OFF</span>
+                        ) : (
+                          <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg w-10 text-center ${
+                            status === 'out' ? 'bg-red-100 text-red-700'
+                            : status === 'low' ? 'bg-amber-100 text-amber-700'
+                            : 'bg-green-100 text-green-700'
+                          }`}>
+                            {status === 'out' ? 'OUT' : status === 'low' ? 'LOW' : 'OK'}
+                          </span>
+                        )}
                       </div>
                     )
                   })}

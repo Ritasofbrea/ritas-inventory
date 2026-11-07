@@ -59,6 +59,11 @@ export async function POST(request: NextRequest) {
 // accessible. More permissive than ideal (a shift_lead session can also
 // rename an item through here), flagged in route-access.md, not split by
 // field this patch.
+// Patch 37: is_off is deliberately NOT destructured/whitelisted here, even
+// though this route is SL+. It must only ever change through the owner-only
+// PATCH /api/items/off route (403 for shift_lead/staff) -- if a caller sends
+// is_off in this body it's silently ignored, same as any other unlisted
+// field. Do not add it to the whitelist below.
 export async function PATCH(request: NextRequest) {
   const db = getServerSupabase()
   const auth = await requireRole(db, request, ['owner', 'shift_lead'])

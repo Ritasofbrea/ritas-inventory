@@ -519,13 +519,20 @@ export default function CountPage() {
             {catItems.map((item, idx) => (
               <div
                 key={item.id}
-                className={`flex items-center gap-3 px-5 py-4 ${
+                className={`flex items-center gap-3 px-5 py-4 ${item.is_off ? 'bg-gray-50' : ''} ${
                   idx < catItems.length - 1 ? 'border-b border-gray-100' : ''
                 }`}
               >
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 text-base leading-tight">
+                {/* Patch 37: name/unit text is dimmed, but the count inputs
+                    below keep full contrast -- an off item still needs to be
+                    counted normally, so typing/reading its input must not
+                    get harder. */}
+                <div className={`flex-1 min-w-0 ${item.is_off ? 'opacity-60' : ''}`}>
+                  <p className="font-semibold text-gray-900 text-base leading-tight flex items-center gap-1.5">
                     {item.name}
+                    {item.is_off && (
+                      <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">❄️ OFF</span>
+                    )}
                   </p>
                   <p className="text-sm text-gray-400">{item.unit}</p>
                 </div>

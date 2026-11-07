@@ -134,8 +134,9 @@ export default function DashboardPage() {
     )
   }
 
-  const outItems = items.filter((i) => getStockStatus(i) === 'out')
-  const lowItems = items.filter((i) => getStockStatus(i) === 'low')
+  const outItems = items.filter((i) => !i.is_off && getStockStatus(i) === 'out')
+  const lowItems = items.filter((i) => !i.is_off && getStockStatus(i) === 'low')
+  const seasonalItems = items.filter((i) => i.is_off)
   const needsAttention = outItems.length + lowItems.length
 
   const staleItems = items.filter((i) => {
@@ -355,6 +356,26 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+        )}
+
+        {/* Seasonal (off) items — patch 37. Own section regardless of
+            needsAttention, since an item can be off with nothing else
+            needing attention. No stock numbers, same condensed row style
+            as Out of Stock/Running Low above. Hidden entirely when nothing
+            is off, matching how those two sections already only render
+            when non-empty. Indigo + ❄️ is a new badge meaning, not reused
+            from red (out)/amber (low)/orange (stale)/purple (test). */}
+        {seasonalItems.length > 0 && (
+          <section className="mb-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">❄️ Seasonal</p>
+            <div className="flex flex-wrap gap-2">
+              {seasonalItems.map((item) => (
+                <span key={item.id} className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {item.name}
+                </span>
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Top movers */}

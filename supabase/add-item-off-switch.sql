@@ -1,0 +1,11 @@
+-- Patch 37: seasonal on/off switch for items.
+--
+-- Separate concept from anything that already exists — items has NO active/
+-- archived/deactivated flag today (confirmed: schema.sql + every migration
+-- grepped, nothing). Manage Items' only existing removal mechanism is a hard
+-- DELETE. is_off means "hide from low/out/order-needed everywhere, but keep
+-- counting it normally" — it does not archive, hide, or soft-delete the item.
+--
+-- Default false so nothing changes on screen for any existing item until
+-- Josh explicitly flips one off.
+ALTER TABLE items ADD COLUMN IF NOT EXISTS is_off BOOLEAN NOT NULL DEFAULT false;

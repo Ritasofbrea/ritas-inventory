@@ -40,6 +40,12 @@ export default function ManageItemsPage() {
   const [search, setSearch] = useState('')
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
 
+  // Patch 37: on/off switch state
+  const [offFilter, setOffFilter] = useState<'all' | 'on' | 'off'>('all')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [bulkWorking, setBulkWorking] = useState(false)
+
   const toggleCategory = (category: string) => {
     setExpandedCategories((prev) => {
       const next = new Set(prev)
@@ -164,6 +170,59 @@ export default function ManageItemsPage() {
     }
   }
 
+  // Patch 37: single-item and bulk on/off both go through the owner-only
+  // PATCH /api/items/off -- never the shared PATCH above, which ignores
+  // is_off entirely.
+  const toggleOff = async (item: Item) => {
+    setTogglingId(item.id)
+    setError('')
+    try {
+      const res = await fetch('/api/items/off', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [item.id], is_off: !item.is_off }),
+      })
+      if (!res.ok) throw new Error()
+      const updated: Item[] = await res.json()
+      setItems((prev) => prev.map((i) => updated.find((u) => u.id === i.id) ?? i))
+    } catch {
+      setError('Could not update. Try again.')
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkToggle = async (is_off: boolean) => {
+    if (selectedIds.size === 0) return
+    setBulkWorking(true)
+    setError('')
+    try {
+      const res = await fetch('/api/items/off', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds), is_off }),
+      })
+      if (!res.ok) throw new Error()
+      const updated: Item[] = await res.json()
+      const updatedMap = new Map(updated.map((u) => [u.id, u]))
+      setItems((prev) => prev.map((i) => updatedMap.get(i.id) ?? i))
+      setSelectedIds(new Set())
+    } catch {
+      setError('Could not update selected items. Try again.')
+    } finally {
+      setBulkWorking(false)
+    }
+  }
+
   const handleDelete = async (id: string) => {
     setDeleting(true)
     setError('')
@@ -257,6 +316,26 @@ export default function ManageItemsPage() {
         {/* Existing items by category */}
         <section>
           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">All Items</h2>
+
+          {/* Patch 37: on/off filter pills */}
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {(['all', 'on', 'off'] as const).map((f) => {
+              const count = f === 'all' ? items.length : f === 'on' ? items.filter((i) => !i.is_off).length : items.filter((i) => i.is_off).length
+              const label = f === 'all' ? `All (${count})` : f === 'on' ? `On (${count})` : `❄️ Off (${count})`
+              const activeClass = f === 'off' ? 'bg-indigo-500 text-white border-indigo-500' : 'bg-gray-800 text-white border-gray-800'
+              const inactiveClass = f === 'off' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-gray-600 border-gray-200'
+              return (
+                <button
+                  key={f}
+                  onClick={() => setOffFilter(f)}
+                  className={`min-h-[40px] px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${offFilter === f ? activeClass : inactiveClass}`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
           <div className="mb-4">
             <input
               type="text"
@@ -266,10 +345,45 @@ export default function ManageItemsPage() {
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-gray-900 focus:outline-none focus:border-blue-400 bg-white text-sm"
             />
           </div>
+
+          {/* Patch 37: bulk on/off action bar */}
+          {selectedIds.size > 0 && (
+            <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-sm font-semibold text-indigo-800">{selectedIds.size} selected</p>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => handleBulkToggle(true)}
+                  disabled={bulkWorking}
+                  className="min-h-[48px] bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors"
+                >
+                  {bulkWorking ? 'Working…' : '❄️ Turn Off'}
+                </button>
+                <button
+                  onClick={() => handleBulkToggle(false)}
+                  disabled={bulkWorking}
+                  className="min-h-[48px] bg-white hover:bg-gray-50 disabled:bg-gray-100 text-gray-700 font-semibold px-4 py-2 rounded-xl text-sm border border-gray-200 transition-colors"
+                >
+                  {bulkWorking ? 'Working…' : 'Turn On'}
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  disabled={bulkWorking}
+                  className="min-h-[48px] text-gray-500 hover:text-gray-700 font-semibold px-3 py-2 rounded-xl text-sm"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-6">
             {CATEGORIES.map((cat) => {
               const searchTerm = search.trim().toLowerCase()
-              const catItems = [...items.filter((i) => i.category === cat && (!searchTerm || i.name.toLowerCase().includes(searchTerm)))].sort((a, b) => {
+              const catItems = [...items.filter((i) =>
+                i.category === cat &&
+                (!searchTerm || i.name.toLowerCase().includes(searchTerm)) &&
+                (offFilter === 'all' || (offFilter === 'off' ? i.is_off : !i.is_off))
+              )].sort((a, b) => {
                 if (a.supplier_order == null && b.supplier_order == null) return 0
                 if (a.supplier_order == null) return 1
                 if (b.supplier_order == null) return -1
@@ -426,46 +540,73 @@ export default function ManageItemsPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-3">
-                            <div className="flex flex-col gap-0.5 flex-shrink-0">
+                          <div className={`flex flex-col gap-2 ${item.is_off ? 'opacity-60' : ''}`}>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(item.id)}
+                                onChange={() => toggleSelected(item.id)}
+                                className="w-5 h-5 flex-shrink-0 accent-indigo-600 cursor-pointer"
+                                aria-label={`Select ${item.name}`}
+                              />
+                              <div className="flex flex-col gap-0.5 flex-shrink-0">
+                                <button
+                                  onClick={() => moveItem(item, 'up', catItems)}
+                                  disabled={moving || idx === 0}
+                                  className="text-gray-300 hover:text-gray-500 disabled:opacity-20 disabled:cursor-not-allowed leading-none"
+                                  aria-label="Move up"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" /></svg>
+                                </button>
+                                <button
+                                  onClick={() => moveItem(item, 'down', catItems)}
+                                  disabled={moving || idx === catItems.length - 1}
+                                  className="text-gray-300 hover:text-gray-500 disabled:opacity-20 disabled:cursor-not-allowed leading-none"
+                                  aria-label="Move down"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                                </button>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-gray-900 flex items-center gap-1.5">
+                                  {item.name}
+                                  {item.is_off && (
+                                    <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">❄️ OFF</span>
+                                  )}
+                                </p>
+                                <p className="text-sm text-gray-400">
+                                  {item.unit}
+                                  {item.secondary_unit && <span className="text-purple-400"> + {item.secondary_unit}</span>}
+                                  {item.item_number && <span className="font-mono text-gray-400"> · #{item.item_number}</span>}
+                                  {item.distributor && <span className="text-gray-300"> · {item.distributor}</span>}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 flex-wrap pl-8">
                               <button
-                                onClick={() => moveItem(item, 'up', catItems)}
-                                disabled={moving || idx === 0}
-                                className="text-gray-300 hover:text-gray-500 disabled:opacity-20 disabled:cursor-not-allowed leading-none"
-                                aria-label="Move up"
+                                onClick={() => toggleOff(item)}
+                                disabled={togglingId === item.id}
+                                className={`min-h-[40px] text-sm font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+                                  item.is_off
+                                    ? 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:border-indigo-400'
+                                } disabled:opacity-50`}
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" /></svg>
+                                {togglingId === item.id ? 'Working…' : item.is_off ? 'Turn On' : '❄️ Turn Off'}
                               </button>
                               <button
-                                onClick={() => moveItem(item, 'down', catItems)}
-                                disabled={moving || idx === catItems.length - 1}
-                                className="text-gray-300 hover:text-gray-500 disabled:opacity-20 disabled:cursor-not-allowed leading-none"
-                                aria-label="Move down"
+                                onClick={() => startEdit(item)}
+                                className="min-h-[40px] text-sm text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-100 hover:border-blue-300"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                                Rename
+                              </button>
+                              <button
+                                onClick={() => { setConfirmDeleteId(item.id); setEditingId(null) }}
+                                className="min-h-[40px] text-sm text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg border border-red-100 hover:border-red-300"
+                              >
+                                Delete
                               </button>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900">{item.name}</p>
-                              <p className="text-sm text-gray-400">
-                                {item.unit}
-                                {item.secondary_unit && <span className="text-purple-400"> + {item.secondary_unit}</span>}
-                                {item.item_number && <span className="font-mono text-gray-400"> · #{item.item_number}</span>}
-                                {item.distributor && <span className="text-gray-300"> · {item.distributor}</span>}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => startEdit(item)}
-                              className="text-sm text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-100 hover:border-blue-300"
-                            >
-                              Rename
-                            </button>
-                            <button
-                              onClick={() => { setConfirmDeleteId(item.id); setEditingId(null) }}
-                              className="text-sm text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg border border-red-100 hover:border-red-300"
-                            >
-                              Delete
-                            </button>
                           </div>
                         )}
                       </div>

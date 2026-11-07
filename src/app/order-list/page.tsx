@@ -99,7 +99,7 @@ export default function OrderListPage() {
   const loadAll = async () => {
     const [data, { onOrderIds }] = await Promise.all([fetchItems(), fetchPendingOrders()])
     if (data) {
-      const needsOrder = data.filter((i) => getStockStatus(i) !== 'ok')
+      const needsOrder = data.filter((i) => !i.is_off && getStockStatus(i) !== 'ok')
       const toOrderIds = needsOrder.filter((i) => !onOrderIds.has(i.id)).map((i) => i.id)
       setSelectedIds(new Set(toOrderIds))
     }
@@ -213,7 +213,9 @@ export default function OrderListPage() {
     return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-400 text-lg">Loading…</p></div>
   }
 
-  const needsOrder = items.filter((i) => getStockStatus(i) !== 'ok')
+  // Patch 37: off items are excluded from the data pipeline here (not just
+  // styled away) so they can't surface in toOrder or onOrder below either.
+  const needsOrder = items.filter((i) => !i.is_off && getStockStatus(i) !== 'ok')
 
   // Split: items on order (ordered, not yet received) vs still needs ordering
   const onOrderItems = needsOrder.filter((i) => onOrderItemIds.has(i.id))

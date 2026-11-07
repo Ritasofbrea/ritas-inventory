@@ -37,6 +37,7 @@ export interface Item {
   secondary_count: number
   secondary_unit: string
   units_per_sub_unit: number | null
+  is_off: boolean
   created_at: string
   updated_at: string
 }
