@@ -38,6 +38,9 @@ export interface Item {
   secondary_unit: string
   units_per_sub_unit: number | null
   is_off: boolean
+  has_storage: boolean
+  storage_count: number
+  storage_updated_at: string | null
   created_at: string
   updated_at: string
 }
@@ -57,12 +60,18 @@ export interface InventoryCount {
 export type StockStatus = 'out' | 'low' | 'ok'
 
 // Combines full-unit and sub-unit counts into one main-unit total, e.g.
-// 0 boxes + 8 sleeves at 20 sleeves/box = 0.4 boxes.
+// 0 boxes + 8 sleeves at 20 sleeves/box = 0.4 boxes. Patch 38: for a
+// has_storage item, storage_count is added in on top -- it's always in the
+// same (primary) unit as current_count, no sub-unit conversion of its own.
+// Items without has_storage are untouched (storage_count defaults to 0
+// anyway, but the explicit check keeps this correct even if that ever
+// isn't true).
 export function getMainUnitTotal(item: Item): number {
-  if (item.units_per_sub_unit && item.units_per_sub_unit > 0) {
-    return item.current_count + item.secondary_count / item.units_per_sub_unit
-  }
-  return item.current_count
+  let total = item.units_per_sub_unit && item.units_per_sub_unit > 0
+    ? item.current_count + item.secondary_count / item.units_per_sub_unit
+    : item.current_count
+  if (item.has_storage) total += item.storage_count
+  return total
 }
 
 export function getStockStatus(item: Item): StockStatus {

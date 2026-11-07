@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
-import { Item, getStockStatus } from '@/lib/types'
+import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
 
 type LastCount = { item_id: string; created_at: string; entered_by: string }
 type VelocityRow = { item_id: string; name: string; unit: string; consumed: number }
@@ -443,9 +443,13 @@ function StockPill({ item, variant }: { item: Item; variant: 'out' | 'low' }) {
   return (
     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold ${variant === 'out' ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
       {item.name}
+      {/* Patch 38: a flagged item's pill shows the combined store+storage
+          total vs par (what actually decided its status) with a small
+          storage icon -- not a full breakdown, that's Current Stock's job. */}
+      {item.has_storage && <span title="includes storage">📦</span>}
       <span className={`text-xs font-normal ${variant === 'out' ? 'text-red-500' : 'text-amber-600'}`}>
-        {item.current_count}/{item.par_level} {item.unit}
-        {hasSecondary ? ` · ${item.secondary_count} ${item.secondary_unit}` : ''}
+        {item.has_storage ? getMainUnitTotal(item) : item.current_count}/{item.par_level} {item.unit}
+        {hasSecondary && !item.has_storage ? ` · ${item.secondary_count} ${item.secondary_unit}` : ''}
       </span>
     </span>
   )

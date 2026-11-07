@@ -35,6 +35,10 @@ export default function ReceiveOrderPage() {
   const [deliveryType, setDeliveryType] = useState<'received' | 'will_call'>('received')
   const [selectedOrder, setSelectedOrder] = useState<OrderRecord | null>(null)
   const [received, setReceived] = useState<ReceivedQty>({})
+  // Patch 38: owner-only, per-item destination for a has_storage item's
+  // received quantity. Defaults to 'store' -- identical to today's
+  // behavior -- for every item unless an owner explicitly picks 'storage'.
+  const [destinations, setDestinations] = useState<Record<string, 'store' | 'storage'>>({})
   const [notes, setNotes] = useState('')
   const [receivedBy, setReceivedBy] = useState('')
   const [shorts, setShorts] = useState<ShortItem[]>([])
@@ -146,7 +150,7 @@ export default function ReceiveOrderPage() {
         .filter(([, qty]) => qty !== '' && parseFloat(qty) > 0)
         .map(([item_id, qty]) => {
           const item = items.find((i) => i.id === item_id)!
-          return { item_id, item_name: item.name, quantity: parseFloat(qty), unit: item.unit }
+          return { item_id, item_name: item.name, quantity: parseFloat(qty), unit: item.unit, destination: destinations[item_id] || 'store' }
         })
 
       // Save the receipt
@@ -461,11 +465,35 @@ export default function ReceiveOrderPage() {
                           <div className="flex items-center gap-2">
                             <p className="font-semibold text-gray-900 text-base leading-tight">{item.name}</p>
                             {isOnOrder && <span className="text-xs bg-[#1a7a3c] text-white px-1.5 py-0.5 rounded font-medium">On Order</span>}
+                            {item.has_storage && <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 border border-teal-200">📦 STORAGE</span>}
                           </div>
                           <p className="text-sm text-gray-400">
                             {item.unit} · on hand: {item.current_count}
+                            {item.has_storage && <span className="text-teal-600"> · in storage: {item.storage_count}</span>}
                             {isOnOrder && <span className="text-[#1a7a3c] font-semibold"> · ordered: {orderedQty}</span>}
                           </p>
+                          {/* Patch 38: owner-only destination choice for a
+                              has_storage item's received quantity. Default
+                              stays Store -- shift_lead never sees this, and
+                              an item without has_storage never gets it. */}
+                          {role === 'owner' && item.has_storage && (
+                            <div className="flex gap-1.5 mt-1.5">
+                              {(['store', 'storage'] as const).map((d) => (
+                                <button
+                                  key={d}
+                                  type="button"
+                                  onClick={() => setDestinations((prev) => ({ ...prev, [item.id]: d }))}
+                                  className={`min-h-[32px] px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                                    (destinations[item.id] || 'store') === d
+                                      ? 'bg-teal-600 text-white border-teal-600'
+                                      : 'bg-white text-teal-700 border-teal-200'
+                                  }`}
+                                >
+                                  {d === 'store' ? 'Store' : 'Storage'}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-col items-center gap-1 flex-shrink-0">
                           <input

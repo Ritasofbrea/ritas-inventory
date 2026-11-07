@@ -41,9 +41,14 @@ Tiers, most to least permissive:
 | `/api/flavors/week` | PATCH | SL+ | "same tier as + Add Task" per its own comment, and Flavors page's `canManage` has no staff PIN-unlock escape hatch (unlike the todo page) |
 | `/api/items` | GET | SL+ | Count/Adjust/Receive-Order/Dashboard/Manage Items all need it |
 | `/api/items` | POST | OWNER | only Manage Items creates items |
-| `/api/items` | PATCH | SL+ | Count/Adjust/Receive-Order bump `current_count` through this same endpoint as Manage Items' full-record edits — **more permissive than ideal**: a shift_lead session can technically also rename an item or change its par level through this route today, since it's not split by field. Flagged, not fixed this patch. Patch 37: `is_off` is explicitly NOT in this route's field whitelist — a shift_lead sending it in the body is silently ignored, never applied. |
+| `/api/items` | PATCH | SL+ | Count/Adjust/Receive-Order bump `current_count` through this same endpoint as Manage Items' full-record edits — **more permissive than ideal**: a shift_lead session can technically also rename an item or change its par level through this route today, since it's not split by field. Flagged, not fixed this patch. Patch 37: `is_off` is explicitly NOT in this route's field whitelist — a shift_lead sending it in the body is silently ignored, never applied. Patch 38: same for `has_storage`/`storage_count`/`storage_updated_at`. |
 | `/api/items` | DELETE | OWNER | only Manage Items deletes |
 | `/api/items/off` | PATCH | OWNER | patch 37 — the only route that can change `items.is_off`. Takes `{ ids: string[], is_off: boolean }`, validates every id exists (all-or-nothing), 403 for shift_lead/staff. |
+| `/api/items/storage` | PATCH | OWNER | patch 38 — flips `items.has_storage`. `{ id, has_storage }`. |
+| `/api/items/storage/add` | PATCH | OWNER | patch 38 — bulk purchase into storage. `{ id, amount, note? }`, amount must be positive. |
+| `/api/items/storage/move` | PATCH | OWNER | patch 38 — moves `amount` from storage to store (current_count). `{ id, amount, note? }`; 400 if amount exceeds what's in storage. |
+| `/api/items/storage/correction` | PATCH | OWNER | patch 38 — sets storage to an exact number (miscount fix). `{ id, new_value, note? }`. |
+| `/api/order-history` | POST | SL+ (destination:'storage' is OWNER-only) | patch 38 — a receiving line can set `destination: 'storage'` to route a `has_storage` item's received quantity to storage instead of current_count. Re-checked server-side against the session role and the item's actual `has_storage` — a shift_lead sending it, or any item without `has_storage`, falls back to today's default (current_count), unchanged. |
 | `/api/notes` | GET | ANY | `?role=` query param removed — owner-only notes now gated by `session.role === 'owner'` only |
 | `/api/notes` | POST | ANY | no-PIN tier today, unchanged |
 | `/api/notes` | PATCH | ANY | "handled" toggle; the owner-authored-note sub-case stays client-side gated as before — not split out this patch |

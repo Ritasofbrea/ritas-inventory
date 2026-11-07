@@ -535,6 +535,12 @@ export default function CountPage() {
                     )}
                   </p>
                   <p className="text-sm text-gray-400">{item.unit}</p>
+                  {/* Patch 38: read-only for shift_lead/staff -- there is no
+                      input here, just a line telling them backup stock
+                      exists. Only owners can change this number, elsewhere. */}
+                  {item.has_storage && (
+                    <p className="text-xs text-teal-600 font-medium mt-0.5">📦 In storage: {item.storage_count} {item.unit}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <div className="flex flex-col items-center gap-0.5">

@@ -46,6 +46,14 @@ export default function ManageItemsPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [bulkWorking, setBulkWorking] = useState(false)
 
+  // Patch 38: storage switch + add/move/correction panel state
+  const [storageTogglingId, setStorageTogglingId] = useState<string | null>(null)
+  const [storagePanelId, setStoragePanelId] = useState<string | null>(null)
+  const [storageAction, setStorageAction] = useState<'add' | 'move' | 'correction'>('add')
+  const [storageAmount, setStorageAmount] = useState('')
+  const [storageNote, setStorageNote] = useState('')
+  const [storageWorking, setStorageWorking] = useState(false)
+
   const toggleCategory = (category: string) => {
     setExpandedCategories((prev) => {
       const next = new Set(prev)
@@ -220,6 +228,71 @@ export default function ManageItemsPage() {
       setError('Could not update selected items. Try again.')
     } finally {
       setBulkWorking(false)
+    }
+  }
+
+  // Patch 38: storage switch + add/move/correction, all through the
+  // owner-only /api/items/storage* routes -- never the shared PATCH, which
+  // ignores these fields entirely.
+  const toggleHasStorage = async (item: Item) => {
+    setStorageTogglingId(item.id)
+    setError('')
+    try {
+      const res = await fetch('/api/items/storage', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, has_storage: !item.has_storage }),
+      })
+      if (!res.ok) throw new Error()
+      const updated: Item = await res.json()
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
+      if (!updated.has_storage) setStoragePanelId((p) => (p === item.id ? null : p))
+    } catch {
+      setError('Could not update. Try again.')
+    } finally {
+      setStorageTogglingId(null)
+    }
+  }
+
+  const openStoragePanel = (item: Item) => {
+    setStoragePanelId((p) => (p === item.id ? null : item.id))
+    setStorageAction('add')
+    setStorageAmount('')
+    setStorageNote('')
+  }
+
+  const submitStorageAction = async (item: Item) => {
+    const value = parseFloat(storageAmount)
+    if (storageAmount.trim() === '' || Number.isNaN(value)) {
+      setError('Enter a valid number.')
+      return
+    }
+    const endpoint =
+      storageAction === 'add' ? '/api/items/storage/add'
+      : storageAction === 'move' ? '/api/items/storage/move'
+      : '/api/items/storage/correction'
+    const body = storageAction === 'correction'
+      ? { id: item.id, new_value: value, note: storageNote.trim() || undefined }
+      : { id: item.id, amount: value, note: storageNote.trim() || undefined }
+
+    setStorageWorking(true)
+    setError('')
+    try {
+      const res = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not update storage.')
+      setItems((prev) => prev.map((i) => (i.id === item.id ? (data as Item) : i)))
+      setStoragePanelId(null)
+      setStorageAmount('')
+      setStorageNote('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update storage. Try again.')
+    } finally {
+      setStorageWorking(false)
     }
   }
 
@@ -573,6 +646,9 @@ export default function ManageItemsPage() {
                                   {item.is_off && (
                                     <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">❄️ OFF</span>
                                   )}
+                                  {item.has_storage && (
+                                    <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 border border-teal-200">📦 STORAGE</span>
+                                  )}
                                 </p>
                                 <p className="text-sm text-gray-400">
                                   {item.unit}
@@ -582,6 +658,19 @@ export default function ManageItemsPage() {
                                 </p>
                               </div>
                             </div>
+
+                            {/* Patch 38: storage number + last-updated, only for flagged items */}
+                            {item.has_storage && (
+                              <div className="ml-8 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                                <span>📦 In storage: <span className="font-bold">{item.storage_count}</span> {item.unit}</span>
+                                <span className="text-teal-500">
+                                  {item.storage_updated_at
+                                    ? `updated ${new Date(item.storage_updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                                    : 'never updated'}
+                                </span>
+                              </div>
+                            )}
+
                             <div className="flex gap-2 flex-wrap pl-8">
                               <button
                                 onClick={() => toggleOff(item)}
@@ -595,6 +684,25 @@ export default function ManageItemsPage() {
                                 {togglingId === item.id ? 'Working…' : item.is_off ? 'Turn On' : '❄️ Turn Off'}
                               </button>
                               <button
+                                onClick={() => toggleHasStorage(item)}
+                                disabled={storageTogglingId === item.id}
+                                className={`min-h-[40px] text-sm font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+                                  item.has_storage
+                                    ? 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
+                                    : 'bg-teal-50 text-teal-700 border-teal-200 hover:border-teal-400'
+                                } disabled:opacity-50`}
+                              >
+                                {storageTogglingId === item.id ? 'Working…' : item.has_storage ? 'Remove Storage' : '📦 Has Storage'}
+                              </button>
+                              {item.has_storage && (
+                                <button
+                                  onClick={() => openStoragePanel(item)}
+                                  className="min-h-[40px] text-sm font-semibold px-3 py-1.5 rounded-lg border border-teal-200 text-teal-700 hover:border-teal-400"
+                                >
+                                  {storagePanelId === item.id ? 'Close' : 'Manage Storage'}
+                                </button>
+                              )}
+                              <button
                                 onClick={() => startEdit(item)}
                                 className="min-h-[40px] text-sm text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-100 hover:border-blue-300"
                               >
@@ -607,6 +715,65 @@ export default function ManageItemsPage() {
                                 Delete
                               </button>
                             </div>
+
+                            {/* Patch 38: Add to Storage / Move to Store / Correct Count panel */}
+                            {storagePanelId === item.id && (
+                              <div className="ml-8 bg-teal-50 border border-teal-200 rounded-xl p-3 flex flex-col gap-2">
+                                <div className="flex gap-2 flex-wrap">
+                                  {(['add', 'move', 'correction'] as const).map((a) => (
+                                    <button
+                                      key={a}
+                                      onClick={() => { setStorageAction(a); setStorageAmount(''); setStorageNote('') }}
+                                      className={`min-h-[40px] px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                        storageAction === a ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-teal-700 border-teal-200'
+                                      }`}
+                                    >
+                                      {a === 'add' ? 'Add to Storage' : a === 'move' ? 'Move to Store' : 'Correct Count'}
+                                    </button>
+                                  ))}
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={storageAmount}
+                                    onChange={(e) => {
+                                      const v = e.target.value
+                                      if (v === '' || /^\d*\.?\d*$/.test(v)) setStorageAmount(v)
+                                    }}
+                                    placeholder={storageAction === 'correction' ? 'New storage total' : 'Amount'}
+                                    className="w-36 border border-teal-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-teal-400"
+                                  />
+                                  <span className="text-xs text-teal-600">{item.unit}</span>
+                                </div>
+                                {storageAction === 'move' && (
+                                  <p className="text-xs text-teal-600">Max: {item.storage_count} {item.unit} currently in storage.</p>
+                                )}
+                                <input
+                                  type="text"
+                                  value={storageNote}
+                                  onChange={(e) => setStorageNote(e.target.value)}
+                                  placeholder="Note (optional)"
+                                  className="border border-teal-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-teal-400"
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => submitStorageAction(item)}
+                                    disabled={storageWorking}
+                                    className="min-h-[44px] flex-1 bg-teal-600 hover:bg-teal-700 disabled:bg-gray-300 text-white font-semibold py-2 rounded-xl text-sm transition-colors"
+                                  >
+                                    {storageWorking ? 'Working…' : 'Confirm'}
+                                  </button>
+                                  <button
+                                    onClick={() => setStoragePanelId(null)}
+                                    disabled={storageWorking}
+                                    className="min-h-[44px] px-4 bg-white text-teal-700 border border-teal-200 rounded-xl text-sm font-semibold"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

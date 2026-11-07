@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
-import { Item, CATEGORIES, getStockStatus } from '@/lib/types'
+import { Item, CATEGORIES, getStockStatus, getMainUnitTotal } from '@/lib/types'
 
 const STATUS_ORDER = { out: 0, low: 1, ok: 2 }
 
@@ -211,6 +211,9 @@ export default function CurrentStockPage() {
                             {item.is_off && (
                               <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">❄️ OFF</span>
                             )}
+                            {item.has_storage && (
+                              <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 border border-teal-200">📦 STORAGE</span>
+                            )}
                           </p>
                           <p className={`text-xs mt-0.5 ${stale && !item.is_off ? 'text-orange-500' : 'text-gray-400'}`}>
                             par {item.par_level} {item.unit}
@@ -219,6 +222,17 @@ export default function CurrentStockPage() {
                               ? ` · counted ${formatCountDate(lastCounts[item.id].created_at)}`
                               : ' · never counted'}
                           </p>
+                          {/* Patch 38: full store+storage breakdown, this
+                              page only (Dashboard's pill just shows the
+                              combined total). */}
+                          {item.has_storage && (
+                            <p className="text-xs text-teal-600 mt-0.5">
+                              📦 {getMainUnitTotal(item)} total: {item.current_count} store, {item.storage_count} storage
+                              {item.storage_updated_at && (
+                                <span className="text-teal-400"> · storage updated {new Date(item.storage_updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                              )}
+                            </p>
+                          )}
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className={`text-base font-bold ${status === 'out' ? 'text-red-600' : status === 'low' ? 'text-amber-600' : 'text-gray-900'}`}>

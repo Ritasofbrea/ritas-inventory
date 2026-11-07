@@ -64,6 +64,12 @@ export async function POST(request: NextRequest) {
 // PATCH /api/items/off route (403 for shift_lead/staff) -- if a caller sends
 // is_off in this body it's silently ignored, same as any other unlisted
 // field. Do not add it to the whitelist below.
+// Patch 38: same treatment for has_storage/storage_count/storage_updated_at
+// -- they only ever change through the owner-only /api/items/storage*
+// routes (storage_count specifically only via applyStorageChange/
+// applyStorageCorrection in src/lib/storage-server.ts, which also writes
+// the storage_moves history row a direct update here would skip). Do not
+// add any of the three to the whitelist below.
 export async function PATCH(request: NextRequest) {
   const db = getServerSupabase()
   const auth = await requireRole(db, request, ['owner', 'shift_lead'])

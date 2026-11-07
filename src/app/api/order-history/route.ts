@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { requireRole } from '@/lib/session'
+import { applyStorageChange } from '@/lib/storage-server'
 
 export async function GET(request: NextRequest) {
   const db = getServerSupabase()
@@ -59,12 +60,30 @@ export async function POST(request: NextRequest) {
   const { error: itemsError } = await db.from('order_history_items').insert(rows)
   if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 })
 
-  // Add quantities to current_count when receiving stock
+  // Add quantities to current_count when receiving stock -- patch 38: for a
+  // has_storage item, an OWNER session can instead route a line's quantity
+  // to storage (destination: 'storage'). Anyone else, or no destination, or
+  // an item without has_storage, behaves exactly as before: straight into
+  // current_count. The has_storage check is re-verified server-side from
+  // the DB, never trusted from the request body.
   if (type === 'received' || type === 'will_call') {
+    const isOwner = auth.session.role === 'owner'
     await Promise.all(
       items
         .filter((i: { item_id: string; quantity: number }) => i.item_id && i.quantity > 0)
-        .map(async (i: { item_id: string; quantity: number }) => {
+        .map(async (i: { item_id: string; quantity: number; destination?: string }) => {
+          if (isOwner && i.destination === 'storage') {
+            const { data: storageItem } = await db.from('items').select('has_storage').eq('id', i.item_id).maybeSingle()
+            if (storageItem?.has_storage) {
+              await applyStorageChange(db, {
+                itemId: i.item_id,
+                kind: 'receive_to_storage',
+                amount: Number(i.quantity),
+                byName: auth.session.name,
+              })
+              return
+            }
+          }
           const { data: item } = await db.from('items').select('current_count').eq('id', i.item_id).single()
           if (item) {
             await db.from('items').update({ current_count: Number(item.current_count) + Number(i.quantity) }).eq('id', i.item_id)

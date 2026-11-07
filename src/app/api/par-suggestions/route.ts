@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { requireRole } from '@/lib/session'
+import { fetchMoveToStoreHistory, sumMovesInWindow } from '@/lib/storage-server'
 
 // Suggest par = ceil(weekly_avg_consumption * 1.5), minimum 1 week of buffer.
 // Only returns items with at least 2 count records in the last 90 days.
@@ -33,12 +34,17 @@ export async function GET(request: NextRequest) {
 
   const suggestions: Record<string, { name: string; unit: string; suggested_par: number; weekly_avg: number }> = {}
 
+  // Patch 38: same move_to_store correction as the velocity report -- see
+  // that route's comment for why. Items with no storage are unaffected.
+  const moveHistory = await fetchMoveToStoreHistory(db, Object.keys(byItem), new Date().toISOString())
+
   for (const [item_id, item] of Object.entries(byItem)) {
     if (item.records.length < 2) continue
 
     const first = item.records[0]
     const last = item.records[item.records.length - 1]
-    const consumed = first.count - last.count
+    const movedIn = sumMovesInWindow(moveHistory[item_id], first.ts, last.ts)
+    const consumed = first.count - last.count + movedIn
     if (consumed <= 0) continue
 
     const weeks = (last.ts - first.ts) / (7 * 24 * 60 * 60 * 1000)

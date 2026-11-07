@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { requireRole } from '@/lib/session'
+import { fetchMoveToStoreHistory, sumMovesInWindow } from '@/lib/storage-server'
 
 export async function GET(request: NextRequest) {
   const db = getServerSupabase()
@@ -54,6 +55,15 @@ export async function GET(request: NextRequest) {
     consumed: number
   }[] = []
 
+  // Patch 38: a move_to_store (storage -> store) raises current_count
+  // without a sale, which would otherwise make the naive delta below
+  // undercount -- or go negative on -- true consumption. Add back whatever
+  // moved into the store strictly between each item's own start and end
+  // snapshot timestamps. Items with no storage, or no moves in that window,
+  // get +0 and are completely unaffected -- same consumed value as before
+  // this patch.
+  const moveHistory = await fetchMoveToStoreHistory(db, Object.keys(byItem), new Date(endMs).toISOString())
+
   for (const [item_id, item] of Object.entries(byItem)) {
     // records are newest first; find latest on/before start and latest on/before end
     const startRecord = item.records.find((r) => r.ts <= startMs)
@@ -62,10 +72,13 @@ export async function GET(request: NextRequest) {
     const startCount = startRecord?.count ?? null
     const endCount = endRecord?.count ?? null
 
-    // consumed = what was there at start minus what's left at end
+    // consumed = what was there at start minus what's left at end, plus
+    // anything moved into the store from storage in that exact window
+    // (which isn't consumption -- it's stock relocating, not leaving)
+    const movedIn = startRecord && endRecord ? sumMovesInWindow(moveHistory[item_id], startRecord.ts, endRecord.ts) : 0
     const consumed =
       startCount !== null && endCount !== null
-        ? parseFloat((startCount - endCount).toFixed(2))
+        ? parseFloat((startCount - endCount + movedIn).toFixed(2))
         : 0
 
     results.push({ item_id, name: item.name, category: item.category, unit: item.unit, start_count: startCount, end_count: endCount, consumed })
