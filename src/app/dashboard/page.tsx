@@ -158,6 +158,22 @@ export default function DashboardPage() {
     return acc
   }, {})
 
+  // Patch 37 follow-up: shared JSX so Seasonal renders in the same spot
+  // (directly under Running Low, above Order From) whether or not anything
+  // else needs attention -- visibility/content unchanged, layout only.
+  const seasonalSection = seasonalItems.length > 0 && (
+    <section className="mb-4">
+      <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">❄️ Seasonal</p>
+      <div className="flex flex-wrap gap-2">
+        {seasonalItems.map((item) => (
+          <span key={item.id} className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            {item.name}
+          </span>
+        ))}
+      </div>
+    </section>
+  )
+
   const countFmt = summary.lastCount ? formatDateTime(summary.lastCount.created_at) : null
   const recvFmt = summary.lastReceived ? formatDateTime(summary.lastReceived.created_at) : null
 
@@ -312,9 +328,12 @@ export default function DashboardPage() {
 
         {/* Stock status */}
         {needsAttention === 0 ? (
-          <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 flex items-center gap-3 mb-5">
-            <span className="text-2xl">✅</span>
-            <p className="text-green-800 font-semibold text-lg">Everything is stocked!</p>
+          <div className="mb-5">
+            <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 flex items-center gap-3 mb-4">
+              <span className="text-2xl">✅</span>
+              <p className="text-green-800 font-semibold text-lg">Everything is stocked!</p>
+            </div>
+            {seasonalSection}
           </div>
         ) : (
           <div className="mb-5">
@@ -343,6 +362,8 @@ export default function DashboardPage() {
               </section>
             )}
 
+            {seasonalSection}
+
             {/* Distributor breakdown */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <p className="text-xs font-bold uppercase tracking-widest text-gray-400 px-5 pt-4 pb-2">Order From</p>
@@ -356,26 +377,6 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-        )}
-
-        {/* Seasonal (off) items — patch 37. Own section regardless of
-            needsAttention, since an item can be off with nothing else
-            needing attention. No stock numbers, same condensed row style
-            as Out of Stock/Running Low above. Hidden entirely when nothing
-            is off, matching how those two sections already only render
-            when non-empty. Indigo + ❄️ is a new badge meaning, not reused
-            from red (out)/amber (low)/orange (stale)/purple (test). */}
-        {seasonalItems.length > 0 && (
-          <section className="mb-5">
-            <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-2">❄️ Seasonal</p>
-            <div className="flex flex-wrap gap-2">
-              {seasonalItems.map((item) => (
-                <span key={item.id} className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {item.name}
-                </span>
-              ))}
-            </div>
-          </section>
         )}
 
         {/* Top movers */}
