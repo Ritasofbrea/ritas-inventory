@@ -16,12 +16,15 @@ This directory (`ritas-app/`) IS the Next.js root and the git repo root.
 - `npm run lint` — `eslint .`
 - `npm run build` — `next build`
 
-**There is no persisted Playwright/regression suite in this repo.** Every past "test suite" (patch 29's role-check suite, patch 36's, etc.) was written from scratch into that session's ephemeral scratchpad directory (outside the repo) and does not survive between sessions. The established convention, to recreate when testing a change:
-- Fixtures are prefixed `ZZTEST` (names, lists, tasks) so they're unmistakable and easy to sweep up.
-- Run against `npm run dev` on localhost — **never** against a Vercel preview URL (previews are SSO-protected; see §6).
-- Seed/cleanup via direct Supabase REST calls using the service-role key, read from `.env.local` with Node `readFileSync` and never printed/logged. A small `rest.mjs` helper (base URL + service-role auth header) gets reused across test files.
-- Clean up afterward with a script that deletes by name/title `ilike 'zztest*'`, remembering that hard-deleting a template **detaches** (doesn't delete) its done/missed instances — a template-first sweep misses those; also sweep `task_instances` directly by title/`checklist_name`.
-- Playwright's `getByRole`/text matchers are case-insensitive **substring** by default — pass `exact: true` or you'll get accidental matches (e.g. "Delete list" matching inside a fixture named "...Delete List").
+A small persisted regression suite lives in `tests/e2e/` — see `tests/e2e/README.md` for full setup/run instructions. It covers patch 29's role checks, patch 28's step-completion gating, and the Home/Switch logout race, over `npm run dev` on localhost (never a Vercel preview — SSO-protected; see §6):
+```
+npm run test:e2e                 # all three suites
+npm run test:e2e:role-checks     # patch 29: requireRole 401 vs 403 across route-access.md's tiers
+npm run test:e2e:step-checks     # patch 28: can't complete a checklist-style task with unchecked steps
+npm run test:e2e:logout-race     # Home/Switch tap survives a failed/hung POST /api/logout
+npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
+```
+`role-checks`/`step-checks` need `E2E_OWNER_PIN`/`E2E_SHIFT_LEAD_PIN` in `.env.local` (a real, active owner's/shift lead's PIN — never commit these); `logout-race` needs `npx playwright install chromium` once and no PINs at all. This is **not** full coverage — it's three specific regressions, not route-access.md's whole table. For anything beyond these three, the older convention still applies: write a throwaway script with `ZZTEST`-prefixed fixtures, seed/clean up via direct Supabase REST calls using the service-role key (read from `process.env`, never printed/logged — `tests/e2e/helpers/rest.mjs` is a ready-made example), and remember hard-deleting a template **detaches** (doesn't delete) its done/missed instances, so a template-first cleanup sweep misses them — also sweep `task_instances` directly by title/`checklist_name`. Playwright's `getByRole`/text matchers are case-insensitive **substring** by default — pass `exact: true` or you'll get accidental matches (e.g. "Delete list" matching inside a fixture named "...Delete List").
 
 ---
 

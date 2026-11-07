@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "node --env-file=.env.local tests/e2e/run-all.mjs",
+    "test:e2e:role-checks": "node --env-file=.env.local tests/e2e/role-checks.mjs",
+    "test:e2e:step-checks": "node --env-file=.env.local tests/e2e/step-checks.mjs",
+    "test:e2e:logout-race": "node --env-file=.env.local tests/e2e/logout-race.mjs",
+    "test:e2e:cleanup": "node --env-file=.env.local tests/e2e/cleanup.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
@@ -24,6 +29,7 @@
     "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "playwright": "^1.51.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
