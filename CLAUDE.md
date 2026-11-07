@@ -1,7 +1,7 @@
 # Rita's Italian Ice – Brea Inventory & Tasks App
 
 ## 1. What this is
-A mobile-first PWA for Rita's Italian Ice, Brea location: inventory counting/ordering **plus** a full daily task/checklist system, sticky notes, and weekly flavor planning. Owner: Rita (mother); day-to-day owner-role users are Josh and Gina; shift leads and staff use it on a shared ViewSonic touchscreen mounted in the store, plus personal phones. Installable via "Add to Home Screen" (standalone, no browser chrome).
+A mobile-first PWA for Rita's Italian Ice, Brea location — Rita's is the franchise brand, not a person. Inventory counting/ordering **plus** a full daily task/checklist system, sticky notes, and weekly flavor planning. Owners (`owner` role): Josh and Gina; shift leads and staff use it on a shared ViewSonic touchscreen mounted in the store, plus personal phones. Installable via "Add to Home Screen" (standalone, no browser chrome).
 
 Auto-reload: every deploy bakes a build id (`VERCEL_GIT_COMMIT_SHA`, see `next.config.ts`) into the bundle. `AutoReloadWatcher` (mounted in root layout) polls `/api/version` every 5 min (3s while idle) and does a hard reload when the server's build id no longer matches the page's — silent, no banner. A `localStorage` loop-guard (`ritas_autoreload_log`) blocks repeat reloads within 10 minutes. Disable via server env var `AUTO_RELOAD_DISABLED=1` (needs a redeploy to take effect — see §3).
 
@@ -64,7 +64,8 @@ Migration files run roughly in this order: `schema.sql` → `update-secondary-co
 - Session cookie is HMAC-signed and verified with `timingSafeEqual`; expiry + role + revocation checked server-side on every `requireRole` call (see §3). **401** = no/invalid/expired/revoked session. **403** = valid session, wrong role for this route.
 - Rate limiting: 10 failed PIN attempts from one IP in 15 minutes blocks further attempts with 429 (doesn't even check the PIN); the log purges after 7 days.
 - Owner-only routes (server-enforced, not just hidden in the UI): list create/rename/move/activate/delete, template/list hard delete, task-template create/edit for most fields.
-- **PINs are plaintext** in `owners.pin`/`shift_leads.pin` — verified directly in `/api/pins/verify/route.ts`, which does `.eq('pin', pin)`. **Correction to carry forward accurately: there is no PIN-hashing work anywhere in this repo.** `git branch -a` shows only `main` and `patch-29-sessions`; no `patch-31-pin-hash` or similar branch exists, and no commit mentions hashing PINs. If a future session is told such a branch exists, re-verify with `git branch -a` before trusting it — don't repeat an unverified claim.
+- **PINs are plaintext** in `owners.pin`/`shift_leads.pin` — verified directly in `/api/pins/verify/route.ts`, which does `.eq('pin', pin)`. Until hashing ships, they're protected only by RLS (see §4) locking the anon key out — only the server, via the service-role key, can ever read `owners.pin`/`shift_leads.pin`.
+- **PIN hashing is patch 31 — planned and paused, not started.** A prompt/spec for it already exists; no code or branch does. Verified with `git branch -a`: only `main` and `patch-29-sessions` exist, and no commit anywhere mentions hashing PINs. If a future session is told a `patch-31-pin-hash` branch exists, re-verify with `git branch -a` before trusting it — don't repeat an unverified claim about code existing just because the patch itself is real and queued.
 
 ---
 
@@ -114,7 +115,10 @@ Shipped, in order:
 - **36** — Add tasks to any list, and create new lists (owner only): `sort_order = max+1` on create, rename cascades to templates + open/same-day-done instances, turning a list off stops its generator and hides it everywhere, duplicate names rejected case/whitespace-insensitively.
 - **Unnumbered follow-up to 36** — Owner-only hard delete for task lists (cascading to templates, same detach-don't-delete rule as single-task hard delete), to match the hard delete tasks already had.
 
-Not in progress; nothing currently paused. (A prior note in this file claimed a paused `patch-31-pin-hash` branch — that was checked this session and found not to exist; see §5.)
+Paused/queued (not started in code — see §5 for what "paused" does and doesn't mean for patch 31):
+- **31** — PIN hashing. Planned; a prompt/spec exists but no branch or code does (verified via `git branch -a`).
+- **Note-photos bucket cleanup** — queued, not started.
+- **37** — Turn inventory items on/off (seasonal), owner only. Not started.
 
 ---
 
@@ -122,4 +126,4 @@ Not in progress; nothing currently paused. (A prior note in this file claimed a 
 - Three pre-existing `react-hooks/exhaustive-deps` lint warnings (not errors — `npm run lint` passes): `src/app/count/page.tsx:192` (`fetchItems`), `src/app/history/page.tsx:64` (`fetchTop10`), `src/app/order-list/page.tsx:114` (`loadAll`).
 - No duplicate Vercel project — checked `list_projects`, only one project (`ritas-inventory`) exists under the team. (A prior note here claimed an unverified duplicate named `ritas-app`; not found.)
 - A public-repo secret-history check (confirming no secret was ever committed to git history) has not been done.
-- PIN hashing has not been started at all (see §5's correction) — PINs are plaintext today.
+- PIN hashing (patch 31) is planned/paused, not started in code — PINs are plaintext today, protected by RLS until it ships. See §5/§9.
