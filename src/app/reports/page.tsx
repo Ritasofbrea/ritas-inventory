@@ -212,15 +212,21 @@ export default function ReportsPage() {
                         {row.end_count !== null ? row.end_count : '—'}
                       </span>
                       <span
-                        className={`text-right text-sm font-bold ${
-                          row.flagged ? 'text-amber-600' : row.consumed > 0 ? 'text-gray-900' : 'text-gray-300'
-                        }`}
-                        title={row.flagged ? 'Negative after accounting for deliveries and storage moves -- check for a miscount.' : undefined}
+                        className={`text-right text-sm font-bold ${row.consumed > 0 ? 'text-gray-900' : 'text-gray-300'}`}
                       >
-                        {row.flagged && '⚠️ '}
                         {row.consumed > 0 ? row.consumed : row.consumed < 0 ? `+${Math.abs(row.consumed)}` : '—'}
                       </span>
                     </div>
+                    {row.flagged && (
+                      <div className="mt-2 flex justify-end">
+                        <span
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-300 rounded-full px-2 py-0.5"
+                          title="Still negative after accounting for deliveries and storage moves -- check for a miscount."
+                        >
+                          Check count
+                        </span>
+                      </div>
+                    )}
                     {row.consumed > 0 && (
                       <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div
