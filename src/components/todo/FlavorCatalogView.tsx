@@ -2,7 +2,18 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import ConfirmModal from './ConfirmModal'
-import { FLAVOR_TYPES, FLAVOR_TYPE_LABELS, Flavor, FlavorType, groupFlavorsByType } from '@/lib/flavors'
+import {
+  FLAVOR_TYPES,
+  FLAVOR_TYPE_LABELS,
+  Flavor,
+  FlavorType,
+  groupFlavorsByType,
+  Program,
+  PROGRAMS,
+  PROGRAM_LABELS,
+  PROGRAM_BADGE_ICON,
+  PROGRAM_BADGE_CLASS,
+} from '@/lib/flavors'
 
 // Owner-only: manage the master flavor catalog used by the weekly planner
 // (patch 20). Deactivate hides a flavor from the picker but keeps it listed
@@ -21,9 +32,11 @@ export default function FlavorCatalogView() {
   const [error, setError] = useState('')
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<FlavorType | null>(null)
+  const [newProgram, setNewProgram] = useState<Program | ''>('')
   const [busy, setBusy] = useState(false)
   const [deleting, setDeleting] = useState<Flavor | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [programFilter, setProgramFilter] = useState<Program | 'all' | 'untagged'>('all')
 
   const load = useCallback(async () => {
     try {
@@ -51,12 +64,13 @@ export default function FlavorCatalogView() {
       const res = await fetch('/api/flavors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, type: newType }),
+        body: JSON.stringify({ name: newName, type: newType, program: newProgram || null }),
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error || 'Could not add')
       setNewName('')
       setNewType(null)
+      setNewProgram('')
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not add. Try again.')
@@ -73,6 +87,24 @@ export default function FlavorCatalogView() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: f.id, active: !f.active }),
+      })
+      if (!res.ok) throw new Error()
+      await load()
+    } catch {
+      setError('Could not update. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setProgram = async (f: Flavor, program: Program | '') => {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch('/api/flavors', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: f.id, program: program || null }),
       })
       if (!res.ok) throw new Error()
       await load()
@@ -105,7 +137,13 @@ export default function FlavorCatalogView() {
 
   if (loading) return <p className="text-gray-400 text-center py-10">Loading…</p>
 
-  const groups = groupFlavorsByType(list)
+  const filteredList =
+    programFilter === 'all'
+      ? list
+      : programFilter === 'untagged'
+        ? list.filter((f) => !f.program)
+        : list.filter((f) => f.program === programFilter)
+  const groups = groupFlavorsByType(filteredList)
 
   return (
     <div>
@@ -133,6 +171,19 @@ export default function FlavorCatalogView() {
             </button>
           ))}
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium">Program (optional)</label>
+          <select
+            value={newProgram}
+            onChange={(e) => setNewProgram(e.target.value as Program | '')}
+            className="min-h-[44px] border border-gray-200 rounded-xl px-3 text-gray-900 focus:outline-none focus:border-green-500 bg-white"
+          >
+            <option value="">No program</option>
+            {PROGRAMS.map((p) => (
+              <option key={p} value={p}>{PROGRAM_LABELS[p]}</option>
+            ))}
+          </select>
+        </div>
         <button
           onClick={add}
           disabled={busy || !newName.trim() || !newType}
@@ -143,6 +194,21 @@ export default function FlavorCatalogView() {
       </div>
       {error && <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">{error}</div>}
 
+      <div className="flex flex-col gap-1 mb-4">
+        <label className="text-xs text-gray-500 font-medium">Filter by program</label>
+        <select
+          value={programFilter}
+          onChange={(e) => setProgramFilter(e.target.value as Program | 'all' | 'untagged')}
+          className="min-h-[44px] border border-gray-200 rounded-xl px-3 text-gray-900 focus:outline-none focus:border-green-500 bg-white w-fit"
+        >
+          <option value="all">All programs</option>
+          <option value="untagged">Untagged</option>
+          {PROGRAMS.map((p) => (
+            <option key={p} value={p}>{PROGRAM_LABELS[p]}</option>
+          ))}
+        </select>
+      </div>
+
       {groups.map((group) => (
         <div key={group.type} className="mb-4">
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">
@@ -152,34 +218,54 @@ export default function FlavorCatalogView() {
             {group.flavors.map((f, idx) => (
               <div
                 key={f.id}
-                className={`flex items-center gap-2 px-5 py-3 ${idx < group.flavors.length - 1 ? 'border-b border-gray-100' : ''}`}
+                className={`flex flex-col gap-2 px-5 py-3 ${idx < group.flavors.length - 1 ? 'border-b border-gray-100' : ''}`}
               >
-                <p className={`flex-1 font-semibold ${f.active ? 'text-gray-900' : 'text-gray-400'}`}>
+                <p className={`font-semibold flex items-center gap-2 flex-wrap ${f.active ? 'text-gray-900' : 'text-gray-400'}`}>
                   {f.name}
-                  {!f.active && <span className="ml-2 text-xs font-bold uppercase tracking-wide text-gray-400">Inactive</span>}
+                  {!f.active && <span className="text-xs font-bold uppercase tracking-wide text-gray-400">Inactive</span>}
+                  {f.program && (
+                    <span className={PROGRAM_BADGE_CLASS}>
+                      <span>{PROGRAM_BADGE_ICON[f.program]}</span>
+                      {PROGRAM_LABELS[f.program]}
+                    </span>
+                  )}
                 </p>
-                <button
-                  onClick={() => toggle(f)}
-                  disabled={busy}
-                  className={`min-h-[40px] px-4 rounded-xl text-sm font-semibold disabled:opacity-50 flex-shrink-0 ${
-                    f.active ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
-                  }`}
-                >
-                  {f.active ? 'Deactivate' : 'Reactivate'}
-                </button>
-                <button
-                  onClick={() => setDeleting(f)}
-                  disabled={busy}
-                  className="min-h-[40px] px-3 rounded-xl text-sm font-semibold bg-gray-100 text-gray-500 disabled:opacity-50 flex-shrink-0"
-                >
-                  Delete
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    value={f.program ?? ''}
+                    onChange={(e) => setProgram(f, e.target.value as Program | '')}
+                    disabled={busy}
+                    className="min-h-[40px] border border-gray-200 rounded-xl px-2 text-sm text-gray-700 disabled:opacity-50 bg-white flex-shrink-0"
+                  >
+                    <option value="">No program</option>
+                    {PROGRAMS.map((p) => (
+                      <option key={p} value={p}>{PROGRAM_LABELS[p]}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => toggle(f)}
+                    disabled={busy}
+                    className={`min-h-[40px] px-4 rounded-xl text-sm font-semibold disabled:opacity-50 flex-shrink-0 ${
+                      f.active ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'
+                    }`}
+                  >
+                    {f.active ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                  <button
+                    onClick={() => setDeleting(f)}
+                    disabled={busy}
+                    className="min-h-[40px] px-3 rounded-xl text-sm font-semibold bg-gray-100 text-gray-500 disabled:opacity-50 flex-shrink-0"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         </div>
       ))}
       {list.length === 0 && <p className="text-gray-400 text-center py-6">No flavors yet.</p>}
+      {list.length > 0 && groups.length === 0 && <p className="text-gray-400 text-center py-6">No flavors match this filter.</p>}
 
       {deleting && (
         <ConfirmModal

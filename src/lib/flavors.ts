@@ -33,11 +33,52 @@ export const FLAVOR_TYPE_BADGE_CLASS: Record<FlavorType, string> = {
   hs_custard: 'bg-teal-100 text-teal-700',
 }
 
+// Patch 40: optional tag reflecting corporate's Ice Flavors ordering-status
+// chart -- independent of `active` (a flavor can be hibernate and still
+// active in the catalog, e.g. kept around in case a few are still on hand).
+// null/untagged is the default and shows no badge anywhere.
+export type Program = 'everyday' | 'seasonal' | 'low_inventory' | 'opt_in' | 'hibernate' | 'lto'
+
+export const PROGRAMS: Program[] = ['everyday', 'seasonal', 'low_inventory', 'opt_in', 'hibernate', 'lto']
+
+export const PROGRAM_LABELS: Record<Program, string> = {
+  everyday: 'Everyday',
+  seasonal: 'Seasonal',
+  low_inventory: 'Low Inventory',
+  opt_in: 'Opt-In',
+  hibernate: 'Hibernate',
+  lto: 'LTO',
+}
+
+// A small glyph per value (never a color) is the only thing that tells the
+// six apart at a glance -- every badge shares the exact same neutral
+// gray-outlined style (text-gray-600/border-gray-300, same family as patch
+// 39's "Check count" badge) so none of them can be mistaken for an existing
+// color meaning in this app: amber/orange (overdue), hot pink (Action
+// Needed), a person's assigned color, the ICE/CREAM/SF/HS type badges, or
+// indigo (the is_off "OFF" switch)/teal (storage).
+export const PROGRAM_BADGE_ICON: Record<Program, string> = {
+  everyday: '○',
+  seasonal: '◐',
+  low_inventory: '▽',
+  opt_in: '◇',
+  hibernate: '◌',
+  lto: '◆',
+}
+
+export const PROGRAM_BADGE_CLASS =
+  'inline-flex items-center gap-1 text-[11px] font-semibold text-gray-600 border border-gray-300 rounded-full px-2 py-0.5'
+
+export function isValidProgram(value: unknown): value is Program {
+  return typeof value === 'string' && (PROGRAMS as string[]).includes(value)
+}
+
 export interface Flavor {
   id: string
   name: string
   type: FlavorType
   active: boolean
+  program: Program | null
   created_at: string
 }
 
