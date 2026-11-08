@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const dir = dirname(fileURLToPath(import.meta.url))
-const suites = ['role-checks.mjs', 'step-checks.mjs', 'logout-race.mjs']
+const suites = ['role-checks.mjs', 'step-checks.mjs', 'logout-race.mjs', 'row-cap-checks.mjs']
 
 function runOne(file) {
   return new Promise((resolve) => {

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { requireRole } from '@/lib/session'
-import { fetchStoreFlowHistory, sumFlowInWindow, computeCorrectedConsumed, pacificDayBoundsMs } from '@/lib/usage-server'
+import {
+  fetchLatestCountAtOrBefore,
+  fetchFlowForItem,
+  computeCorrectedConsumed,
+  pacificDayBoundsMs,
+  runBatched,
+  CountPoint,
+} from '@/lib/usage-server'
 
 export async function GET(request: NextRequest) {
   const db = getServerSupabase()
@@ -20,32 +27,46 @@ export async function GET(request: NextRequest) {
   // physically operates in Pacific time. pacificDayBoundsMs is DST-safe.
   const startMs = pacificDayBoundsMs(start).endMs
   const endMs = pacificDayBoundsMs(end).endMs
-  const { data, error } = await db
-    .from('inventory_counts')
-    .select('item_id, count, created_at, items(name, category, unit)')
-    .eq('type', 'count')
-    .eq('is_test_data', false)
-    .lte('created_at', new Date(endMs).toISOString())
-    .order('created_at', { ascending: false })
+  const endISO = new Date(endMs).toISOString()
+  const startISO = new Date(startMs).toISOString()
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // items is a bounded catalog table (not a growing log -- unlike
+  // inventory_counts/order_history/storage_moves), so fetching it whole is
+  // safe. It's the universe of item_ids patch 41's per-item point queries
+  // below run against.
+  const { data: items, error: itemsError } = await db.from('items').select('id, name, category, unit')
+  if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 })
 
-  // For each item, find the last record on/before start date and last record on/before end date
-  const byItem: Record<string, { name: string; category: string; unit: string; records: { count: number; ts: number }[] }> = {}
+  type ItemRow = { id: string; name: string; category: string; unit: string }
+  const itemRows = (items ?? []) as ItemRow[]
 
-  type CountRow = { item_id: string; count: number; created_at: string; items: { name: string; category: string; unit: string } | null }
-  for (const row of (data as unknown) as CountRow[]) {
-    if (!row.items) continue
-    if (!byItem[row.item_id]) {
-      byItem[row.item_id] = {
-        name: row.items.name,
-        category: row.items.category,
-        unit: row.items.unit,
-        records: [],
-      }
-    }
-    byItem[row.item_id].records.push({ count: row.count, ts: new Date(row.created_at).getTime() })
-  }
+  // Step 1: latest real count on/before the end date, per item. An item
+  // with no such row was never counted by the end date and is excluded --
+  // exactly matching the old bulk query's behavior (it only ever produced
+  // rows for item_ids actually present in the fetched count rows).
+  const endPoints = await runBatched(itemRows, async (item) => ({
+    item,
+    endRecord: await fetchLatestCountAtOrBefore(db, item.id, endISO),
+  }))
+  const withEnd = endPoints.filter((p): p is { item: ItemRow; endRecord: CountPoint } => p.endRecord !== null)
+
+  // Step 2: latest real count on/before the start date, per item -- only
+  // for items that passed step 1.
+  const withStart = await runBatched(withEnd, async ({ item, endRecord }) => ({
+    item,
+    endRecord,
+    startRecord: await fetchLatestCountAtOrBefore(db, item.id, startISO),
+  }))
+
+  // Step 3: net delivery/move flow strictly between the two snapshots --
+  // only for items that have both a start and an end record (matches the
+  // old code's early-continue for a null start/end count).
+  const needsFlow = withStart.filter((r) => r.startRecord !== null)
+  const flowResults = await runBatched(needsFlow, async (r) => ({
+    item_id: r.item.id,
+    netFlow: await fetchFlowForItem(db, r.item.id, (r.startRecord as CountPoint).created_at, r.endRecord.created_at),
+  }))
+  const flowByItem = new Map(flowResults.map((f) => [f.item_id, f.netFlow]))
 
   const results: {
     item_id: string
@@ -58,32 +79,34 @@ export async function GET(request: NextRequest) {
     flagged: boolean
   }[] = []
 
-  // Patch 39 Part A: a delivery or a move_to_store raises current_count
-  // without a sale, and a move_to_storage lowers it without a sale --
-  // either would otherwise make the naive delta below undercount, overcount,
-  // or go negative on true consumption. Add back/subtract whatever happened
-  // strictly between each item's own start and end snapshot timestamps.
-  // Items with no such events in that window are completely unaffected --
-  // same consumed value as before this patch.
-  const flowHistory = await fetchStoreFlowHistory(db, Object.keys(byItem), new Date(endMs).toISOString())
-
-  for (const [item_id, item] of Object.entries(byItem)) {
-    // records are newest first; find latest on/before start and latest on/before end
-    const startRecord = item.records.find((r) => r.ts <= startMs)
-    const endRecord = item.records.find((r) => r.ts <= endMs)
-
-    const startCount = startRecord?.count ?? null
-    const endCount = endRecord?.count ?? null
-
-    if (startCount === null || endCount === null) {
-      results.push({ item_id, name: item.name, category: item.category, unit: item.unit, start_count: startCount, end_count: endCount, consumed: 0, flagged: false })
+  for (const { item, endRecord, startRecord } of withStart) {
+    if (!startRecord) {
+      results.push({
+        item_id: item.id,
+        name: item.name,
+        category: item.category,
+        unit: item.unit,
+        start_count: null,
+        end_count: endRecord.count,
+        consumed: 0,
+        flagged: false,
+      })
       continue
     }
 
-    const netFlow = sumFlowInWindow(flowHistory[item_id], (startRecord as { ts: number }).ts, (endRecord as { ts: number }).ts)
-    const { consumed, flagged } = computeCorrectedConsumed(startCount, endCount, netFlow)
+    const netFlow = flowByItem.get(item.id) ?? 0
+    const { consumed, flagged } = computeCorrectedConsumed(startRecord.count, endRecord.count, netFlow)
 
-    results.push({ item_id, name: item.name, category: item.category, unit: item.unit, start_count: startCount, end_count: endCount, consumed, flagged })
+    results.push({
+      item_id: item.id,
+      name: item.name,
+      category: item.category,
+      unit: item.unit,
+      start_count: startRecord.count,
+      end_count: endRecord.count,
+      consumed,
+      flagged,
+    })
   }
 
   // Sort by consumed desc (most used first); a flagged negative is clamped

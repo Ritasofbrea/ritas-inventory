@@ -1,6 +1,6 @@
 # E2E regression scripts
 
-Hand-written Node scripts (not a test runner/framework) that regress three
+Hand-written Node scripts (not a test runner/framework) that regress
 specific behaviors that have broken before. They are **not** a full
 coverage suite — see `route-access.md` at the repo root for the complete
 role-access table these partially regress.
@@ -23,7 +23,17 @@ points at.
   must still reach `/login`'s three-button screen even if `POST
   /api/logout` fails or hangs (bounded by a 3s client-side timeout in
   `Navigation.tsx`). This is the only suite that drives a real browser
-  (Playwright) — the other two talk to the API directly over `fetch`.
+  (Playwright) — the others talk to the API directly over `fetch`.
+- **`row-cap-checks.mjs`** — patch 41: PostgREST silently caps any
+  unlimited `.select()` at 1000 rows. Proves `/api/counts/last-per-item`
+  returns exactly one row per item that has ever actually been counted
+  (cross-checked independently via direct REST, batched 20 at a time) --
+  the real regression this guards against is an item silently vanishing
+  from Current Stock/Dashboard once `inventory_counts` grows past the cap.
+  Also sanity-checks `/api/reports/velocity` and `/api/par-suggestions`
+  over a multi-year range for a well-formed 200. Runs against real
+  production-sized data, not a seeded dataset, since the bug only
+  reproduces once a table is actually past 1000 rows.
 
 ## Setup (one time)
 ```
@@ -62,10 +72,11 @@ the normal PIN screen, only through this test helper.
 Nothing needs toggling before or after a run anymore. Just start the dev
 server in another terminal (`npm run dev`) and run:
 ```
-npm run test:e2e                 # all three, in sequence
+npm run test:e2e                 # all four, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
 npm run test:e2e:logout-race     # doesn't need either ZZTEST account
+npm run test:e2e:row-cap-checks
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and
