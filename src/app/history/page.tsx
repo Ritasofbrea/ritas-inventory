@@ -19,7 +19,7 @@ export default function HistoryPage() {
   const router = useRouter()
   const [history, setHistory] = useState<InventoryCount[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'recent' | 'top10'>('top10')
+  const [view, setView] = useState<'recent' | 'top10'>('recent')
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   const [top10, setTop10] = useState<VelocityRow[]>([])
