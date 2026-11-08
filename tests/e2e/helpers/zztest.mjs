@@ -30,4 +30,9 @@ export async function sweepZztestFixtures() {
   // Orphaned (detached, template_id=null) instances left behind by a hard
   // delete, caught by title or checklist_name snapshot.
   await rest('task_instances?or=(title.ilike.zztest*,checklist_name.ilike.zztest*)', { method: 'DELETE' })
+
+  // notification-linking-checks.mjs's fake push subscription fixture
+  // (endpoint contains "zztest.example.com") — normally cleaned up in its
+  // own try/finally, this only matters if that run crashed first.
+  await rest('push_subscriptions?endpoint=ilike.*zztest*', { method: 'DELETE' })
 }

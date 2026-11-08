@@ -49,7 +49,10 @@ export async function sendPushToSubs(db: SupabaseClient, subs: PushSub[], payloa
 // Subscriptions belonging to active owners who have the given alert switch
 // on. An owner with the switch off, or who hasn't re-tapped "Enable
 // Notifications" since push_subscriptions.owner_name was added, gets
-// nothing — same as any other missing-subscription case today.
+// nothing — same as any other missing-subscription case today. The
+// owner_name scoping here is what guarantees a device linked to Josh is
+// never reachable through Gina's switch (or vice versa): it's always
+// scoped to the one owner's own name, never a shared bucket.
 export async function subsForOwnersWithAlert(
   db: SupabaseClient,
   alertColumn: 'order_alerts_enabled' | 'receipt_note_alerts_enabled'
@@ -58,5 +61,13 @@ export async function subsForOwnersWithAlert(
   const names = (owners ?? []).map((o: { name: string }) => o.name)
   if (names.length === 0) return []
   const { data: subs } = await db.from('push_subscriptions').select('endpoint, p256dh, auth').in('owner_name', names)
+  return (subs ?? []) as PushSub[]
+}
+
+// One specific owner's devices, regardless of their alert switches — used
+// only by the "Send me a test notification" button, which tests DEVICE
+// LINKAGE itself, not whether a real reminder would currently fire.
+export async function subsForOwner(db: SupabaseClient, name: string): Promise<PushSub[]> {
+  const { data: subs } = await db.from('push_subscriptions').select('endpoint, p256dh, auth').eq('owner_name', name)
   return (subs ?? []) as PushSub[]
 }

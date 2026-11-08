@@ -1,11 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { getOwnerName } from '@/lib/auth'
 
 interface OwnerAlerts {
   name: string
   order_alerts_enabled: boolean
   receipt_note_alerts_enabled: boolean
+  linked: boolean
 }
 
 const switchBtn = (active: boolean) =>
@@ -21,6 +23,8 @@ export default function OwnerAlertSettings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
+  const [testingName, setTestingName] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +62,33 @@ export default function OwnerAlertSettings() {
     }
   }
 
+  // Owner-only feature — a device that has never logged in as an owner
+  // (shift_lead, staff) has no getOwnerName() value, so this is only ever
+  // "you" for whichever owner this device is currently logged in as.
+  const myName = getOwnerName()
+
+  const sendTest = async (name: string) => {
+    setTestingName(name)
+    setTestResult((prev) => ({ ...prev, [name]: '' }))
+    try {
+      const res = await fetch('/api/owners/alerts/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) throw new Error()
+      const { sent } = await res.json()
+      setTestResult((prev) => ({
+        ...prev,
+        [name]: sent > 0 ? `Sent to ${sent} device${sent !== 1 ? 's' : ''}` : `No linked devices for ${name} — have them tap Enable Notifications`,
+      }))
+    } catch {
+      setTestResult((prev) => ({ ...prev, [name]: 'Could not send. Try again.' }))
+    } finally {
+      setTestingName(null)
+    }
+  }
+
   if (loading) return <p className="text-gray-400 text-center py-10">Loading…</p>
 
   return (
@@ -65,7 +96,12 @@ export default function OwnerAlertSettings() {
       {error && <p className="text-red-500 text-sm">{error}</p>}
       {owners.map((owner) => (
         <div key={owner.name} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4">
-          <p className="font-bold text-gray-900">{owner.name}</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-bold text-gray-900">{owner.name}</p>
+            <span className={`text-xs font-semibold ${owner.linked ? 'text-green-600' : 'text-gray-400'}`}>
+              {owner.linked ? (owner.name === myName ? 'Linked to you' : 'Linked') : 'Not linked'}
+            </span>
+          </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-xs text-gray-500 font-medium">Order reminders</label>
@@ -109,6 +145,18 @@ export default function OwnerAlertSettings() {
                 Off
               </button>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1 pt-1 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => sendTest(owner.name)}
+              disabled={testingName === owner.name}
+              className="min-h-[40px] text-sm font-semibold text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 mt-2"
+            >
+              {testingName === owner.name ? 'Sending…' : `Send ${owner.name} a test notification`}
+            </button>
+            {testResult[owner.name] && <p className="text-xs text-gray-500">{testResult[owner.name]}</p>}
           </div>
         </div>
       ))}

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const dir = dirname(fileURLToPath(import.meta.url))
-const suites = ['role-checks.mjs', 'step-checks.mjs', 'logout-race.mjs', 'row-cap-checks.mjs', 'vendor-schedule-checks.mjs']
+const suites = ['role-checks.mjs', 'step-checks.mjs', 'logout-race.mjs', 'row-cap-checks.mjs', 'vendor-schedule-checks.mjs', 'notification-linking-checks.mjs']
 
 // vendor-schedule-checks.mjs imports src/lib/*.ts files that use
 // extensionless relative imports internally (e.g. vendor-schedule.ts's

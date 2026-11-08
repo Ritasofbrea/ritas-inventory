@@ -45,6 +45,13 @@ points at.
   plain `node` — `vendor-schedule.ts` imports other `src/lib` files with
   extensionless relative imports, which only bundler-style resolution
   follows.
+- **`notification-linking-checks.mjs`** — patch 44 fix: proves
+  `push_subscriptions.owner_name` isolation (`subsForOwner`/
+  `subsForOwnersWithAlert` in `src/lib/push-server.ts`) — a device linked
+  to one owner is never reachable through another owner's request or
+  switch — using `ZZTEST Owner` as a safe stand-in third identity so no
+  real Josh/Gina device row is ever touched. Also checks the shape of GET
+  `/api/owners/alerts`' new `linked` field.
 
 ## Setup (one time)
 ```
@@ -83,12 +90,13 @@ the normal PIN screen, only through this test helper.
 Nothing needs toggling before or after a run anymore. Just start the dev
 server in another terminal (`npm run dev`) and run:
 ```
-npm run test:e2e                 # all five, in sequence
+npm run test:e2e                 # all six, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
 npm run test:e2e:logout-race     # doesn't need either ZZTEST account
 npm run test:e2e:row-cap-checks
 npm run test:e2e:vendor-schedule # pure logic, doesn't need the dev server or either ZZTEST account
+npm run test:e2e:notification-linking
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

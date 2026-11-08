@@ -114,6 +114,21 @@ async function run() {
     check('SECRET: GET /api/cron/vendor-reminders with wrong bearer -> 401', res.status === 401)
   }
 
+  // OWNER -- "Send me a test notification" (POST /api/owners/alerts/test).
+  // Only ever checking the role gate and input validation here — it sends
+  // a real push on success, so there's no 200 case in this script; the
+  // dedicated linked-devices isolation check lives in
+  // vendor-schedule-checks.mjs (push_subscriptions writes, ZZTEST-only).
+  {
+    const body = JSON.stringify({ name: 'Josh' })
+    const noSession = await apiFetch('/api/owners/alerts/test', null, { method: 'POST', body })
+    check('OWNER: POST /api/owners/alerts/test with no session -> 401', noSession.status === 401)
+    const asShiftLead = await apiFetch('/api/owners/alerts/test', shiftLead.cookie, { method: 'POST', body })
+    check('OWNER: POST /api/owners/alerts/test as shift_lead -> 403', asShiftLead.status === 403)
+    const asOwnerBadName = await apiFetch('/api/owners/alerts/test', owner.cookie, { method: 'POST', body: JSON.stringify({ name: 'ZZTEST Owner' }) })
+    check('OWNER: POST /api/owners/alerts/test with an unknown name -> 400', asOwnerBadName.status === 400)
+  }
+
   console.log(failures === 0 ? '\nALL PASSED' : `\n${failures} FAILURE(S)`)
   process.exit(failures === 0 ? 0 : 1)
 }

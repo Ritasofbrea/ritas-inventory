@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { clearRole, getRole } from '@/lib/auth'
+import { clearRole, getRole, getOwnerName } from '@/lib/auth'
 import { useEffect, useRef, useState } from 'react'
 import { Role } from '@/lib/types'
 import { SKIP_LOGIN_AUTOSKIP_KEY } from '@/components/SessionGuard'
@@ -37,6 +37,7 @@ export default function Navigation() {
   const moreRef = useRef<HTMLDivElement>(null)
   const moreButtonRef = useRef<HTMLButtonElement>(null)
   const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
+  const [linkMessage, setLinkMessage] = useState('')
   const [todoBadge, setTodoBadge] = useState(0)
   const [dueVendors, setDueVendors] = useState<{ vendor: string; cutoff_time: string; status: VendorDueStatus; itemCount: number }[]>([])
 
@@ -99,34 +100,84 @@ export default function Navigation() {
     }
   }, [role, pathname])
 
-  const enableNotifications = async () => {
+  // Bug fix: push_subscriptions.owner_name only gets set on this POST, but
+  // the old code only ever ran it from a fresh "Enable Notifications" tap
+  // — an owner whose browser already had permission (and an existing
+  // subscription) saw the dropdown collapse to a static "🔔 Notifications
+  // on" line with no button at all, so that device's row could never get
+  // attributed to them, and order reminders could never reach it.
+  //
+  // `silent=true` is the auto-link path: runs on every mount for a logged-
+  // in owner, and does NOTHING unless permission is already granted AND a
+  // subscription already exists — it only ever re-sends what's already
+  // there to keep owner_name current (e.g. after switching owners on a
+  // shared device), never prompts, never creates a new subscription, never
+  // touches notifStatus/linkMessage on failure. `silent=false` is the
+  // explicit button tap: prompts for permission if needed, creates a
+  // subscription if none exists, and always gives visible feedback.
+  //
+  // Either way, reuses an existing subscription instead of unsubscribing
+  // and resubscribing (the old code's behavior) — POSTing the SAME
+  // endpoint to /api/subscribe just updates that one row's owner_name
+  // (upsert by endpoint), it never creates a duplicate.
+  const linkNotifications = async (silent: boolean) => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
-    setNotifStatus('requesting')
-    setMoreOpen(false)
+    if (!silent) {
+      setNotifStatus('requesting')
+      setLinkMessage('')
+      setMoreOpen(false)
+    }
     try {
       const registrations = await navigator.serviceWorker.getRegistrations()
       await Promise.all(registrations.map((r) => r.update()))
-      const permission = await Notification.requestPermission()
-      if (permission !== 'granted') { setNotifStatus('denied'); return }
+
+      if (silent && Notification.permission !== 'granted') return
+      const permission = silent ? Notification.permission : await Notification.requestPermission()
+      if (permission !== 'granted') {
+        if (!silent) setNotifStatus('denied')
+        return
+      }
+
       const reg = await navigator.serviceWorker.ready
-      const existing = await reg.pushManager.getSubscription()
-      if (existing) await existing.unsubscribe()
-      const rawKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-      const padding = '='.repeat((4 - (rawKey.length % 4)) % 4)
-      const base64 = (rawKey + padding).replace(/-/g, '+').replace(/_/g, '/')
-      const applicationServerKey = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })
-      await fetch('/api/subscribe', {
+      let sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        if (silent) return // auto-link only re-sends an EXISTING subscription, never creates one
+        const rawKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+        const padding = '='.repeat((4 - (rawKey.length % 4)) % 4)
+        const base64 = (rawKey + padding).replace(/-/g, '+').replace(/_/g, '/')
+        const applicationServerKey = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })
+      }
+
+      const res = await fetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sub.toJSON()),
       })
+      if (!res.ok) throw new Error('subscribe failed')
       setNotifStatus('granted')
+      if (!silent) setLinkMessage(`Notifications linked to ${getOwnerName() ?? 'you'}`)
     } catch (e) {
       console.error('enable notifications error:', e)
-      setNotifStatus('idle')
+      if (!silent) {
+        setNotifStatus('idle')
+        setLinkMessage('Could not link notifications. Try again.')
+      }
     }
   }
+
+  const enableNotifications = () => linkNotifications(false)
+
+  // Auto-heal on every page an owner opens — see linkNotifications' comment.
+  // Also what keeps a shared device correctly attributed after switching
+  // owners: as soon as the new owner's session loads a page, this re-sends
+  // the browser's (unchanged) subscription under THEIR name, overwriting
+  // whatever owner_name it had before.
+  useEffect(() => {
+    if (role !== 'owner') return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: auto-heal attempt on mount/role-change, same pattern as this file's own role-loading effect above
+    linkNotifications(true)
+  }, [role])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -159,7 +210,43 @@ export default function Navigation() {
   // instead of a race. SKIP_LOGIN_AUTOSKIP_KEY tells /login to show the
   // three buttons this one time regardless, so a deliberate Home/Switch tap
   // always works even when logout couldn't actually reach the server.
+  // Bug fix: on a shared device, logging out must not leave this device's
+  // push subscription silently attributed to the owner who just left — if
+  // it sits unattended with no one logging back in for a while, pushes
+  // meant for THAT owner would keep landing on a device they're no longer
+  // using. Unlinks (deletes, doesn't just null out) this browser's
+  // push_subscriptions row while still authenticated as the outgoing
+  // owner — the browser's own subscription object is untouched, so the
+  // next owner to log in and open the app gets it re-attributed to them
+  // automatically via the auto-link effect above, no re-prompt needed.
+  // Owner-only (shift_lead/staff never have a push subscription to begin
+  // with). Best-effort: a failure here must never block logging out.
+  const unlinkNotificationsForLogout = async () => {
+    if (role !== 'owner') return
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (!sub) return
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 2000)
+      try {
+        await fetch('/api/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(timeout)
+      }
+    } catch {
+      // best-effort — never block logout over this (timed out, failed, or no subscription API)
+    }
+  }
+
   const handleLogout = async () => {
+    await unlinkNotificationsForLogout()
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 3000)
@@ -305,19 +392,23 @@ export default function Navigation() {
                       </Link>
                     ))}
                     <div className="border-t border-gray-100 mt-1 pt-1">
-                      {notifStatus === 'granted' ? (
-                        <span className="block px-4 py-2.5 text-sm text-green-600 font-medium">🔔 Notifications on</span>
-                      ) : notifStatus === 'denied' ? (
+                      {notifStatus === 'denied' ? (
                         <span className="block px-4 py-2.5 text-sm text-gray-400">Notifications blocked</span>
                       ) : (
+                        // Bug fix: this used to be a static, unclickable
+                        // span once granted, with no way to re-link a
+                        // device whose subscription existed before
+                        // push_subscriptions.owner_name did. Always a real
+                        // button now, so it can always be tapped again.
                         <button
                           onClick={enableNotifications}
                           disabled={notifStatus === 'requesting'}
-                          className="block w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          className={`block w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 ${notifStatus === 'granted' ? 'text-green-600' : 'text-gray-700'}`}
                         >
-                          {notifStatus === 'requesting' ? 'Enabling…' : '🔔 Enable Notifications'}
+                          {notifStatus === 'requesting' ? 'Enabling…' : notifStatus === 'granted' ? '🔔 Notifications on (tap to relink)' : '🔔 Enable Notifications'}
                         </button>
                       )}
+                      {linkMessage && <p className="px-4 pb-2 text-xs text-gray-500">{linkMessage}</p>}
                     </div>
                   </div>
                 )}
