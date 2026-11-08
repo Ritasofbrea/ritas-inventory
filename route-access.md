@@ -47,6 +47,7 @@ Tiers, most to least permissive:
 | `/api/items/storage` | PATCH | OWNER | patch 38 — flips `items.has_storage`. `{ id, has_storage }`. |
 | `/api/items/storage/add` | PATCH | OWNER | patch 38 — bulk purchase into storage. `{ id, amount, note? }`, amount must be positive. |
 | `/api/items/storage/move` | PATCH | OWNER | patch 38 — moves `amount` from storage to store (current_count). `{ id, amount, note? }`; 400 if amount exceeds what's in storage. |
+| `/api/items/storage/move-to-storage` | PATCH | OWNER | patch 39 — moves `amount` from store (current_count) to storage, the reverse of the route above. `{ id, amount, note? }`; 400 if amount exceeds what's in the store. |
 | `/api/items/storage/correction` | PATCH | OWNER | patch 38 — sets storage to an exact number (miscount fix). `{ id, new_value, note? }`. |
 | `/api/order-history` | POST | SL+ (destination:'storage' is OWNER-only) | patch 38 — a receiving line can set `destination: 'storage'` to route a `has_storage` item's received quantity to storage instead of current_count. Re-checked server-side against the session role and the item's actual `has_storage` — a shift_lead sending it, or any item without `has_storage`, falls back to today's default (current_count), unchanged. |
 | `/api/notes` | GET | ANY | `?role=` query param removed — owner-only notes now gated by `session.role === 'owner'` only |

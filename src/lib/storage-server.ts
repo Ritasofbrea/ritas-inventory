@@ -7,7 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type StorageWriteResult<T = {}> = ({ ok: true } & T) | { ok: false; error: string; status: number }
 
-export type StorageMoveKind = 'add' | 'move_to_store' | 'receive_to_storage' | 'correction'
+export type StorageMoveKind = 'add' | 'move_to_store' | 'receive_to_storage' | 'correction' | 'move_to_storage'
 
 interface ItemStorageRow {
   id: string
@@ -23,11 +23,14 @@ async function readItemStorage(db: SupabaseClient, itemId: string): Promise<Item
 
 const MAX_RETRIES = 3
 
-// Two quick taps (or two different people) racing the same item's
-// storage_count: the UPDATE's .eq('storage_count', storageBefore) only
-// applies if nobody else already changed it since we read it. A racer gets
-// 0 rows back and retries against the fresh value instead of silently
-// double-applying or clobbering the other write.
+// Two quick taps (or two different people) racing the same item's storage
+// or store count: the UPDATE's .eq(...) guards on BOTH columns we read, so
+// it only applies if neither changed since we read them. Patch 39: widened
+// from storage_count alone -- move_to_storage validates against
+// current_count, so a concurrent weekly Count submission (which only
+// touches current_count) must also be caught, not just a racing storage
+// write. A racer gets 0 rows back and retries against fresh values instead
+// of silently double-applying or clobbering the other write.
 async function writeStorageChange(
   db: SupabaseClient,
   itemId: string,
@@ -46,6 +49,7 @@ async function writeStorageChange(
     .update({ storage_count: storageAfter, current_count: storeAfter, storage_updated_at: now })
     .eq('id', itemId)
     .eq('storage_count', storageBefore)
+    .eq('current_count', storeBefore)
     .select()
     .maybeSingle()
 
@@ -68,10 +72,12 @@ async function writeStorageChange(
   return { ok: true, item: updated }
 }
 
-// 'add' (bulk purchase into storage) / 'move_to_store' (internal transfer,
-// also bumps current_count) / 'receive_to_storage' (a delivery routed to
-// storage instead of the store). amount must be a positive number for all
-// three. move_to_store additionally can't exceed what's currently in storage.
+// 'add' (bulk purchase into storage) / 'move_to_store' (internal transfer
+// storage -> store) / 'move_to_storage' (internal transfer store ->
+// storage, patch 39) / 'receive_to_storage' (a delivery routed to storage
+// instead of the store). amount must be a positive number for all four.
+// move_to_store can't exceed what's currently in storage; move_to_storage
+// can't exceed what's currently in the store.
 export async function applyStorageChange(
   db: SupabaseClient,
   params: { itemId: string; kind: Exclude<StorageMoveKind, 'correction'>; amount: number; byName: string | null; note?: string | null }
@@ -95,6 +101,10 @@ export async function applyStorageChange(
       if (amount > storageBefore) return { ok: false, error: 'Amount exceeds what is in storage', status: 400 }
       storageAfter = storageBefore - amount
       storeAfter = storeBefore + amount
+    } else if (kind === 'move_to_storage') {
+      if (amount > storeBefore) return { ok: false, error: 'Amount exceeds what is in the store', status: 400 }
+      storageAfter = storageBefore + amount
+      storeAfter = storeBefore - amount
     } else {
       storageAfter = storageBefore + amount
       storeAfter = storeBefore
@@ -102,53 +112,16 @@ export async function applyStorageChange(
 
     const result = await writeStorageChange(db, itemId, kind, storageBefore, storeBefore, storageAfter, storeAfter, amount, byName, note ?? null)
     if (result.ok || result.status !== 409) return result
-    // status 409 ("retry") -- someone else changed storage_count since we read it; loop and re-read.
+    // status 409 ("retry") -- someone else changed storage_count or current_count since we read them; loop and re-read.
   }
 
   return { ok: false, error: 'Storage changed concurrently -- please try again', status: 409 }
 }
 
-// Reports fix (velocity + par-suggestions): a 'move_to_store' moves
-// physical stock from storage into the store without a sale, which would
-// otherwise make a naive (startCount - endCount) delta undercount -- or go
-// negative on -- true consumption. Both report routes need, per item, every
-// move_to_store amount with a timestamp, so they can sum just the ones that
-// fall inside that item's own two chosen count-snapshot timestamps and add
-// that back into the delta. Returns each item's moves sorted oldest-first;
-// `beforeISO` only bounds the query (same upper edge as the item's count
-// fetch) -- the per-item window filtering happens in the caller, since each
-// item's actual start/end snapshot timestamps differ.
-export async function fetchMoveToStoreHistory(
-  db: SupabaseClient,
-  itemIds: string[],
-  beforeISO: string
-): Promise<Record<string, { amount: number; ts: number }[]>> {
-  if (itemIds.length === 0) return {}
-  const { data, error } = await db
-    .from('storage_moves')
-    .select('item_id, amount, created_at')
-    .eq('kind', 'move_to_store')
-    .in('item_id', itemIds)
-    .lte('created_at', beforeISO)
-    .order('created_at', { ascending: true })
-  if (error || !data) return {}
-
-  const byItem: Record<string, { amount: number; ts: number }[]> = {}
-  for (const row of data as { item_id: string; amount: number; created_at: string }[]) {
-    if (!byItem[row.item_id]) byItem[row.item_id] = []
-    byItem[row.item_id].push({ amount: Number(row.amount), ts: new Date(row.created_at).getTime() })
-  }
-  return byItem
-}
-
-// Sums a window's worth of fetchMoveToStoreHistory's per-item moves: every
-// move with fromExclusiveTs < ts <= toInclusiveTs. Matches the exact two
-// snapshot timestamps a report route picked for that item, not the
-// caller's broader requested date range.
-export function sumMovesInWindow(moves: { amount: number; ts: number }[] | undefined, fromExclusiveTs: number, toInclusiveTs: number): number {
-  if (!moves) return 0
-  return moves.reduce((sum, m) => (m.ts > fromExclusiveTs && m.ts <= toInclusiveTs ? sum + m.amount : sum), 0)
-}
+// Patch 39: the move-history-for-reports helpers that used to live here
+// (fetchMoveToStoreHistory/sumMovesInWindow) were replaced by the broader
+// fetchStoreFlowHistory/sumFlowInWindow in src/lib/usage-server.ts, which
+// also accounts for deliveries and the new move_to_storage kind.
 
 // Owner sets storage to an exact number (fixing a miscount). Unlike the
 // kinds above, the signed delta (can be negative) is itself the history

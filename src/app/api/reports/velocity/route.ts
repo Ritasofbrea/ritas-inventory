@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { requireRole } from '@/lib/session'
-import { fetchMoveToStoreHistory, sumMovesInWindow } from '@/lib/storage-server'
+import { fetchStoreFlowHistory, sumFlowInWindow, computeCorrectedConsumed, pacificDayBoundsMs } from '@/lib/usage-server'
 
 export async function GET(request: NextRequest) {
   const db = getServerSupabase()
@@ -15,9 +15,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing start or end date' }, { status: 400 })
   }
 
-  // Fetch all count records up through the end date, newest first
-  const startMs = new Date(start).setHours(23, 59, 59, 999)
-  const endMs = new Date(end).setHours(23, 59, 59, 999)
+  // Patch 39 Part C: "end of day" means store-local (Pacific) midnight, not
+  // whatever timezone the server process happens to run in -- the store
+  // physically operates in Pacific time. pacificDayBoundsMs is DST-safe.
+  const startMs = pacificDayBoundsMs(start).endMs
+  const endMs = pacificDayBoundsMs(end).endMs
   const { data, error } = await db
     .from('inventory_counts')
     .select('item_id, count, created_at, items(name, category, unit)')
@@ -53,16 +55,17 @@ export async function GET(request: NextRequest) {
     start_count: number | null
     end_count: number | null
     consumed: number
+    flagged: boolean
   }[] = []
 
-  // Patch 38: a move_to_store (storage -> store) raises current_count
-  // without a sale, which would otherwise make the naive delta below
-  // undercount -- or go negative on -- true consumption. Add back whatever
-  // moved into the store strictly between each item's own start and end
-  // snapshot timestamps. Items with no storage, or no moves in that window,
-  // get +0 and are completely unaffected -- same consumed value as before
-  // this patch.
-  const moveHistory = await fetchMoveToStoreHistory(db, Object.keys(byItem), new Date(endMs).toISOString())
+  // Patch 39 Part A: a delivery or a move_to_store raises current_count
+  // without a sale, and a move_to_storage lowers it without a sale --
+  // either would otherwise make the naive delta below undercount, overcount,
+  // or go negative on true consumption. Add back/subtract whatever happened
+  // strictly between each item's own start and end snapshot timestamps.
+  // Items with no such events in that window are completely unaffected --
+  // same consumed value as before this patch.
+  const flowHistory = await fetchStoreFlowHistory(db, Object.keys(byItem), new Date(endMs).toISOString())
 
   for (const [item_id, item] of Object.entries(byItem)) {
     // records are newest first; find latest on/before start and latest on/before end
@@ -72,20 +75,21 @@ export async function GET(request: NextRequest) {
     const startCount = startRecord?.count ?? null
     const endCount = endRecord?.count ?? null
 
-    // consumed = what was there at start minus what's left at end, plus
-    // anything moved into the store from storage in that exact window
-    // (which isn't consumption -- it's stock relocating, not leaving)
-    const movedIn = startRecord && endRecord ? sumMovesInWindow(moveHistory[item_id], startRecord.ts, endRecord.ts) : 0
-    const consumed =
-      startCount !== null && endCount !== null
-        ? parseFloat((startCount - endCount + movedIn).toFixed(2))
-        : 0
+    if (startCount === null || endCount === null) {
+      results.push({ item_id, name: item.name, category: item.category, unit: item.unit, start_count: startCount, end_count: endCount, consumed: 0, flagged: false })
+      continue
+    }
 
-    results.push({ item_id, name: item.name, category: item.category, unit: item.unit, start_count: startCount, end_count: endCount, consumed })
+    const netFlow = sumFlowInWindow(flowHistory[item_id], (startRecord as { ts: number }).ts, (endRecord as { ts: number }).ts)
+    const { consumed, flagged } = computeCorrectedConsumed(startCount, endCount, netFlow)
+
+    results.push({ item_id, name: item.name, category: item.category, unit: item.unit, start_count: startCount, end_count: endCount, consumed, flagged })
   }
 
-  // Sort by consumed desc (most used first), filter out items never counted
-  results.sort((a, b) => b.consumed - a.consumed)
+  // Sort by consumed desc (most used first); a flagged negative is clamped
+  // to 0 for ranking purposes only -- the displayed value stays the true,
+  // possibly-negative number.
+  results.sort((a, b) => Math.max(0, b.consumed) - Math.max(0, a.consumed))
 
   return NextResponse.json(results)
 }

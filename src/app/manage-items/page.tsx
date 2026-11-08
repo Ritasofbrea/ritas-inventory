@@ -49,7 +49,7 @@ export default function ManageItemsPage() {
   // Patch 38: storage switch + add/move/correction panel state
   const [storageTogglingId, setStorageTogglingId] = useState<string | null>(null)
   const [storagePanelId, setStoragePanelId] = useState<string | null>(null)
-  const [storageAction, setStorageAction] = useState<'add' | 'move' | 'correction'>('add')
+  const [storageAction, setStorageAction] = useState<'add' | 'move' | 'move_to_storage' | 'correction'>('add')
   const [storageAmount, setStorageAmount] = useState('')
   const [storageNote, setStorageNote] = useState('')
   const [storageWorking, setStorageWorking] = useState(false)
@@ -270,6 +270,7 @@ export default function ManageItemsPage() {
     const endpoint =
       storageAction === 'add' ? '/api/items/storage/add'
       : storageAction === 'move' ? '/api/items/storage/move'
+      : storageAction === 'move_to_storage' ? '/api/items/storage/move-to-storage'
       : '/api/items/storage/correction'
     const body = storageAction === 'correction'
       ? { id: item.id, new_value: value, note: storageNote.trim() || undefined }
@@ -720,7 +721,7 @@ export default function ManageItemsPage() {
                             {storagePanelId === item.id && (
                               <div className="ml-8 bg-teal-50 border border-teal-200 rounded-xl p-3 flex flex-col gap-2">
                                 <div className="flex gap-2 flex-wrap">
-                                  {(['add', 'move', 'correction'] as const).map((a) => (
+                                  {(['add', 'move', 'move_to_storage', 'correction'] as const).map((a) => (
                                     <button
                                       key={a}
                                       onClick={() => { setStorageAction(a); setStorageAmount(''); setStorageNote('') }}
@@ -728,7 +729,7 @@ export default function ManageItemsPage() {
                                         storageAction === a ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-teal-700 border-teal-200'
                                       }`}
                                     >
-                                      {a === 'add' ? 'Add to Storage' : a === 'move' ? 'Move to Store' : 'Correct Count'}
+                                      {a === 'add' ? 'Add to Storage' : a === 'move' ? 'Move to Store' : a === 'move_to_storage' ? 'Move to Storage' : 'Correct Count'}
                                     </button>
                                   ))}
                                 </div>
@@ -748,6 +749,9 @@ export default function ManageItemsPage() {
                                 </div>
                                 {storageAction === 'move' && (
                                   <p className="text-xs text-teal-600">Max: {item.storage_count} {item.unit} currently in storage.</p>
+                                )}
+                                {storageAction === 'move_to_storage' && (
+                                  <p className="text-xs text-teal-600">Max: {item.current_count} {item.unit} currently in the store.</p>
                                 )}
                                 <input
                                   type="text"

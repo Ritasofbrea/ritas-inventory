@@ -15,6 +15,7 @@ interface VelocityRow {
   start_count: number | null
   end_count: number | null
   consumed: number
+  flagged: boolean
 }
 
 function today() {
@@ -210,7 +211,13 @@ export default function ReportsPage() {
                       <span className="text-right text-sm text-gray-500">
                         {row.end_count !== null ? row.end_count : '—'}
                       </span>
-                      <span className={`text-right text-sm font-bold ${row.consumed > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                      <span
+                        className={`text-right text-sm font-bold ${
+                          row.flagged ? 'text-amber-600' : row.consumed > 0 ? 'text-gray-900' : 'text-gray-300'
+                        }`}
+                        title={row.flagged ? 'Negative after accounting for deliveries and storage moves -- check for a miscount.' : undefined}
+                      >
+                        {row.flagged && '⚠️ '}
                         {row.consumed > 0 ? row.consumed : row.consumed < 0 ? `+${Math.abs(row.consumed)}` : '—'}
                       </span>
                     </div>
