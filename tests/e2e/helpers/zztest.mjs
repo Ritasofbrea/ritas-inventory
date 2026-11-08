@@ -41,4 +41,8 @@ export async function sweepZztestFixtures() {
   // exist yet (supabase/add-vendor-week-status-log.sql not run).
   await rest('vendor_week_status?vendor=eq.ZZTEST%20Vendor', { method: 'DELETE' })
   await rest('vendor_week_status_log?vendor=eq.ZZTEST%20Vendor', { method: 'DELETE' }).catch(() => {})
+
+  // item-category-checks.mjs's fixture — normally deleted in its own
+  // try/finally, this only matters if that run crashed first.
+  await rest('items?name=ilike.zztest*', { method: 'DELETE' })
 }

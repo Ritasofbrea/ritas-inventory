@@ -143,12 +143,17 @@ export default function ManageItemsPage() {
           distributor_item_name: editDistributorItemName.trim() || null,
         }),
       })
-      if (!res.ok) throw new Error()
-      const updated = await res.json()
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
+      const body = await res.json().catch(() => null)
+      // Bug fix: a failed save used to throw a bare Error() here, which the
+      // catch below turned into a generic "Could not save" with no detail
+      // — the real reason (whatever the server actually said) never
+      // reached the screen. Now surfaces the server's own message when
+      // there is one.
+      if (!res.ok) throw new Error(body?.error || 'Could not save. Try again.')
+      setItems((prev) => prev.map((i) => (i.id === item.id ? body : i)))
       setEditingId(null)
-    } catch {
-      setError('Could not save. Try again.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save. Try again.')
     } finally {
       setSaving(false)
     }

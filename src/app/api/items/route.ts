@@ -75,7 +75,7 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireRole(db, request, ['owner', 'shift_lead'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
-  const { id, current_count, par_level, par_level_secondary, name, unit, secondary_count, secondary_unit, units_per_sub_unit, distributor, item_number, distributor_item_name } = body
+  const { id, current_count, par_level, par_level_secondary, name, category, unit, secondary_count, secondary_unit, units_per_sub_unit, distributor, item_number, distributor_item_name } = body
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -84,6 +84,17 @@ export async function PATCH(request: NextRequest) {
   if (par_level !== undefined) updates.par_level = par_level
   if (par_level_secondary !== undefined) updates.par_level_secondary = par_level_secondary
   if (name !== undefined) updates.name = name
+  // Bug fix: Manage Items' edit form has always sent `category` in this
+  // PATCH body (it's in the same request as name/unit/distributor/etc.),
+  // but it was never destructured or added to `updates` above — a category
+  // change silently had no effect: the request returned 200 with the
+  // item's OLD category (nothing else in the row changed either), so the
+  // UI had no reason to show an error, and a refresh "reverted" a change
+  // that had in fact never been saved. No DB constraint or category-name
+  // mismatch was involved — items.category is plain `text`, and the
+  // Manage Items dropdown's CATEGORIES list (src/lib/types.ts) already
+  // matches real stored values exactly, 'Syrups' included.
+  if (category !== undefined) updates.category = category
   if (unit !== undefined) updates.unit = unit
   if (secondary_count !== undefined) updates.secondary_count = secondary_count
   if (secondary_unit !== undefined) updates.secondary_unit = secondary_unit
@@ -91,6 +102,15 @@ export async function PATCH(request: NextRequest) {
   if (distributor !== undefined) updates.distributor = distributor
   if (item_number !== undefined) updates.item_number = item_number
   if (distributor_item_name !== undefined) updates.distributor_item_name = distributor_item_name
+
+  // Defense-in-depth for the same failure mode in general: if nothing in
+  // the body matched anything this route knows how to update (a typo'd or
+  // future unlisted field), say so explicitly instead of silently
+  // "succeeding" with a no-op update and an unchanged row — same
+  // reasoning/shape as /api/owners/alerts PATCH's equivalent guard.
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+  }
 
   const { data, error } = await db
     .from('items')

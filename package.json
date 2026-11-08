@@ -12,6 +12,7 @@
     "test:e2e:vendor-schedule": "tsx --env-file=.env.local tests/e2e/vendor-schedule-checks.mjs",
     "test:e2e:notification-linking": "node --env-file=.env.local tests/e2e/notification-linking-checks.mjs",
     "test:e2e:vendor-week-switch": "node --env-file=.env.local tests/e2e/vendor-week-switch-checks.mjs",
+    "test:e2e:item-category": "node --env-file=.env.local tests/e2e/item-category-checks.mjs",
     "test:e2e:step-checks": "node --env-file=.env.local tests/e2e/step-checks.mjs",
     "test:e2e:logout-race": "node --env-file=.env.local tests/e2e/logout-race.mjs",
     "test:e2e:row-cap-checks": "node --env-file=.env.local tests/e2e/row-cap-checks.mjs",

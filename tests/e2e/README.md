@@ -61,6 +61,16 @@ points at.
   only as a non-fatal, reported skip if `supabase/add-vendor-week-status-
   log.sql` hasn't been run yet, since the core switch/undo behavior never
   depends on that table existing.
+- **`item-category-checks.mjs`** — regression for a bug where
+  `PATCH /api/items` silently ignored `category` (never destructured or
+  whitelisted, even though every other Manage Items edit-form field was) —
+  a category change returned 200 with the row unchanged, so it looked like
+  it saved and then "reverted" on refresh. Confirms category now actually
+  persists (re-fetched independently, not just echoed in the PATCH
+  response), that it doesn't touch par/count/pack_size, that every other
+  field in the same form still saves (together, in one request), and the
+  new "nothing matched" 400 guard. Uses a disposable `ZZTEST Category Bug
+  Item`.
 
 ## Setup (one time)
 ```
@@ -99,7 +109,7 @@ the normal PIN screen, only through this test helper.
 Nothing needs toggling before or after a run anymore. Just start the dev
 server in another terminal (`npm run dev`) and run:
 ```
-npm run test:e2e                 # all seven, in sequence
+npm run test:e2e                 # all eight, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
 npm run test:e2e:logout-race     # doesn't need either ZZTEST account
@@ -107,6 +117,7 @@ npm run test:e2e:row-cap-checks
 npm run test:e2e:vendor-schedule # pure logic, doesn't need the dev server or either ZZTEST account
 npm run test:e2e:notification-linking
 npm run test:e2e:vendor-week-switch
+npm run test:e2e:item-category
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and
