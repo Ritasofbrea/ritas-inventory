@@ -7,6 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
+import { urgencyRank, formatTimeOfDay, VendorDueStatus } from '@/lib/vendor-schedule'
 
 type LastCount = { item_id: string; created_at: string; entered_by: string }
 type VelocityRow = { item_id: string; name: string; unit: string; consumed: number }
@@ -24,9 +25,27 @@ interface ShortRecord {
   order_history_items: { item_name: string; quantity: number; unit: string }[]
 }
 
+// Patch 44: a 'received'/'will_call' row whose note hasn't been reviewed
+// yet. Separate from ShortRecord/`resolved` — see order-history route's
+// comment on note_review_needed vs. resolved.
+interface NoteReviewRecord {
+  id: string
+  type: string
+  created_at: string
+  notes: string
+  received_by: string | null
+}
+
 interface SummaryData {
   lastCount: { created_at: string; entered_by: string } | null
   lastReceived: { created_at: string; received_by: string | null; type: string } | null
+}
+
+interface VendorInfo {
+  vendor: string
+  cutoff_time: string
+  status: VendorDueStatus
+  itemCount: number
 }
 
 function formatDateTime(iso: string) {
@@ -59,6 +78,9 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<SummaryData>({ lastCount: null, lastReceived: null })
   const [onOrderCount, setOnOrderCount] = useState(0)
   const [receiptReceivedBy, setReceiptReceivedBy] = useState<Record<string, string | null>>({})
+  const [vendorInfos, setVendorInfos] = useState<VendorInfo[]>([])
+  const [noteReviews, setNoteReviews] = useState<NoteReviewRecord[]>([])
+  const [reviewingNoteId, setReviewingNoteId] = useState<string | null>(null)
 
   const fetchItems = async () => {
     try {
@@ -73,9 +95,12 @@ export default function DashboardPage() {
   const fetchOrderHistory = async () => {
     const res = await fetch('/api/order-history')
     if (!res.ok) return
-    type HistoryRecord = { id: string; type: string; resolved: boolean; related_order_id: string | null; received_by?: string | null; notes: string; created_at: string; order_history_items: { item_id?: string; item_name: string; quantity: number; unit: string }[] }
+    type HistoryRecord = { id: string; type: string; resolved: boolean; related_order_id: string | null; received_by?: string | null; notes: string; created_at: string; note_review_needed?: boolean; order_history_items: { item_id?: string; item_name: string; quantity: number; unit: string }[] }
     const all = (await res.json()) as HistoryRecord[]
     setShorts(all.filter((r) => r.type === 'short' && r.resolved === false) as ShortRecord[])
+    setNoteReviews(
+      all.filter((r) => (r.type === 'received' || r.type === 'will_call') && r.note_review_needed) as unknown as NoteReviewRecord[]
+    )
     const byId: Record<string, string | null> = {}
     all.filter((r) => r.type === 'received' || r.type === 'will_call').forEach((r) => { byId[r.id] = r.received_by ?? null })
     setReceiptReceivedBy(byId)
@@ -99,6 +124,11 @@ export default function DashboardPage() {
     setLastCounts(map)
   }
 
+  const fetchVendorInfos = async () => {
+    const res = await fetch('/api/vendor-schedules')
+    if (res.ok) setVendorInfos(await res.json())
+  }
+
   const fetchTopMovers = async () => {
     const end = new Date()
     const start = new Date(end)
@@ -115,8 +145,18 @@ export default function DashboardPage() {
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
-    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary(), fetchLastCounts(), fetchTopMovers()])
+    Promise.all([fetchItems(), fetchOrderHistory(), fetchSummary(), fetchLastCounts(), fetchTopMovers(), fetchVendorInfos()])
   }, [router])
+
+  const markNoteReviewed = async (id: string) => {
+    setReviewingNoteId(id)
+    try {
+      await fetch('/api/order-history', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, mark_note_reviewed: true }) })
+      setNoteReviews((prev) => prev.filter((n) => n.id !== id))
+    } finally {
+      setReviewingNoteId(null)
+    }
+  }
 
   const resolveShort = async (id: string, name: string) => {
     setResolvingId(id)
@@ -134,6 +174,11 @@ export default function DashboardPage() {
       </div>
     )
   }
+
+  // Patch 44: vendors due today/tomorrow/overdue, most urgent first.
+  const dueVendors = vendorInfos
+    .filter((v) => v.status === 'due_today' || v.status === 'due_tomorrow' || v.status === 'overdue')
+    .sort((a, b) => urgencyRank(a.status) - urgencyRank(b.status))
 
   const outItems = items.filter((i) => !i.is_off && getStockStatus(i) === 'out')
   const lowItems = items.filter((i) => !i.is_off && getStockStatus(i) === 'low')
@@ -187,7 +232,7 @@ export default function DashboardPage() {
         <div className="mb-5 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <button
-            onClick={() => { fetchItems(); fetchOrderHistory(); fetchSummary(); fetchLastCounts(); fetchTopMovers() }}
+            onClick={() => { fetchItems(); fetchOrderHistory(); fetchSummary(); fetchLastCounts(); fetchTopMovers(); fetchVendorInfos() }}
             className="text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg"
           >
             Refresh
@@ -260,6 +305,32 @@ export default function DashboardPage() {
           </button>
         </div>
 
+        {/* Patch 44: vendors due today/tomorrow/overdue — gray outlined
+            style per the patch's color rule (never reuse an existing
+            color's meaning for a new one). */}
+        {dueVendors.length > 0 && (
+          <div className="mb-5 flex flex-col gap-2">
+            {dueVendors.map((v) => (
+              <div key={v.vendor} className="bg-white border border-gray-300 rounded-2xl px-5 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-bold text-gray-900 capitalize">
+                    {v.vendor}
+                    <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-300 text-gray-500 uppercase tracking-wide align-middle">
+                      {v.status === 'overdue' ? 'Cutoff passed' : v.status === 'due_today' ? 'Due today' : 'Due tomorrow'}
+                    </span>
+                  </p>
+                  <p className="text-gray-500 text-sm mt-0.5">
+                    {v.itemCount} item{v.itemCount !== 1 ? 's' : ''} to order{v.status !== 'due_tomorrow' ? ` · by ${formatTimeOfDay(v.cutoff_time)}` : ''}
+                  </p>
+                </div>
+                <button onClick={() => router.push('/order-list')} className="text-sm text-gray-600 font-semibold border border-gray-300 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                  View →
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* On order indicator */}
         {onOrderCount > 0 && (
           <div className="mb-5 bg-blue-50 border border-blue-200 rounded-2xl px-5 py-3 flex items-center justify-between">
@@ -270,6 +341,33 @@ export default function DashboardPage() {
             <button onClick={() => router.push('/order-list')} className="text-sm text-blue-600 font-semibold border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100">
               View →
             </button>
+          </div>
+        )}
+
+        {/* Patch 44: receipt notes awaiting review — gray outlined style,
+            independent of the short-shipment alerts below (different
+            column, different meaning: resolved vs. note_review_needed). */}
+        {noteReviews.length > 0 && (
+          <div className="mb-5 flex flex-col gap-3">
+            {noteReviews.map((n) => (
+              <div key={n.id} className="bg-white border border-gray-300 rounded-2xl px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-gray-900">Receipt Note</p>
+                    <p className="text-gray-400 text-sm mt-0.5">{new Date(n.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                    <p className="text-sm text-gray-700 italic mt-2">{n.notes}</p>
+                    {n.received_by && <p className="text-gray-400 text-xs mt-1">Received by {n.received_by}</p>}
+                  </div>
+                  <button
+                    onClick={() => markNoteReviewed(n.id)}
+                    disabled={reviewingNoteId === n.id}
+                    className="flex-shrink-0 border border-gray-300 text-gray-600 hover:bg-gray-50 font-bold text-sm px-4 py-2 rounded-xl transition-colors disabled:opacity-60"
+                  >
+                    {reviewingNoteId === n.id ? '…' : 'Reviewed ✓'}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

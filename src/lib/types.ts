@@ -41,6 +41,14 @@ export interface Item {
   has_storage: boolean
   storage_count: number
   storage_updated_at: string | null
+  // Patch 44: how many STOCK units (this item's `unit`, the one par_level/
+  // current_count are tracked in) come in ONE order unit ("a case"). Owner-
+  // set only (src/app/api/items/pack-size/route.ts), nullable — null means
+  // no behavior change from pre-patch-44 default order-quantity math.
+  // Deliberately independent of units_per_sub_unit (a stock-counting
+  // granularity concept — see getMainUnitTotal) even though some real items
+  // blur the two; pack_size never participates in stock math.
+  pack_size: number | null
   created_at: string
   updated_at: string
 }

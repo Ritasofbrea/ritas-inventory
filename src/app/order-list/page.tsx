@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
-import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
+import { Item, getStockStatus } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
+import { getOrderUnitLabel, getDefaultOrderQty, packSizePreview } from '@/lib/order-units'
+import { isOpenStatus, urgencyRank, orderDayLabel, formatTimeOfDay, VendorDueStatus } from '@/lib/vendor-schedule'
 
 type DistributorItem = Item & { distributor?: string; item_number?: string; distributor_item_name?: string }
 
@@ -26,7 +28,22 @@ interface OrderRecord {
   received_by: string | null
   resolved_at: string | null
   resolved_by: string | null
+  note_review_needed?: boolean
   order_history_items: OrderHistoryItem[]
+}
+
+// Patch 44: schedule + computed due-status for a vendor, exactly as GET
+// /api/vendor-schedules returns it (computeVendorDueInfo's output merged
+// with the raw schedule row and an itemCount). Only vendors with a
+// vendor_schedules row appear here — today that's just Balford/Bunzl; any
+// other distributor bucket has no entry and is always "anytime" by absence.
+interface VendorInfo {
+  vendor: string
+  order_day: number | null
+  cutoff_time: string
+  status: VendorDueStatus
+  resolvedThisWeek: { status: 'ordered' | 'skipped'; resolved_by: string | null; resolved_at: string } | null
+  itemCount: number
 }
 
 const DISTRIBUTOR_ORDER = ['bunzl', 'balford', 'other', 'seasonal', 'discontinued']
@@ -35,6 +52,11 @@ const DISTRIBUTOR_COLORS: Record<string, string> = { bunzl: 'text-blue-600', bal
 
 const TYPE_LABELS: Record<string, string> = { ordered: 'Order Placed', received: 'Delivery Received', will_call: 'Will Call Received', short: 'Short Shipment' }
 const TYPE_COLORS: Record<string, string> = { ordered: 'bg-blue-100 text-blue-700', received: 'bg-green-100 text-green-700', will_call: 'bg-purple-100 text-purple-700', short: 'bg-red-100 text-red-700' }
+
+// Gray outlined style for the new due-date tags — per the patch's own rule,
+// never reuse an existing color's established meaning (amber/orange =
+// overdue, hot pink = Action Needed, etc.).
+const DUE_TAG_LABEL: Record<string, string> = { due_today: 'Due today', due_tomorrow: 'Due tomorrow', overdue: 'Cutoff passed' }
 
 export default function OrderListPage() {
   const router = useRouter()
@@ -58,6 +80,14 @@ export default function OrderListPage() {
   const [orderHistory, setOrderHistory] = useState<OrderRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
+  const [reviewingNoteId, setReviewingNoteId] = useState<string | null>(null)
+
+  // Patch 44: vendor schedules/status, "about N weeks left", per-vendor
+  // Order Placed/Nothing-to-order actions, and the "Not due yet" collapse.
+  const [vendorInfos, setVendorInfos] = useState<VendorInfo[]>([])
+  const [weeksLeft, setWeeksLeft] = useState<Record<string, number>>({})
+  const [vendorActionWorking, setVendorActionWorking] = useState<string | null>(null)
+  const [notDueOpen, setNotDueOpen] = useState(false)
 
   const fetchItems = async () => {
     try {
@@ -97,12 +127,35 @@ export default function OrderListPage() {
     return { onOrderIds: itemIds }
   }
 
+  const fetchVendorInfos = async () => {
+    const res = await fetch('/api/vendor-schedules')
+    if (!res.ok) return
+    setVendorInfos(await res.json())
+  }
+
+  // Secondary, non-blocking info line — never awaited by loadAll, so a slow
+  // or failed fetch here never delays the main list from showing.
+  const fetchWeeksLeft = async (ids: string[]) => {
+    if (ids.length === 0) { setWeeksLeft({}); return }
+    try {
+      const res = await fetch(`/api/reports/weeks-left?ids=${ids.join(',')}`)
+      if (!res.ok) return
+      const rows: { item_id: string; weeks_left: number | null }[] = await res.json()
+      const map: Record<string, number> = {}
+      for (const r of rows) if (r.weeks_left != null) map[r.item_id] = r.weeks_left
+      setWeeksLeft(map)
+    } catch {
+      // best-effort — the line is just omitted if this fails
+    }
+  }
+
   const loadAll = async () => {
-    const [data, { onOrderIds }] = await Promise.all([fetchItems(), fetchPendingOrders()])
+    const [data, { onOrderIds }] = await Promise.all([fetchItems(), fetchPendingOrders(), fetchVendorInfos()])
     if (data) {
       const needsOrder = data.filter((i) => !i.is_off && getStockStatus(i) !== 'ok')
       const toOrderIds = needsOrder.filter((i) => !onOrderIds.has(i.id)).map((i) => i.id)
       setSelectedIds(new Set(toOrderIds))
+      fetchWeeksLeft(needsOrder.map((i) => i.id))
     }
   }
 
@@ -139,18 +192,7 @@ export default function OrderListPage() {
     })
   }
 
-  const getDefaultQty = (item: DistributorItem) => {
-    const shortage = Math.max(0, item.par_level - getMainUnitTotal(item))
-    if (item.units_per_sub_unit) return Math.ceil(shortage / item.units_per_sub_unit)
-    return shortage
-  }
-
-  const getOrderUnitLabel = (item: DistributorItem) => {
-    if (!item.units_per_sub_unit) return item.unit
-    return item.unit === 'boxes' ? 'boxes' : 'cases'
-  }
-
-  const getQtyValue = (item: DistributorItem) => orderQuantities[item.id] ?? String(getDefaultQty(item))
+  const getQtyValue = (item: DistributorItem) => orderQuantities[item.id] ?? String(getDefaultOrderQty(item))
 
   const handleQtyChange = (id: string, value: string) => {
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
@@ -158,26 +200,57 @@ export default function OrderListPage() {
     }
   }
 
+  const clearQuantitiesFor = (ids: string[]) => {
+    setOrderQuantities((prev) => {
+      const next = { ...prev }
+      for (const id of ids) delete next[id]
+      return next
+    })
+  }
+
+  // Marks any scheduled vendor represented in `orderedItems` as "ordered"
+  // for its current week, so a reminder never keeps nagging about
+  // something just ordered through the global button. Silent — no extra
+  // confirmation beyond the order save itself.
+  const silenceVendorsForItems = async (orderedItems: DistributorItem[]) => {
+    const touched = new Set(orderedItems.map((i) => i.distributor ?? 'unmapped'))
+    const toSilence = vendorInfos.filter((v) => touched.has(v.vendor) && v.status !== 'resolved')
+    await Promise.all(
+      toSilence.map((v) =>
+        fetch('/api/vendor-week-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vendor: v.vendor, status: 'ordered' }),
+        })
+      )
+    )
+  }
+
   const handleMarkOrdered = async () => {
     if (selectedIds.size === 0) return
     setMarking(true)
     try {
-      const orderItems = toOrder
-        .filter((item) => selectedIds.has(item.id))
-        .map((item) => ({
-          item_id: item.id,
-          item_name: item.name,
-          quantity: parseFloat(orderQuantities[item.id] ?? '') || getDefaultQty(item),
-          unit: item.unit,
-        }))
+      const checkedItems = toOrder.filter((item) => selectedIds.has(item.id))
+      const orderItems = checkedItems.map((item) => ({
+        item_id: item.id,
+        item_name: item.name,
+        quantity: parseFloat(orderQuantities[item.id] ?? '') || getDefaultOrderQty(item),
+        // Patch 44 bug fix (new orders only — existing history rows are
+        // never rewritten): this used to always save `item.unit` (the
+        // STOCK unit) even when the quantity above is in CASES, so History
+        // could show "2 gallons" for an order that was actually 2 cases (8
+        // gallons). Now saves the real order-unit word the quantity is in.
+        unit: getOrderUnitLabel(item),
+      }))
       const res = await fetch('/api/order-history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'ordered', items: orderItems }),
       })
       if (res.ok) {
+        await silenceVendorsForItems(checkedItems)
         setMarked(true)
-        setOrderQuantities({})
+        clearQuantitiesFor(checkedItems.map((i) => i.id))
         setOrderHistory([])
         await loadAll()
         setTimeout(() => setMarked(false), 3000)
@@ -187,12 +260,72 @@ export default function OrderListPage() {
     }
   }
 
+  // Per-vendor "Order Placed": same save as the global button, scoped to
+  // just this vendor's currently-checked items, then silences this
+  // vendor's reminder for the week. If nothing is checked for this vendor
+  // right now, it still silences the week (the owner may have already
+  // ordered by phone/in person without using the checkboxes here).
+  const handleMarkOrderedForVendor = async (vendor: string) => {
+    const vendorItems = toOrder.filter((item) => (item.distributor ?? 'unmapped') === vendor && validSelected.has(item.id))
+    setVendorActionWorking(vendor)
+    try {
+      if (vendorItems.length > 0) {
+        const orderItems = vendorItems.map((item) => ({
+          item_id: item.id,
+          item_name: item.name,
+          quantity: parseFloat(orderQuantities[item.id] ?? '') || getDefaultOrderQty(item),
+          unit: getOrderUnitLabel(item),
+        }))
+        const res = await fetch('/api/order-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'ordered', items: orderItems }),
+        })
+        if (!res.ok) return
+        clearQuantitiesFor(vendorItems.map((i) => i.id))
+        setOrderHistory([])
+      }
+      await fetch('/api/vendor-week-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendor, status: 'ordered' }),
+      })
+      await loadAll()
+    } finally {
+      setVendorActionWorking(null)
+    }
+  }
+
+  const handleSkipVendorWeek = async (vendor: string) => {
+    setVendorActionWorking(vendor)
+    try {
+      await fetch('/api/vendor-week-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendor, status: 'skipped' }),
+      })
+      await fetchVendorInfos()
+    } finally {
+      setVendorActionWorking(null)
+    }
+  }
+
   const cancelOrder = async (orderId: string) => {
     setCancellingOrderId(orderId)
     await fetch('/api/order-history', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: orderId }) })
     setOrderHistory([])
     await loadAll()
     setCancellingOrderId(null)
+  }
+
+  const markNoteReviewed = async (id: string) => {
+    setReviewingNoteId(id)
+    try {
+      await fetch('/api/order-history', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, mark_note_reviewed: true }) })
+      setOrderHistory((prev) => prev.map((o) => (o.id === id ? { ...o, note_review_needed: false } : o)))
+    } finally {
+      setReviewingNoteId(null)
+    }
   }
 
   const toggleOrder = (id: string) => {
@@ -240,6 +373,132 @@ export default function OrderListPage() {
   }, {})
 
   const unmapped = sorted.filter((i) => !i.distributor)
+
+  const vendorInfoByName = new Map(vendorInfos.map((v) => [v.vendor, v]))
+
+  // Patch 44: one "bucket" per DISTRIBUTOR_ORDER entry plus unmapped —
+  // same 5(+1) groups the Order List has always shown. A bucket with no
+  // vendor_schedules row (today: everything except bunzl/balford) has no
+  // vendorInfo and is always "open" with no due tag, unchanged from before.
+  interface Bucket { key: string; label: string; colorClass: string; distItems: DistributorItem[]; vendorInfo: VendorInfo | undefined }
+  const allBuckets: Bucket[] = [
+    ...DISTRIBUTOR_ORDER.map((d) => ({ key: d, label: DISTRIBUTOR_LABELS[d], colorClass: DISTRIBUTOR_COLORS[d], distItems: byDistributor[d] ?? [], vendorInfo: vendorInfoByName.get(d) })),
+    { key: 'unmapped', label: 'Other', colorClass: 'text-gray-400', distItems: unmapped, vendorInfo: undefined },
+  ].filter((b) => b.distItems.length > 0)
+
+  const openBuckets = allBuckets
+    .filter((b) => !b.vendorInfo || isOpenStatus(b.vendorInfo.status))
+    .sort((a, b) => urgencyRank(a.vendorInfo?.status ?? 'anytime') - urgencyRank(b.vendorInfo?.status ?? 'anytime'))
+  const collapsedBuckets = allBuckets.filter((b) => b.vendorInfo && !isOpenStatus(b.vendorInfo.status))
+
+  const renderItemRow = (item: DistributorItem, idx: number, arr: DistributorItem[]) => {
+    const status = getStockStatus(item)
+    const checked = validSelected.has(item.id)
+    const preview = checked ? packSizePreview(item.unit, item.pack_size) : null
+    const weeks = weeksLeft[item.id]
+    return (
+      <div
+        key={item.id}
+        onClick={() => toggleItem(item.id)}
+        className={`flex items-center gap-3 px-5 py-4 cursor-pointer transition-colors ${idx < arr.length - 1 ? 'border-b border-gray-100' : ''} ${checked ? '' : 'opacity-50 bg-gray-50'}`}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => toggleItem(item.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="w-5 h-5 flex-shrink-0 accent-[#1a7a3c] cursor-pointer"
+        />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900">{item.name}</p>
+          <p className="text-sm text-gray-400">
+            {item.item_number && <span className="font-mono text-gray-500 mr-2">#{item.item_number}</span>}
+            {item.distributor_item_name ?? item.category}
+          </p>
+          {checked && (
+            <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
+              <span className="text-xs text-gray-400">Order qty:</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={getQtyValue(item)}
+                onChange={(e) => handleQtyChange(item.id, e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onFocus={(e) => e.target.select()}
+                className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
+              />
+              <span className="text-xs text-gray-400">{unitLabel(getOrderUnitLabel(item), parseFloat(getQtyValue(item)) || 0)}</span>
+            </div>
+          )}
+          {preview && <p className="text-xs text-gray-400 mt-1">{preview}</p>}
+          {weeks != null && <p className="text-xs text-gray-400 mt-0.5">~{weeks} week{weeks !== 1 ? 's' : ''} left</p>}
+        </div>
+        <div className="text-right flex-shrink-0 mr-2">
+          <p className="text-sm text-gray-500">
+            Have <span className="font-bold text-gray-900">{item.current_count}</span>
+            {', want '}
+            <span className="text-gray-400">{item.par_level} {unitLabel(item.unit, item.par_level)}</span>
+          </p>
+        </div>
+        <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${status === 'out' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+          {status === 'out' ? 'OUT' : 'LOW'}
+        </span>
+      </div>
+    )
+  }
+
+  const renderBucket = (bucket: Bucket) => {
+    const { key, label, colorClass, distItems, vendorInfo } = bucket
+    const tag = vendorInfo ? DUE_TAG_LABEL[vendorInfo.status] : undefined
+    const dayLabel = vendorInfo ? orderDayLabel(vendorInfo.order_day) : null
+    const showActions = vendorInfo && vendorInfo.status !== 'resolved'
+    return (
+      <section key={key} className="mb-6">
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <h2 className={`text-xs font-bold uppercase tracking-widest ${colorClass}`}>{label}</h2>
+            {tag && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-300 text-gray-500 uppercase tracking-wide">
+                {tag}
+              </span>
+            )}
+          </div>
+          {showActions && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleMarkOrderedForVendor(key)}
+                disabled={vendorActionWorking === key}
+                className="text-xs font-semibold text-white bg-[#1a7a3c] hover:bg-[#155f2f] disabled:opacity-50 px-3 py-1.5 rounded-lg"
+              >
+                {vendorActionWorking === key ? 'Saving…' : 'Order Placed'}
+              </button>
+              <button
+                onClick={() => handleSkipVendorWeek(key)}
+                disabled={vendorActionWorking === key}
+                className="text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 px-3 py-1.5 rounded-lg"
+              >
+                Nothing to order
+              </button>
+            </div>
+          )}
+        </div>
+        {dayLabel && (
+          <p className="text-xs text-gray-400 mb-2">
+            Due {dayLabel} by {formatTimeOfDay(vendorInfo!.cutoff_time)}
+          </p>
+        )}
+        {vendorInfo?.resolvedThisWeek && (
+          <p className="text-xs text-green-600 mb-2">
+            ✓ {vendorInfo.resolvedThisWeek.status === 'ordered' ? 'Order placed' : 'Nothing to order'} this week
+            {vendorInfo.resolvedThisWeek.resolved_by ? ` · ${vendorInfo.resolvedThisWeek.resolved_by}` : ''}
+          </p>
+        )}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          {distItems.map((item, idx) => renderItemRow(item, idx, distItems))}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#d4edda]">
@@ -318,115 +577,22 @@ export default function OrderListPage() {
                       </button>
                     </div>
 
-                    {DISTRIBUTOR_ORDER.map((dist) => {
-                      const distItems = byDistributor[dist]
-                      if (!distItems || distItems.length === 0) return null
-                      return (
-                        <section key={dist} className="mb-6">
-                          <h2 className={`text-xs font-bold uppercase tracking-widest mb-2 ${DISTRIBUTOR_COLORS[dist]}`}>{DISTRIBUTOR_LABELS[dist]}</h2>
-                          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            {distItems.map((item, idx) => {
-                              const status = getStockStatus(item)
-                              const checked = validSelected.has(item.id)
-                              return (
-                                <div
-                                  key={item.id}
-                                  onClick={() => toggleItem(item.id)}
-                                  className={`flex items-center gap-3 px-5 py-4 cursor-pointer transition-colors ${idx < distItems.length - 1 ? 'border-b border-gray-100' : ''} ${checked ? '' : 'opacity-50 bg-gray-50'}`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleItem(item.id)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="w-5 h-5 flex-shrink-0 accent-[#1a7a3c] cursor-pointer"
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-gray-900">{item.name}</p>
-                                    <p className="text-sm text-gray-400">
-                                      {item.item_number && <span className="font-mono text-gray-500 mr-2">#{item.item_number}</span>}
-                                      {item.distributor_item_name ?? item.category}
-                                    </p>
-                                    {checked && (
-                                      <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
-                                        <span className="text-xs text-gray-400">Order qty:</span>
-                                        <input
-                                          type="text"
-                                          inputMode="decimal"
-                                          value={getQtyValue(item)}
-                                          onChange={(e) => handleQtyChange(item.id, e.target.value)}
-                                          onClick={(e) => e.stopPropagation()}
-                                          onFocus={(e) => e.target.select()}
-                                          className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
-                                        />
-                                        <span className="text-xs text-gray-400">{unitLabel(getOrderUnitLabel(item), parseFloat(getQtyValue(item)) || 0)}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="text-right flex-shrink-0 mr-2">
-                                    <p className="text-sm text-gray-500">
-                                      Have <span className="font-bold text-gray-900">{item.current_count}</span>
-                                      {', want '}
-                                      <span className="text-gray-400">{item.par_level} {unitLabel(item.unit, item.par_level)}</span>
-                                    </p>
-                                  </div>
-                                  <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${status === 'out' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                                    {status === 'out' ? 'OUT' : 'LOW'}
-                                  </span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </section>
-                      )
-                    })}
+                    {openBuckets.map(renderBucket)}
 
-                    {unmapped.length > 0 && (
+                    {collapsedBuckets.length > 0 && (
                       <section className="mb-6">
-                        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Other</h2>
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                          {unmapped.map((item, idx) => {
-                            const status = getStockStatus(item)
-                            const checked = validSelected.has(item.id)
-                            return (
-                              <div
-                                key={item.id}
-                                onClick={() => toggleItem(item.id)}
-                                className={`flex items-center gap-3 px-5 py-4 cursor-pointer transition-colors ${idx < unmapped.length - 1 ? 'border-b border-gray-100' : ''} ${checked ? '' : 'opacity-50 bg-gray-50'}`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleItem(item.id)}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-5 h-5 flex-shrink-0 accent-[#1a7a3c] cursor-pointer"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-gray-900">{item.name}</p>
-                                  <p className="text-sm text-gray-400">{item.category}</p>
-                                  {checked && (
-                                    <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
-                                      <span className="text-xs text-gray-400">Order qty:</span>
-                                      <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={getQtyValue(item)}
-                                        onChange={(e) => handleQtyChange(item.id, e.target.value)}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onFocus={(e) => e.target.select()}
-                                        className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
-                                      />
-                                      <span className="text-xs text-gray-400">{unitLabel(getOrderUnitLabel(item), parseFloat(getQtyValue(item)) || 0)}</span>
-                                    </div>
-                                  )}
-                                </div>
-                                <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${status === 'out' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                                  {status === 'out' ? 'OUT' : 'LOW'}
-                                </span>
-                              </div>
-                            )
-                          })}
-                        </div>
+                        <button
+                          onClick={() => setNotDueOpen((o) => !o)}
+                          className="w-full flex items-center justify-between bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-3 text-left"
+                        >
+                          <span className="text-sm font-semibold text-gray-500">
+                            Not due yet ({collapsedBuckets.length} vendor{collapsedBuckets.length !== 1 ? 's' : ''})
+                          </span>
+                          <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${notDueOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {notDueOpen && <div className="mt-4">{collapsedBuckets.map(renderBucket)}</div>}
                       </section>
                     )}
                   </>
@@ -498,6 +664,11 @@ export default function OrderListPage() {
                             <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${TYPE_COLORS[order.type] ?? 'bg-gray-100 text-gray-500'}`}>
                               {TYPE_LABELS[order.type] ?? order.type}
                             </span>
+                            {order.note_review_needed && (
+                              <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-300 text-gray-500 uppercase tracking-wide">
+                                Note
+                              </span>
+                            )}
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-gray-900">{formatDate(order.created_at)}</p>
                               <p className="text-xs text-gray-400">
@@ -522,8 +693,17 @@ export default function OrderListPage() {
                               </div>
                             ))}
                             {order.notes && (
-                              <div className="px-5 py-3 bg-yellow-50 border-t border-gray-100">
+                              <div className="px-5 py-3 bg-yellow-50 border-t border-gray-100 flex items-center justify-between gap-3">
                                 <p className="text-xs text-gray-500 italic">{order.notes}</p>
+                                {order.note_review_needed && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); markNoteReviewed(order.id) }}
+                                    disabled={reviewingNoteId === order.id}
+                                    className="flex-shrink-0 text-xs font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-50 px-3 py-1 rounded-lg"
+                                  >
+                                    {reviewingNoteId === order.id ? '…' : 'Reviewed ✓'}
+                                  </button>
+                                )}
                               </div>
                             )}
                             {order.type === 'short' && order.resolved_at && (

@@ -77,6 +77,43 @@ async function run() {
     }
   }
 
+  // OWNER -- Patch 44: vendor schedules, per-vendor week status, owner
+  // alert switches, pack size, and the reminder cron are all owner-only
+  // (or secret-only for the cron) -- shift_lead/staff must never reach
+  // them, matching the Order List/Manage Items pages they serve.
+  {
+    const noSession = await apiFetch('/api/vendor-schedules', null)
+    check('OWNER: GET /api/vendor-schedules with no session -> 401', noSession.status === 401)
+    const asShiftLead = await apiFetch('/api/vendor-schedules', shiftLead.cookie)
+    check('OWNER: GET /api/vendor-schedules as shift_lead -> 403', asShiftLead.status === 403)
+    const asStaff = await apiFetch('/api/vendor-schedules', staff.cookie)
+    check('OWNER: GET /api/vendor-schedules as staff -> 403', asStaff.status === 403)
+    const asOwner = await apiFetch('/api/vendor-schedules', owner.cookie)
+    check('OWNER: GET /api/vendor-schedules as owner -> 200', asOwner.status === 200)
+  }
+  {
+    const body = JSON.stringify({ vendor: 'ZZTEST Vendor', status: 'skipped' })
+    const asShiftLead = await apiFetch('/api/vendor-week-status', shiftLead.cookie, { method: 'POST', body })
+    check('OWNER: POST /api/vendor-week-status as shift_lead -> 403', asShiftLead.status === 403)
+    const asStaff = await apiFetch('/api/vendor-week-status', staff.cookie, { method: 'POST', body })
+    check('OWNER: POST /api/vendor-week-status as staff -> 403', asStaff.status === 403)
+  }
+  {
+    const asShiftLead = await apiFetch('/api/owners/alerts', shiftLead.cookie)
+    check('OWNER: GET /api/owners/alerts as shift_lead -> 403', asShiftLead.status === 403)
+    const asOwner = await apiFetch('/api/owners/alerts', owner.cookie)
+    check('OWNER: GET /api/owners/alerts as owner -> 200', asOwner.status === 200)
+  }
+  {
+    const body = JSON.stringify({ id: '00000000-0000-0000-0000-000000000000', pack_size: 4 })
+    const asShiftLead = await apiFetch('/api/items/pack-size', shiftLead.cookie, { method: 'PATCH', body })
+    check('OWNER: PATCH /api/items/pack-size as shift_lead -> 403', asShiftLead.status === 403)
+  }
+  {
+    const res = await apiFetch('/api/cron/vendor-reminders', null, { method: 'GET', headers: { Authorization: 'Bearer wrong-secret' } })
+    check('SECRET: GET /api/cron/vendor-reminders with wrong bearer -> 401', res.status === 401)
+  }
+
   console.log(failures === 0 ? '\nALL PASSED' : `\n${failures} FAILURE(S)`)
   process.exit(failures === 0 ? 0 : 1)
 }

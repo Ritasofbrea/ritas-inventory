@@ -14,9 +14,15 @@ export async function POST(request: NextRequest) {
   if (!endpoint || !keys?.p256dh || !keys?.auth) {
     return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 })
   }
+  // Patch 44: attributes this device to the owner enabling it (needed for
+  // the per-owner order-reminder / receipt-note alert switches). A
+  // subscription created before this column existed stays unattributed
+  // until that owner re-taps "Enable Notifications" — this always
+  // (re-)stamps it on every subscribe, so a device re-subscribed under a
+  // different owner's session is correctly re-attributed too.
   const { error } = await db
     .from('push_subscriptions')
-    .upsert({ endpoint, p256dh: keys.p256dh, auth: keys.auth }, { onConflict: 'endpoint' })
+    .upsert({ endpoint, p256dh: keys.p256dh, auth: keys.auth, owner_name: auth.session.name }, { onConflict: 'endpoint' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })

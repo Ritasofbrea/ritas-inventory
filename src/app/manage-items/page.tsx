@@ -7,6 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 import { unitLabel, subUnitSetupLabel, subUnitPreview } from '@/lib/units'
+import { packSizePreview } from '@/lib/order-units'
 
 export default function ManageItemsPage() {
   const router = useRouter()
@@ -46,6 +47,11 @@ export default function ManageItemsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [bulkWorking, setBulkWorking] = useState(false)
+
+  // Patch 44: pack size (order-unit case size) inline editor state
+  const [packSizeEditId, setPackSizeEditId] = useState<string | null>(null)
+  const [packSizeValue, setPackSizeValue] = useState('')
+  const [packSizeSaving, setPackSizeSaving] = useState(false)
 
   // Patch 38: storage switch + add/move/correction panel state
   const [storageTogglingId, setStorageTogglingId] = useState<string | null>(null)
@@ -145,6 +151,35 @@ export default function ManageItemsPage() {
       setError('Could not save. Try again.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Patch 44: owner-only, separate route from the shared SL+ items PATCH
+  // (same reasoning as is_off/storage — see src/app/api/items/pack-size).
+  const openPackSizeEdit = (item: Item) => {
+    setPackSizeEditId(item.id)
+    setPackSizeValue(item.pack_size != null ? String(item.pack_size) : '')
+  }
+
+  const savePackSize = async (item: Item) => {
+    setPackSizeSaving(true)
+    setError('')
+    try {
+      const trimmed = packSizeValue.trim()
+      const pack_size = trimmed === '' ? null : parseInt(trimmed, 10)
+      const res = await fetch('/api/items/pack-size', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, pack_size }),
+      })
+      if (!res.ok) throw new Error()
+      const updated = await res.json()
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
+      setPackSizeEditId(null)
+    } catch {
+      setError('Could not save pack size. Try again.')
+    } finally {
+      setPackSizeSaving(false)
     }
   }
 
@@ -663,8 +698,40 @@ export default function ManageItemsPage() {
                                   {item.item_number && <span className="font-mono text-gray-400"> · #{item.item_number}</span>}
                                   {item.distributor && <span className="text-gray-300"> · {item.distributor}</span>}
                                 </p>
+                                {packSizePreview(item.unit, item.pack_size) && (
+                                  <p className="text-xs text-gray-400">{packSizePreview(item.unit, item.pack_size)}</p>
+                                )}
                               </div>
                             </div>
+
+                            {/* Patch 44: pack size inline editor */}
+                            {packSizeEditId === item.id && (
+                              <div className="ml-8 bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2">
+                                <p className="text-xs text-gray-500">
+                                  How many {unitLabel(item.unit, 2)} come in one case? Leave blank for no change to today&apos;s default order quantity.
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={packSizeValue}
+                                    onChange={(e) => { const v = e.target.value; if (v === '' || /^\d*$/.test(v)) setPackSizeValue(v) }}
+                                    placeholder="e.g. 4"
+                                    className="w-20 border border-gray-300 rounded-xl px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-gray-500"
+                                  />
+                                  <button
+                                    onClick={() => savePackSize(item)}
+                                    disabled={packSizeSaving}
+                                    className="min-h-[36px] bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white font-semibold text-sm px-3 py-1.5 rounded-lg"
+                                  >
+                                    {packSizeSaving ? 'Saving…' : 'Save'}
+                                  </button>
+                                </div>
+                                {packSizePreview(item.unit, parseInt(packSizeValue, 10) || null) && (
+                                  <p className="text-xs text-gray-500">{packSizePreview(item.unit, parseInt(packSizeValue, 10) || null)}</p>
+                                )}
+                              </div>
+                            )}
 
                             {/* Patch 38: storage number + last-updated, only for flagged items */}
                             {item.has_storage && (
@@ -709,6 +776,12 @@ export default function ManageItemsPage() {
                                   {storagePanelId === item.id ? 'Close' : 'Manage Storage'}
                                 </button>
                               )}
+                              <button
+                                onClick={() => (packSizeEditId === item.id ? setPackSizeEditId(null) : openPackSizeEdit(item))}
+                                className="min-h-[40px] text-sm font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:border-gray-400"
+                              >
+                                {packSizeEditId === item.id ? 'Close' : item.pack_size ? 'Edit Pack Size' : 'Set Pack Size'}
+                              </button>
                               <button
                                 onClick={() => startEdit(item)}
                                 className="min-h-[40px] text-sm text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-100 hover:border-blue-300"

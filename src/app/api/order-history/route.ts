@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { requireRole } from '@/lib/session'
 import { applyStorageChange } from '@/lib/storage-server'
+import { sendPushToSubs, subsForOwnersWithAlert } from '@/lib/push-server'
 
 export async function GET(request: NextRequest) {
   const db = getServerSupabase()
@@ -35,6 +36,14 @@ export async function POST(request: NextRequest) {
   if (!type || !Array.isArray(items) || items.length === 0)
     return NextResponse.json({ error: 'Missing type or items' }, { status: 400 })
 
+  // Patch 44: a receipt (received/will_call) saved with a non-empty note
+  // needs an owner's attention — flips note_review_needed on, independent
+  // of `resolved` (which already means something else: an outstanding
+  // short-shipment follow-up, type 'short' only). Nothing about how the
+  // note itself gets written changes.
+  const trimmedNotes = (notes ?? '').trim()
+  const needsNoteReview = (type === 'received' || type === 'will_call') && trimmedNotes.length > 0
+
   const { data: order, error: orderError } = await db
     .from('order_history')
     .insert({
@@ -43,11 +52,28 @@ export async function POST(request: NextRequest) {
       related_order_id: related_order_id || null,
       resolved: resolved !== undefined ? resolved : true,
       received_by: received_by || null,
+      note_review_needed: needsNoteReview,
     })
     .select()
     .single()
 
   if (orderError) return NextResponse.json({ error: orderError.message }, { status: 500 })
+
+  if (needsNoteReview) {
+    // Awaited (not fire-and-forget) — a serverless function can be frozen
+    // the instant the response is sent, which would drop an unawaited push
+    // mid-flight. A push failure here must never fail the receipt save, so
+    // it's wrapped in its own try/catch rather than letting it throw.
+    try {
+      const subs = await subsForOwnersWithAlert(db, 'receipt_note_alerts_enabled')
+      await sendPushToSubs(db, subs, {
+        title: 'Receipt Note',
+        body: `A note was left on a ${type === 'will_call' ? 'will call' : 'delivery'} receipt — check Order History`,
+      })
+    } catch {
+      // best-effort; the Dashboard/Order History flag is the durable signal
+    }
+  }
 
   const rows = items.map((i: { item_id: string; item_name: string; quantity: number; unit: string }) => ({
     order_id: order.id,
@@ -113,13 +139,23 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireRole(db, request, ['owner'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
-  const { id, resolved, resolved_by } = body
+  const { id, resolved, resolved_by, mark_note_reviewed } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const updates: Record<string, unknown> = { resolved }
   if (resolved === true) {
     updates.resolved_at = new Date().toISOString()
     updates.resolved_by = resolved_by || null
+  }
+  // Patch 44: separate from `resolved` — see the POST handler's comment.
+  // A caller sends ONLY mark_note_reviewed (never the raw note_review_needed
+  // column), so this can only ever be flipped off here, never back on —
+  // that only ever happens server-side, at receipt-creation time, based on
+  // whether the note was non-empty.
+  if (mark_note_reviewed === true) {
+    updates.note_review_needed = false
+    updates.note_reviewed_by = auth.session.name
+    updates.note_reviewed_at = new Date().toISOString()
   }
 
   const { data, error } = await db

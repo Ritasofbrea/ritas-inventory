@@ -7,6 +7,7 @@ import { clearRole, getRole } from '@/lib/auth'
 import { useEffect, useRef, useState } from 'react'
 import { Role } from '@/lib/types'
 import { SKIP_LOGIN_AUTOSKIP_KEY } from '@/components/SessionGuard'
+import { urgencyRank, formatTimeOfDay, VendorDueStatus } from '@/lib/vendor-schedule'
 
 const MORE_DROPDOWN_MARGIN = 16
 
@@ -16,6 +17,8 @@ const MORE_LINKS = [
   { href: '/adjust', label: 'Adjustment' },
   { href: '/par-settings', label: 'Par Levels' },
   { href: '/manage-items', label: 'Manage Items' },
+  { href: '/vendor-schedules', label: 'Vendor Schedules' },
+  { href: '/notification-settings', label: 'Notification Settings' },
   { href: '/reports', label: 'Reports' },
   { href: '/clover-mapping', label: 'Clover Mapping' },
   { href: '/staff', label: 'Staff' },
@@ -35,6 +38,7 @@ export default function Navigation() {
   const moreButtonRef = useRef<HTMLButtonElement>(null)
   const [notifStatus, setNotifStatus] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle')
   const [todoBadge, setTodoBadge] = useState(0)
+  const [dueVendors, setDueVendors] = useState<{ vendor: string; cutoff_time: string; status: VendorDueStatus; itemCount: number }[]>([])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve role once on mount, this app's standard page-load pattern
@@ -64,6 +68,23 @@ export default function Navigation() {
       window.removeEventListener('tasks-changed', loadBadge)
     }
   }, [pathname])
+
+  // Patch 44: persistent in-app banner for a vendor that's due today or
+  // past cutoff — no snooze, same urgency set the push reminders use.
+  // Owner-only (matches every vendor-schedule-aware screen); refreshes on
+  // navigation so acting on /order-list clears it right away.
+  useEffect(() => {
+    if (role !== 'owner') return
+    let cancelled = false
+    fetch('/api/vendor-schedules')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: { vendor: string; cutoff_time: string; status: VendorDueStatus; itemCount: number }[]) => {
+        if (cancelled) return
+        setDueVendors(rows.filter((v) => (v.status === 'due_today' || v.status === 'overdue') && v.itemCount > 0))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [role, pathname])
 
   const enableNotifications = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
@@ -293,6 +314,20 @@ export default function Navigation() {
         </div>
 
       </div>
+
+      {role === 'owner' && dueVendors.length > 0 && (
+        <button
+          onClick={() => router.push('/order-list')}
+          className="w-full bg-gray-800 hover:bg-gray-900 text-white text-sm font-semibold px-4 py-2 flex items-center justify-center gap-2 text-center"
+        >
+          {[...dueVendors].sort((a, b) => urgencyRank(a.status) - urgencyRank(b.status)).map((v, i) => (
+            <span key={v.vendor}>
+              {i > 0 && <span className="text-gray-400 mx-1">·</span>}
+              {v.vendor} {v.status === 'overdue' ? 'is overdue' : `due by ${formatTimeOfDay(v.cutoff_time)}`} ({v.itemCount})
+            </span>
+          ))}
+        </button>
+      )}
     </nav>
   )
 }
