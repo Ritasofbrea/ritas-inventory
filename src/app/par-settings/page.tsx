@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
+import { unitLabel } from '@/lib/units'
 
 interface ParDraft {
   [itemId: string]: string
@@ -256,7 +257,7 @@ export default function ParSettingsPage() {
                       onFocus={(e) => e.target.select()}
                       placeholder="0"
                     />
-                    <span className="text-[10px] text-gray-400 mt-1">{item.unit}</span>
+                    <span className="text-[10px] text-gray-400 mt-1">{unitLabel(item.unit, parseFloat(pars[item.id] ?? '') || 0)}</span>
                   </div>
                   {hasSecondary(item) && (
                     <div className="flex flex-col items-center">
@@ -269,7 +270,7 @@ export default function ParSettingsPage() {
                         onFocus={(e) => e.target.select()}
                         placeholder="0"
                       />
-                      <span className="text-[10px] text-purple-400 mt-1">{item.secondary_unit}</span>
+                      <span className="text-[10px] text-purple-400 mt-1">{unitLabel(item.secondary_unit, parseFloat(parsSecondary[item.id] ?? '') || 0)}</span>
                     </div>
                   )}
                 </div>

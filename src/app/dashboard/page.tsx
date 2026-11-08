@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
+import { unitLabel } from '@/lib/units'
 
 type LastCount = { item_id: string; created_at: string; entered_by: string }
 type VelocityRow = { item_id: string; name: string; unit: string; consumed: number }
@@ -284,7 +285,7 @@ export default function DashboardPage() {
                     <ul className="mt-2 space-y-1">
                       {short.order_history_items.map((item, i) => (
                         <li key={i} className="text-sm font-semibold">
-                          {item.item_name} — <span className="font-bold">{item.quantity} {item.unit} outstanding</span>
+                          {item.item_name} — <span className="font-bold">{item.quantity} {unitLabel(item.unit, item.quantity)} outstanding</span>
                         </li>
                       ))}
                     </ul>
@@ -395,7 +396,7 @@ export default function DashboardPage() {
                         <div className="h-1.5 rounded-full bg-[#1a7a3c]" style={{ width: `${Math.round((item.consumed / maxConsumed) * 100)}%` }} />
                       </div>
                     </div>
-                    <span className="text-sm font-bold text-gray-700 flex-shrink-0">{item.consumed} <span className="text-xs font-normal text-gray-400">{item.unit}</span></span>
+                    <span className="text-sm font-bold text-gray-700 flex-shrink-0">{item.consumed} <span className="text-xs font-normal text-gray-400">{unitLabel(item.unit, item.consumed)}</span></span>
                   </div>
                 )
               })}
@@ -448,8 +449,8 @@ function StockPill({ item, variant }: { item: Item; variant: 'out' | 'low' }) {
           storage icon -- not a full breakdown, that's Current Stock's job. */}
       {item.has_storage && <span title="includes storage">📦</span>}
       <span className={`text-xs font-normal ${variant === 'out' ? 'text-red-500' : 'text-amber-600'}`}>
-        {item.has_storage ? getMainUnitTotal(item) : item.current_count}/{item.par_level} {item.unit}
-        {hasSecondary && !item.has_storage ? ` · ${item.secondary_count} ${item.secondary_unit}` : ''}
+        {item.has_storage ? getMainUnitTotal(item) : item.current_count}/{item.par_level} {unitLabel(item.unit, item.par_level)}
+        {hasSecondary && !item.has_storage ? ` · ${item.secondary_count} ${unitLabel(item.secondary_unit, item.secondary_count)}` : ''}
       </span>
     </span>
   )

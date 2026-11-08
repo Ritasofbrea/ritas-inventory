@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
+import { unitLabel, subUnitSetupLabel, subUnitPreview } from '@/lib/units'
 
 export default function ManageItemsPage() {
   const router = useRouter()
@@ -563,19 +564,24 @@ export default function ManageItemsPage() {
                               />
                             </div>
                             {editSecondaryUnit.trim() && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-400 flex-shrink-0">Units per {editSecondaryUnit.trim()}:</span>
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  className="flex-1 border border-purple-200 rounded-xl px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-purple-400"
-                                  value={editUnitsPerSubUnit}
-                                  onChange={(e) => {
-                                    const v = e.target.value
-                                    if (v === '' || /^\d*$/.test(v)) setEditUnitsPerSubUnit(v)
-                                  }}
-                                  placeholder="e.g. 20"
-                                />
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-400 flex-shrink-0">{subUnitSetupLabel(editUnit, editSecondaryUnit)}</span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    className="flex-1 border border-purple-200 rounded-xl px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-purple-400"
+                                    value={editUnitsPerSubUnit}
+                                    onChange={(e) => {
+                                      const v = e.target.value
+                                      if (v === '' || /^\d*$/.test(v)) setEditUnitsPerSubUnit(v)
+                                    }}
+                                    placeholder="e.g. 2"
+                                  />
+                                </div>
+                                {subUnitPreview(editUnit, editSecondaryUnit, parseInt(editUnitsPerSubUnit, 10) || null) && (
+                                  <p className="text-xs text-purple-500">{subUnitPreview(editUnit, editSecondaryUnit, parseInt(editUnitsPerSubUnit, 10) || null)}</p>
+                                )}
                               </div>
                             )}
                             <div className="flex gap-2">
@@ -663,7 +669,7 @@ export default function ManageItemsPage() {
                             {/* Patch 38: storage number + last-updated, only for flagged items */}
                             {item.has_storage && (
                               <div className="ml-8 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
-                                <span>📦 In storage: <span className="font-bold">{item.storage_count}</span> {item.unit}</span>
+                                <span>📦 In storage: <span className="font-bold">{item.storage_count}</span> {unitLabel(item.unit, item.storage_count)}</span>
                                 <span className="text-teal-500">
                                   {item.storage_updated_at
                                     ? `updated ${new Date(item.storage_updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
@@ -745,13 +751,13 @@ export default function ManageItemsPage() {
                                     placeholder={storageAction === 'correction' ? 'New storage total' : 'Amount'}
                                     className="w-36 border border-teal-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-teal-400"
                                   />
-                                  <span className="text-xs text-teal-600">{item.unit}</span>
+                                  <span className="text-xs text-teal-600">{unitLabel(item.unit, parseFloat(storageAmount) || 0)}</span>
                                 </div>
                                 {storageAction === 'move' && (
-                                  <p className="text-xs text-teal-600">Max: {item.storage_count} {item.unit} currently in storage.</p>
+                                  <p className="text-xs text-teal-600">Max: {item.storage_count} {unitLabel(item.unit, item.storage_count)} currently in storage.</p>
                                 )}
                                 {storageAction === 'move_to_storage' && (
-                                  <p className="text-xs text-teal-600">Max: {item.current_count} {item.unit} currently in the store.</p>
+                                  <p className="text-xs text-teal-600">Max: {item.current_count} {unitLabel(item.unit, item.current_count)} currently in the store.</p>
                                 )}
                                 <input
                                   type="text"

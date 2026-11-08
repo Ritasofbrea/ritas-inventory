@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
+import { unitLabel } from '@/lib/units'
 
 type DistributorItem = Item & { distributor?: string; item_number?: string; distributor_item_name?: string }
 
@@ -358,15 +359,15 @@ export default function OrderListPage() {
                                           onFocus={(e) => e.target.select()}
                                           className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
                                         />
-                                        <span className="text-xs text-gray-400">{getOrderUnitLabel(item)}</span>
+                                        <span className="text-xs text-gray-400">{unitLabel(getOrderUnitLabel(item), parseFloat(getQtyValue(item)) || 0)}</span>
                                       </div>
                                     )}
                                   </div>
                                   <div className="text-right flex-shrink-0 mr-2">
                                     <p className="text-sm text-gray-500">
-                                      <span className="font-bold text-gray-900">{item.current_count}</span>
-                                      {' / '}
-                                      <span className="text-gray-400">{item.par_level} {item.unit}</span>
+                                      Have <span className="font-bold text-gray-900">{item.current_count}</span>
+                                      {', want '}
+                                      <span className="text-gray-400">{item.par_level} {unitLabel(item.unit, item.par_level)}</span>
                                     </p>
                                   </div>
                                   <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${status === 'out' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -415,7 +416,7 @@ export default function OrderListPage() {
                                         onFocus={(e) => e.target.select()}
                                         className="w-16 text-sm text-center border border-gray-200 rounded-lg py-0.5 px-1 focus:outline-none focus:border-[#1a7a3c]"
                                       />
-                                      <span className="text-xs text-gray-400">{getOrderUnitLabel(item)}</span>
+                                      <span className="text-xs text-gray-400">{unitLabel(getOrderUnitLabel(item), parseFloat(getQtyValue(item)) || 0)}</span>
                                     </div>
                                   )}
                                 </div>
@@ -458,7 +459,7 @@ export default function OrderListPage() {
                           {order.order_history_items.map((item, idx) => (
                             <div key={item.item_id} className={`flex items-center gap-3 px-5 py-3 ${idx < order.order_history_items.length - 1 ? 'border-b border-gray-100' : ''}`}>
                               <p className="flex-1 text-sm font-semibold text-gray-500">{item.item_name}</p>
-                              <p className="text-sm text-gray-400">{item.quantity} {item.unit}</p>
+                              <p className="text-sm text-gray-400">{item.quantity} {unitLabel(item.unit, item.quantity)}</p>
                             </div>
                           ))}
                         </div>
@@ -517,7 +518,7 @@ export default function OrderListPage() {
                             {order.order_history_items.map((item, i) => (
                               <div key={i} className={`flex items-center justify-between px-5 py-3 bg-gray-50 ${i < order.order_history_items.length - 1 ? 'border-b border-gray-100' : ''}`}>
                                 <p className="text-sm font-medium text-gray-900">{item.item_name}</p>
-                                <p className="text-sm font-bold text-gray-700">{item.quantity} <span className="font-normal text-gray-400">{item.unit}</span></p>
+                                <p className="text-sm font-bold text-gray-700">{item.quantity} <span className="font-normal text-gray-400">{unitLabel(item.unit, item.quantity)}</span></p>
                               </div>
                             ))}
                             {order.notes && (

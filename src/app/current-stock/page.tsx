@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES, getStockStatus, getMainUnitTotal } from '@/lib/types'
+import { unitLabel } from '@/lib/units'
 
 const STATUS_ORDER = { out: 0, low: 1, ok: 2 }
 
@@ -34,7 +35,7 @@ export default function CurrentStockPage() {
   const [lastCounts, setLastCounts] = useState<Record<string, LastCount>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'all' | 'out' | 'low' | 'ok' | 'off' | 'stale'>('all')
+  const [filter, setFilter] = useState<'all' | 'out' | 'low' | 'ok' | 'off' | 'stale' | 'setpar'>('all')
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
 
@@ -85,6 +86,7 @@ export default function CurrentStockPage() {
     if (searchTerm && !i.name.toLowerCase().includes(searchTerm)) return false
     if (filter === 'stale') return isStale(lastCounts[i.id])
     if (filter === 'off') return i.is_off
+    if (filter === 'setpar') return !i.is_off && i.par_level <= 0
     if (filter !== 'all') return !i.is_off && getStockStatus(i) === filter
     return true
   })
@@ -93,6 +95,10 @@ export default function CurrentStockPage() {
   const lowCount = items.filter((i) => !i.is_off && getStockStatus(i) === 'low').length
   const okCount = items.filter((i) => !i.is_off && getStockStatus(i) === 'ok').length
   const offCount = items.filter((i) => i.is_off).length
+  // Patch 43: par_level <= 0 means "not tracked," not "confirmed OK" --
+  // getStockStatus still returns 'ok' for these (unchanged, so okCount
+  // above is untouched), this is just a separate way to find them.
+  const setParCount = items.filter((i) => !i.is_off && i.par_level <= 0).length
 
   const byCategory = CATEGORIES.reduce<Record<string, Item[]>>((acc, cat) => {
     const catItems = visible
@@ -126,24 +132,27 @@ export default function CurrentStockPage() {
 
         {/* Summary pills */}
         <div className="flex gap-2 mb-4 flex-wrap">
-          {(['all', 'out', 'low', 'ok', 'off', 'stale'] as const).map((f) => {
+          {(['all', 'out', 'low', 'ok', 'off', 'stale', 'setpar'] as const).map((f) => {
             const label = f === 'all' ? `All (${items.length})`
               : f === 'out' ? `Out (${outCount})`
               : f === 'low' ? `Low (${lowCount})`
               : f === 'ok' ? `OK (${okCount})`
               : f === 'off' ? `❄️ Off (${offCount})`
-              : `Stale (${staleCount})`
+              : f === 'stale' ? `Stale (${staleCount})`
+              : `Set par (${setParCount})`
             const activeClass = f === 'out' ? 'bg-red-600 text-white border-red-600'
               : f === 'low' ? 'bg-amber-500 text-white border-amber-500'
               : f === 'ok' ? 'bg-green-600 text-white border-green-600'
               : f === 'off' ? 'bg-indigo-500 text-white border-indigo-500'
               : f === 'stale' ? 'bg-orange-500 text-white border-orange-500'
+              : f === 'setpar' ? 'bg-gray-500 text-white border-gray-500'
               : 'bg-gray-800 text-white border-gray-800'
             const inactiveClass = f === 'out' ? 'bg-red-50 text-red-700 border-red-200'
               : f === 'low' ? 'bg-amber-50 text-amber-700 border-amber-200'
               : f === 'ok' ? 'bg-green-50 text-green-700 border-green-200'
               : f === 'off' ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
               : f === 'stale' ? 'bg-orange-50 text-orange-700 border-orange-200'
+              : f === 'setpar' ? 'bg-white text-gray-600 border-gray-300'
               : 'bg-white text-gray-600 border-gray-200'
             return (
               <button
@@ -216,8 +225,8 @@ export default function CurrentStockPage() {
                             )}
                           </p>
                           <p className={`text-xs mt-0.5 ${stale && !item.is_off ? 'text-orange-500' : 'text-gray-400'}`}>
-                            par {item.par_level} {item.unit}
-                            {item.secondary_unit ? ` · ${item.secondary_count} ${item.secondary_unit}` : ''}
+                            par {item.par_level} {unitLabel(item.unit, item.par_level)}
+                            {item.secondary_unit ? ` · ${item.secondary_count} ${unitLabel(item.secondary_unit, item.secondary_count)}` : ''}
                             {lastCounts[item.id]
                               ? ` · counted ${formatCountDate(lastCounts[item.id].created_at)}`
                               : ' · never counted'}
@@ -237,18 +246,27 @@ export default function CurrentStockPage() {
                         <div className="text-right flex-shrink-0">
                           <p className={`text-base font-bold ${status === 'out' ? 'text-red-600' : status === 'low' ? 'text-amber-600' : 'text-gray-900'}`}>
                             {item.current_count}
-                            <span className="text-xs font-normal text-gray-400 ml-1">{item.unit}</span>
+                            <span className="text-xs font-normal text-gray-400 ml-1">{unitLabel(item.unit, item.current_count)}</span>
                             {item.secondary_count > 0 && (
                               <>
                                 <span className="text-xs font-normal text-gray-400"> · </span>
                                 {item.secondary_count}
-                                <span className="text-xs font-normal text-gray-400 ml-1">{item.secondary_unit}</span>
+                                <span className="text-xs font-normal text-gray-400 ml-1">{unitLabel(item.secondary_unit, item.secondary_count)}</span>
                               </>
                             )}
                           </p>
                         </div>
                         {item.is_off ? (
                           <span className="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg w-10 text-center bg-indigo-100 text-indigo-700">OFF</span>
+                        ) : status === 'ok' && item.par_level <= 0 ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); router.push('/par-settings') }}
+                            className="flex-shrink-0 min-h-[32px] text-xs font-semibold px-2.5 py-1 rounded-lg border border-gray-300 text-gray-500 bg-white hover:border-gray-400"
+                            title="No par level set -- tap to set one"
+                          >
+                            Set par
+                          </button>
                         ) : (
                           <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg w-10 text-center ${
                             status === 'out' ? 'bg-red-100 text-red-700'

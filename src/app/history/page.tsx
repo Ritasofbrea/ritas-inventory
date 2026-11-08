@@ -7,6 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { InventoryCount, CATEGORIES } from '@/lib/types'
 import { todayInTZ, addDays } from '@/lib/tasks'
+import { unitLabel } from '@/lib/units'
 
 interface VelocityRow {
   item_id: string
@@ -280,7 +281,7 @@ export default function HistoryPage() {
                             </div>
                             <span className="font-bold text-gray-900">
                               {entry.count}
-                              <span className="text-xs font-normal text-gray-400 ml-1">{entry.items?.unit}</span>
+                              <span className="text-xs font-normal text-gray-400 ml-1">{unitLabel(entry.items?.unit, entry.count)}</span>
                             </span>
                           </div>
                         ))}

@@ -8,6 +8,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole, getShiftLeadName } from '@/lib/auth'
 import { Item, InventoryCount, CATEGORIES, Category } from '@/lib/types'
 import { useBlockReload } from '@/lib/reload-guard'
+import { unitLabel, subUnitSetupLabel, subUnitPreview } from '@/lib/units'
 
 interface CountDraft {
   [itemId: string]: string
@@ -539,7 +540,7 @@ export default function CountPage() {
                       input here, just a line telling them backup stock
                       exists. Only owners can change this number, elsewhere. */}
                   {item.has_storage && (
-                    <p className="text-xs text-teal-600 font-medium mt-0.5">📦 In storage: {item.storage_count} {item.unit}</p>
+                    <p className="text-xs text-teal-600 font-medium mt-0.5">📦 In storage: {item.storage_count} {unitLabel(item.unit, item.storage_count)}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -575,7 +576,9 @@ export default function CountPage() {
                           onBlur={() => handleItemInputBlur(item.id)}
                           placeholder="0"
                         />
-                        <span className="text-xs text-purple-400 font-medium">{item.secondary_unit}</span>
+                        <span className="text-xs text-purple-400 font-medium">
+                          {unitLabel(item.secondary_unit, parseFloat(secondaryCounts[item.id] ?? '') || 0)}
+                        </span>
                       </div>
                     </>
                   )}
@@ -907,19 +910,22 @@ export default function CountPage() {
             {newSecondaryUnit.trim() && (
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 font-medium">
-                  Units per {newSecondaryUnit.trim()} <span className="text-gray-400 font-normal">(optional — e.g. 20 sleeves per box)</span>
+                  {subUnitSetupLabel(newUnit, newSecondaryUnit)} <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <input
                   type="text"
                   inputMode="numeric"
                   className="border border-purple-200 rounded-xl px-3 py-2.5 text-gray-900 focus:outline-none focus:border-purple-400"
-                  placeholder="e.g. 20"
+                  placeholder="e.g. 2"
                   value={newUnitsPerSubUnit}
                   onChange={(e) => {
                     const v = e.target.value
                     if (v === '' || /^\d*$/.test(v)) setNewUnitsPerSubUnit(v)
                   }}
                 />
+                {subUnitPreview(newUnit, newSecondaryUnit, parseInt(newUnitsPerSubUnit, 10) || null) && (
+                  <p className="text-xs text-purple-500">{subUnitPreview(newUnit, newSecondaryUnit, parseInt(newUnitsPerSubUnit, 10) || null)}</p>
+                )}
               </div>
             )}
 
@@ -983,8 +989,8 @@ export default function CountPage() {
                       <p className="font-semibold text-gray-900 text-sm">
                         {item.name}
                         <span className="font-normal text-gray-600">
-                          : {primaryDisplay} {item.unit}
-                          {showSecondary && ` · ${secondary} ${item.secondary_unit}`}
+                          : {primaryDisplay} {unitLabel(item.unit, parseFloat(primaryDisplay) || 0)}
+                          {showSecondary && ` · ${secondary} ${unitLabel(item.secondary_unit, secondaryVal)}`}
                         </span>
                       </p>
                       {flagged && (

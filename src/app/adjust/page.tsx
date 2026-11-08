@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
+import { unitLabel } from '@/lib/units'
 
 const QUICK_REASONS = ['Found extra stock', 'Count error', 'Vendor drop-off', 'Used for event', 'Waste / spoilage']
 
@@ -184,8 +185,8 @@ export default function AdjustPage() {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-gray-900">{item.name}</p>
                             <p className="text-sm text-gray-400">
-                              {displayCount} {item.unit}
-                              {item.secondary_unit ? ` + ${displaySecondary} ${item.secondary_unit}` : ''} on hand
+                              {displayCount} {unitLabel(item.unit, displayCount)}
+                              {item.secondary_unit ? ` + ${displaySecondary} ${unitLabel(item.secondary_unit, displaySecondary)}` : ''} on hand
                             </p>
                           </div>
                           {wasSaved && !isOpen && (
@@ -212,7 +213,7 @@ export default function AdjustPage() {
                                     className="w-24 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-blue-400 bg-white"
                                     autoFocus
                                   />
-                                  <span className="text-gray-500 text-sm">{item.unit}</span>
+                                  <span className="text-gray-500 text-sm">{unitLabel(item.unit, newCount === '' ? displayCount : parseFloat(newCount) || 0)}</span>
                                 </div>
                                 {item.secondary_unit && (
                                   <>
@@ -227,7 +228,7 @@ export default function AdjustPage() {
                                         placeholder={String(displaySecondary)}
                                         className="w-20 text-center text-xl font-bold border-2 border-gray-200 rounded-xl py-2 px-1 focus:outline-none focus:border-purple-400 bg-purple-50"
                                       />
-                                      <span className="text-purple-500 text-sm font-medium">{item.secondary_unit}</span>
+                                      <span className="text-purple-500 text-sm font-medium">{unitLabel(item.secondary_unit, newSecondaryCount === '' ? displaySecondary : parseFloat(newSecondaryCount) || 0)}</span>
                                     </div>
                                   </>
                                 )}
