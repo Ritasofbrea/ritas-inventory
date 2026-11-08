@@ -34,10 +34,10 @@ export async function GET(request: NextRequest) {
   // inventory_counts/order_history/storage_moves), so fetching it whole is
   // safe. It's the universe of item_ids patch 41's per-item point queries
   // below run against.
-  const { data: items, error: itemsError } = await db.from('items').select('id, name, category, unit')
+  const { data: items, error: itemsError } = await db.from('items').select('id, name, category, unit, is_off')
   if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 })
 
-  type ItemRow = { id: string; name: string; category: string; unit: string }
+  type ItemRow = { id: string; name: string; category: string; unit: string; is_off: boolean }
   const itemRows = (items ?? []) as ItemRow[]
 
   // Step 1: latest real count on/before the end date, per item. An item
@@ -73,11 +73,15 @@ export async function GET(request: NextRequest) {
     name: string
     category: string
     unit: string
+    is_off: boolean
     start_count: number | null
     end_count: number | null
     consumed: number
     flagged: boolean
+    weekly_rate: number | null
   }[] = []
+
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
   for (const { item, endRecord, startRecord } of withStart) {
     if (!startRecord) {
@@ -86,10 +90,12 @@ export async function GET(request: NextRequest) {
         name: item.name,
         category: item.category,
         unit: item.unit,
+        is_off: item.is_off,
         start_count: null,
         end_count: endRecord.count,
         consumed: 0,
         flagged: false,
+        weekly_rate: null,
       })
       continue
     }
@@ -97,15 +103,27 @@ export async function GET(request: NextRequest) {
     const netFlow = flowByItem.get(item.id) ?? 0
     const { consumed, flagged } = computeCorrectedConsumed(startRecord.count, endRecord.count, netFlow)
 
+    // Patch 42: the actual elapsed time between the two real count records
+    // (not the nominal date-range length) -- same convention par-suggestions
+    // already uses for its weekly average, so a 30-day range and a 90-day
+    // range report comparable per-week rates even if an item's last count
+    // on/before either boundary happened a few days off from the boundary
+    // itself. Null (not zero) when there's no real elapsed time to divide
+    // by, so the UI can omit the line rather than imply a rate of zero.
+    const elapsedMs = endRecord.ts - startRecord.ts
+    const weeklyRate = elapsedMs > 0 ? parseFloat((consumed / (elapsedMs / WEEK_MS)).toFixed(2)) : null
+
     results.push({
       item_id: item.id,
       name: item.name,
       category: item.category,
       unit: item.unit,
+      is_off: item.is_off,
       start_count: startRecord.count,
       end_count: endRecord.count,
       consumed,
       flagged,
+      weekly_rate: weeklyRate,
     })
   }
 
