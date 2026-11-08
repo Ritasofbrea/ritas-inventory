@@ -227,10 +227,10 @@ export default function Navigation() {
               <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide min-w-0">
                 {navLink('/dashboard', 'Dashboard')}
                 {navLink('/current-stock', 'Stock')}
+                {navLink('/history', 'History')}
                 {navLink('/order-list', 'Order List')}
                 {navLink('/todo', 'To-Do', todoBadge)}
                 {navLink('/flavors', 'Flavors')}
-                {navLink('/history', 'History')}
               </div>
 
               <div className="relative flex-shrink-0" ref={moreRef}>
