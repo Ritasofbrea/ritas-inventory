@@ -19,7 +19,10 @@ export async function GET(request: NextRequest) {
   ])
   if (ownersRes.error) return NextResponse.json({ error: ownersRes.error.message }, { status: 500 })
   if (shiftLeadsRes.error) return NextResponse.json({ error: shiftLeadsRes.error.message }, { status: 500 })
-  return NextResponse.json([...ownersRes.data, ...shiftLeadsRes.data])
+  // Patch 39 follow-up: ZZTEST Shift Lead is kept permanently active for
+  // e2e tests -- it must never show up on the real Change PIN screen.
+  const realShiftLeads = shiftLeadsRes.data.filter((s) => !s.name.startsWith('ZZTEST'))
+  return NextResponse.json([...ownersRes.data, ...realShiftLeads])
 }
 
 // Changes a PIN: requires current_pin to match the stored value first.

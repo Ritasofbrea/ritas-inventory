@@ -1,54 +1,41 @@
-// Login helpers that get a real `ritas_session` cookie for each role by
-// calling the app's own routes over plain fetch -- no browser needed for
-// role-checks.mjs / step-checks.mjs (see src/lib/session.ts for what the
-// cookie contains and how it's verified).
-import { BASE_URL, requiredEnv } from './config.mjs'
+// Session helpers for the e2e scripts. loginAsStaff still goes through the
+// real /api/session route (staff sessions name no one, so there's nothing
+// to "fake" -- same as tapping "To-Do List" on /login). loginAsOwner/
+// loginAsShiftLead used to call /api/pins/verify with a test PIN; they now
+// mint a real, production-signed session token directly via
+// src/lib/session-token.ts (the exact function the app itself uses to sign
+// every cookie -- no reimplementation, no drift risk) and build the cookie
+// header by hand, with zero HTTP round trip and no PIN involved at all.
+//
+// This only works against localhost: it reads SESSION_SECRET from
+// process.env (via `node --env-file=.env.local`, same as every other
+// secret in tests/e2e/) and never prints it. The two names below are
+// hardcoded literals, not parameters -- this file can only ever mint a
+// session for ZZTEST Owner or ZZTEST Shift Lead, never an arbitrary name,
+// so there's no way to accidentally point it at a real account the way a
+// stale/wrong PIN env var once could.
+import { createSessionToken } from '../../../src/lib/session-token.ts'
+import { BASE_URL } from './config.mjs'
+
+function mint(role, name) {
+  const created = createSessionToken(role, name)
+  if (!created) {
+    throw new Error(
+      'createSessionToken returned null -- SESSION_SECRET is missing from .env.local (or empty). ' +
+        'Run with `node --env-file=.env.local`, same as every other e2e script.'
+    )
+  }
+  return { cookie: `ritas_session=${created.token}`, name }
+}
+
+export const loginAsOwner = () => mint('owner', 'ZZTEST Owner')
+export const loginAsShiftLead = () => mint('shift_lead', 'ZZTEST Shift Lead')
 
 function sessionCookieFrom(res) {
   const cookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('set-cookie')].filter(Boolean)
   const match = cookies.find((c) => c.startsWith('ritas_session='))
   return match ? match.split(';')[0] : null
 }
-
-// PINs come from env vars (E2E_OWNER_PIN / E2E_SHIFT_LEAD_PIN) -- set them
-// in .env.local to the test PIN you chose for the dedicated ZZTEST Owner /
-// ZZTEST Shift Lead accounts (see supabase/e2e-test-accounts.sql and
-// ../README.md). Never a real person's PIN, and never hardcoded here.
-//
-// /api/pins/verify doesn't take a name, only a PIN -- whichever account's
-// PIN matches is who you're logged in as. That means a wrong/stale env var
-// could just as easily match a REAL owner or shift lead as the ZZTEST one,
-// so every login here is checked against who it actually matched: refuse
-// outright unless that name starts with "ZZTEST".
-async function loginWithPin(roleName) {
-  const pin = roleName === 'owner' ? requiredEnv('E2E_OWNER_PIN') : requiredEnv('E2E_SHIFT_LEAD_PIN')
-  const res = await fetch(`${BASE_URL}/api/pins/verify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: roleName, pin }),
-  })
-  const body = await res.json()
-  if (!body.valid) {
-    throw new Error(
-      `login failed for ${roleName} -- E2E_${roleName.toUpperCase()}_PIN must match the ZZTEST ${
-        roleName === 'owner' ? 'Owner' : 'Shift Lead'
-      } account's PIN, and that account must have active = true right now. See tests/e2e/README.md and supabase/e2e-test-accounts.sql.`
-    )
-  }
-  if (!body.name || !body.name.startsWith('ZZTEST')) {
-    throw new Error(
-      `REFUSING TO CONTINUE: E2E_${roleName.toUpperCase()}_PIN matched a REAL account ("${body.name}"), not a ZZTEST one. ` +
-        `These scripts must only ever log in as ZZTEST Owner / ZZTEST Shift Lead. Double-check E2E_${roleName.toUpperCase()}_PIN in .env.local -- ` +
-        `see supabase/e2e-test-accounts.sql.`
-    )
-  }
-  const cookie = sessionCookieFrom(res)
-  if (!cookie) throw new Error(`no session cookie returned for ${roleName}`)
-  return { cookie, name: body.name }
-}
-
-export const loginAsOwner = () => loginWithPin('owner')
-export const loginAsShiftLead = () => loginWithPin('shift_lead')
 
 // Staff session: no PIN, same as tapping "To-Do List" on /login.
 export async function loginAsStaff() {

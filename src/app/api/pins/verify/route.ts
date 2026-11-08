@@ -20,12 +20,23 @@ import { clientIp, isRateLimited, recordLoginAttempt } from '@/lib/rate-limit'
 // limited (B9): 10 failures from the same IP in 15 minutes blocks further
 // attempts with 429, without even checking the PIN — a few honest typos
 // won't trip it, a guessing script will.
+//
+// Patch 39 follow-up: real PINs are always 4-6 digits (enforced at
+// change-PIN time, PATCH /api/pins), so a non-digit submission can never be
+// a legitimate login -- reject it before touching the DB at all, same
+// PIN_RE as that route. This is also what makes the ZZTEST Owner/Shift
+// Lead accounts (kept permanently active for e2e tests, with their `pin`
+// column deliberately set to a non-digit value) impossible to log into
+// here: no digit string anyone can type will ever match a non-digit stored
+// value, and now no non-digit string gets far enough to try.
+const PIN_RE = /^\d{4,6}$/
+
 export async function POST(request: NextRequest) {
   const { name, pin } = await request.json()
   if (name !== 'owner' && name !== 'shift_lead') {
     return NextResponse.json({ error: 'name must be "owner" or "shift_lead"' }, { status: 400 })
   }
-  if (typeof pin !== 'string' || !pin) {
+  if (typeof pin !== 'string' || !PIN_RE.test(pin)) {
     return NextResponse.json({ valid: false })
   }
   if (!sessionSecretConfigured()) {

@@ -4,6 +4,12 @@
 -- insert is `on conflict (name) do nothing`, so re-running this after
 -- you've replaced the placeholder PINs below does NOT overwrite them).
 --
+-- Superseded by zztest-accounts-permanent.sql, which should be run right
+-- after this one: the active-toggling and placeholder-PIN instructions
+-- below describe this file's own original one-time setup, not the
+-- ongoing workflow -- that file flips both rows active for good and sets
+-- a real pin value, so the PINs referenced below never end up mattering.
+--
 -- Columns checked directly against the live schema before writing this
 -- (via the PostgREST OpenAPI root) rather than assumed:
 --   owners:      name text primary key, pin text not null, active boolean

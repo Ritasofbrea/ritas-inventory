@@ -134,11 +134,14 @@ export default function NotesBoard({
 
   // Only needed for the ack-exemption math above — /api/shift-leads returns
   // everyone (it's the owner-only management screen's list), so filter to
-  // active here same as /api/staff does server-side.
+  // active here same as /api/staff does server-side. ZZTEST Shift Lead
+  // (patch 39 follow-up) is kept permanently active for e2e tests and must
+  // never count toward a real note's required acknowledgments -- same
+  // exclusion as notes-server.ts's maybeAutoArchiveNote.
   useEffect(() => {
     fetch('/api/shift-leads')
       .then((res) => (res.ok ? res.json() : []))
-      .then((data: { name: string; active: boolean }[]) => setShiftLeads((data ?? []).filter((s) => s.active)))
+      .then((data: { name: string; active: boolean }[]) => setShiftLeads((data ?? []).filter((s) => s.active && !s.name.startsWith('ZZTEST'))))
       .catch(() => {
         // ack denominator just falls back to the full staff roster (no
         // shift-lead exclusions) — not worth an error banner for this

@@ -95,7 +95,11 @@ export async function maybeAutoArchiveNote(db: SupabaseClient, noteId: string): 
   ])
 
   const staffNames = (staffRows ?? []).map((s: { name: string }) => s.name)
-  const shiftLeadNames = (shiftLeadRows ?? []).map((s: { name: string }) => s.name)
+  // Patch 39 follow-up: ZZTEST Shift Lead is kept permanently active (no
+  // more toggling for e2e tests), so it must never count toward a real
+  // note's required acknowledgments -- it would be a phantom participant
+  // that can never ack, blocking the note from ever auto-archiving.
+  const shiftLeadNames = (shiftLeadRows ?? []).map((s: { name: string }) => s.name).filter((n) => !n.startsWith('ZZTEST'))
   const denominator = computeAckDenominator(staffNames, shiftLeadNames, note.created_by)
 
   if (denominator > 0 && (ackCount ?? 0) >= denominator) {

@@ -31,57 +31,42 @@ npm install
 npx playwright install chromium   # only needed for logout-race.mjs
 ```
 
-**These scripts never use a real person's PIN.** `role-checks.mjs` and
-`step-checks.mjs` log in as two dedicated test accounts — `ZZTEST Owner`
-and `ZZTEST Shift Lead` — created by `supabase/e2e-test-accounts.sql` (run
-once in the Supabase SQL Editor; idempotent, safe to re-run). That file
-creates both rows with `active = false` and a placeholder PIN; before your
-first run, replace the placeholders with test PINs of your own choosing
-(anything, as long as they don't collide with a real PIN):
-```sql
-update owners set pin = '<your test PIN>' where name = 'ZZTEST Owner';
-update shift_leads set pin = '<your test PIN>' where name = 'ZZTEST Shift Lead';
-```
+**These scripts never use a PIN.** `role-checks.mjs` and `step-checks.mjs`
+log in as two dedicated test accounts — `ZZTEST Owner` and `ZZTEST Shift
+Lead` — created by `supabase/e2e-test-accounts.sql` and kept permanently
+active by `supabase/zztest-accounts-permanent.sql` (run once each in the
+Supabase SQL Editor; both idempotent, safe to re-run). `helpers/auth.mjs`
+mints a real, production-signed session cookie for each directly — the
+exact same `createSessionToken` function the app itself uses to sign every
+cookie (`src/lib/session-token.ts`, no Next.js import, so it's importable
+from a plain Node script) — instead of calling `/api/pins/verify` with a
+test PIN. The two account names are hardcoded literals in that file, not
+parameters, so there's no way to point it at anything but those two ZZTEST
+accounts.
 
-Add those same two PINs to `.env.local` (gitignored, never commit it):
-```
-E2E_OWNER_PIN=<the ZZTEST Owner's test PIN>
-E2E_SHIFT_LEAD_PIN=<the ZZTEST Shift Lead's test PIN>
-E2E_BASE_URL=http://localhost:3000   # optional, this is the default
-```
-`NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are already in
-`.env.local` for the app itself and get reused here. Nothing in `tests/e2e/`
-contains a secret, PIN, or key — every credential is read from
-`process.env` at run time.
+This needs `SESSION_SECRET` from `.env.local` (already there for the app
+itself) — read from `process.env` at run time, never printed. Set
+`E2E_BASE_URL` too if you're not using the default `http://localhost:3000`.
 
-As an extra safety net, `/api/pins/verify` doesn't take a name — only a
-PIN — so a stale or wrong env var could in principle match a real owner's
-or shift lead's PIN instead. `helpers/auth.mjs` checks who actually
-matched and **refuses to continue** unless that account's name starts with
-`ZZTEST`. If you ever see `REFUSING TO CONTINUE`, stop and check
-`E2E_OWNER_PIN`/`E2E_SHIFT_LEAD_PIN` before touching anything else.
+Both ZZTEST accounts are **permanently `active = true`** (see
+`supabase/zztest-accounts-permanent.sql` for why this is safe: `ZZTEST
+Owner` is invisible everywhere the real app queries owners, since those
+lists are hardcoded by name; `ZZTEST Shift Lead` is explicitly filtered out
+of the two real call sites that list active shift leads — the Change PIN
+screen and the Notes acknowledgment-count math — so it's also invisible).
+Their `pin` column is set to a long non-digit value, which `/api/pins/
+verify` rejects before it would even reach the database (real PINs are
+always 4-6 digits) — so neither account can ever be logged into through
+the normal PIN screen, only through this test helper.
 
-Then start the dev server in another terminal: `npm run dev`.
-
-## Running
-Both ZZTEST accounts are `active = false` by default so they never show up
-anywhere a real name would (Added by lists, "Last changed" displays, etc).
-**Before running `role-checks.mjs` or `step-checks.mjs`, turn them on; turn
-them back off when you're done:**
-```sql
-update owners set active = true where name = 'ZZTEST Owner';
-update shift_leads set active = true where name = 'ZZTEST Shift Lead';
-```
+Nothing needs toggling before or after a run anymore. Just start the dev
+server in another terminal (`npm run dev`) and run:
 ```
 npm run test:e2e                 # all three, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
 npm run test:e2e:logout-race     # doesn't need either ZZTEST account
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
-```
-```sql
-update owners set active = false where name = 'ZZTEST Owner';
-update shift_leads set active = false where name = 'ZZTEST Shift Lead';
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and
 exits non-zero on any failure.
