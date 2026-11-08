@@ -99,6 +99,14 @@ async function run() {
     check('OWNER: POST /api/vendor-week-status as staff -> 403', asStaff.status === 403)
   }
   {
+    // "Undo" (DELETE) — same owner-only gate as the mark itself.
+    const body = JSON.stringify({ vendor: 'ZZTEST Vendor' })
+    const noSession = await apiFetch('/api/vendor-week-status', null, { method: 'DELETE', body })
+    check('OWNER: DELETE /api/vendor-week-status with no session -> 401', noSession.status === 401)
+    const asShiftLead = await apiFetch('/api/vendor-week-status', shiftLead.cookie, { method: 'DELETE', body })
+    check('OWNER: DELETE /api/vendor-week-status as shift_lead -> 403', asShiftLead.status === 403)
+  }
+  {
     const asShiftLead = await apiFetch('/api/owners/alerts', shiftLead.cookie)
     check('OWNER: GET /api/owners/alerts as shift_lead -> 403', asShiftLead.status === 403)
     const asOwner = await apiFetch('/api/owners/alerts', owner.cookie)

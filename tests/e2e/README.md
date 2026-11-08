@@ -52,6 +52,15 @@ points at.
   switch — using `ZZTEST Owner` as a safe stand-in third identity so no
   real Josh/Gina device row is ever touched. Also checks the shape of GET
   `/api/owners/alerts`' new `linked` field.
+- **`vendor-week-switch-checks.mjs`** — patch 44 follow-up: switching a
+  vendor's week mark between "Order Placed" and "Nothing to order" (both
+  directions) and "Undo" clearing it back to pending, via `ZZTEST Vendor`
+  (no real vendor_schedules row, but vendor_week_status/
+  vendor_week_status_log need none). Also checks the
+  `vendor_week_status_log` audit trail records every press in order — but
+  only as a non-fatal, reported skip if `supabase/add-vendor-week-status-
+  log.sql` hasn't been run yet, since the core switch/undo behavior never
+  depends on that table existing.
 
 ## Setup (one time)
 ```
@@ -90,13 +99,14 @@ the normal PIN screen, only through this test helper.
 Nothing needs toggling before or after a run anymore. Just start the dev
 server in another terminal (`npm run dev`) and run:
 ```
-npm run test:e2e                 # all six, in sequence
+npm run test:e2e                 # all seven, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
 npm run test:e2e:logout-race     # doesn't need either ZZTEST account
 npm run test:e2e:row-cap-checks
 npm run test:e2e:vendor-schedule # pure logic, doesn't need the dev server or either ZZTEST account
 npm run test:e2e:notification-linking
+npm run test:e2e:vendor-week-switch
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

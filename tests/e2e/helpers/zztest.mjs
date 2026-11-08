@@ -35,4 +35,10 @@ export async function sweepZztestFixtures() {
   // (endpoint contains "zztest.example.com") — normally cleaned up in its
   // own try/finally, this only matters if that run crashed first.
   await rest('push_subscriptions?endpoint=ilike.*zztest*', { method: 'DELETE' })
+
+  // vendor-week-switch-checks.mjs's 'ZZTEST Vendor' fixture — same
+  // reasoning; the log sweep is best-effort since that table may not
+  // exist yet (supabase/add-vendor-week-status-log.sql not run).
+  await rest('vendor_week_status?vendor=eq.ZZTEST%20Vendor', { method: 'DELETE' })
+  await rest('vendor_week_status_log?vendor=eq.ZZTEST%20Vendor', { method: 'DELETE' }).catch(() => {})
 }

@@ -224,9 +224,16 @@ export default function OrderListPage() {
     window.dispatchEvent(new Event('vendor-status-changed'))
   }
 
+  // Fix: always marks every touched vendor 'ordered' for the week,
+  // regardless of its current mark — switching an existing "Nothing to
+  // order" to "Order placed" is exactly what pressing Order Placed (here,
+  // globally, for items spanning that vendor) is supposed to do. The old
+  // `!v.resolvedThisWeek` filter skipped already-resolved vendors, which
+  // meant a global order placed after a vendor had been marked skipped
+  // never updated that mark.
   const silenceVendorsForItems = async (orderedItems: DistributorItem[]) => {
     const touched = new Set(orderedItems.map((i) => i.distributor ?? 'unmapped'))
-    const toSilence = vendorInfos.filter((v) => touched.has(v.vendor) && !v.resolvedThisWeek)
+    const toSilence = vendorInfos.filter((v) => touched.has(v.vendor))
     await Promise.all(
       toSilence.map((v) =>
         fetch('/api/vendor-week-status', {
@@ -317,6 +324,25 @@ export default function OrderListPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vendor, status: 'skipped' }),
+      })
+      await fetchVendorInfos()
+      broadcastVendorStatusChanged()
+    } finally {
+      setVendorActionWorking(null)
+    }
+  }
+
+  // "Undo": clears the mark entirely (server deletes the vendor_week_status
+  // row), bringing back the normal pending state — buttons and the real
+  // due-tag, exactly as if nothing had been pressed yet this week. The
+  // press itself is still recorded in vendor_week_status_log server-side.
+  const handleUndoVendorWeek = async (vendor: string) => {
+    setVendorActionWorking(vendor)
+    try {
+      await fetch('/api/vendor-week-status', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendor }),
       })
       await fetchVendorInfos()
       broadcastVendorStatusChanged()
@@ -470,13 +496,17 @@ export default function OrderListPage() {
     const { key, label, colorClass, distItems, vendorInfo } = bucket
     const tag = vendorInfo ? DUE_TAG_LABEL[vendorInfo.status] : undefined
     const dayLabel = vendorInfo ? orderDayLabel(vendorInfo.order_day) : null
-    // Fix (live testing): keyed off resolvedThisWeek (whether the
-    // occurrence `status` describes is itself resolved), not the old
-    // `status !== 'resolved'` check — that broke on the Sunday/Monday
-    // wraparound, where status rolls forward to a fresh, still-unresolved
-    // 'due_tomorrow' and the buttons correctly need to stay.
-    const showActions = !!vendorInfo && !vendorInfo.resolvedThisWeek
     const confirmation = vendorInfo?.resolvedThisWeek ?? vendorInfo?.justResolved ?? null
+    // Fix: both buttons always show whenever there's a vendor to act on —
+    // not just before a mark exists. Pressing the other one from whichever
+    // is currently marked SWITCHES it (the server already overwrites
+    // status/resolved_by/resolved_at regardless of what it was); "Undo"
+    // (shown only once something is actually marked for this exact week)
+    // clears the mark entirely via a server delete, bringing back the
+    // plain pending state. See order-history still keeps every item
+    // actually ordered either way — this only ever touches the week's
+    // ordered/skipped/undone MARK, never that record.
+    const working = vendorActionWorking === key
     return (
       <section key={key} className="mb-6">
         <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
@@ -488,22 +518,39 @@ export default function OrderListPage() {
               </span>
             )}
           </div>
-          {showActions && (
+          {!!vendorInfo && (
             <div className="flex gap-2">
               <button
                 onClick={() => handleMarkOrderedForVendor(key)}
-                disabled={vendorActionWorking === key}
-                className="text-xs font-semibold text-white bg-[#1a7a3c] hover:bg-[#155f2f] disabled:opacity-50 px-3 py-1.5 rounded-lg"
+                disabled={working}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50 ${
+                  vendorInfo.resolvedThisWeek?.status === 'ordered'
+                    ? 'text-white bg-[#1a7a3c] ring-2 ring-offset-1 ring-[#1a7a3c]'
+                    : 'text-white bg-[#1a7a3c] hover:bg-[#155f2f]'
+                }`}
               >
-                {vendorActionWorking === key ? 'Saving…' : 'Order Placed'}
+                {working ? 'Saving…' : 'Order Placed'}
               </button>
               <button
                 onClick={() => handleSkipVendorWeek(key)}
-                disabled={vendorActionWorking === key}
-                className="text-xs font-semibold text-gray-600 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 px-3 py-1.5 rounded-lg"
+                disabled={working}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg border disabled:opacity-50 ${
+                  vendorInfo.resolvedThisWeek?.status === 'skipped'
+                    ? 'text-gray-700 bg-gray-100 border-gray-400'
+                    : 'text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
               >
                 Nothing to order
               </button>
+              {vendorInfo.resolvedThisWeek && (
+                <button
+                  onClick={() => handleUndoVendorWeek(key)}
+                  disabled={working}
+                  className="text-xs font-semibold text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg disabled:opacity-50"
+                >
+                  Undo
+                </button>
+              )}
             </div>
           )}
         </div>
