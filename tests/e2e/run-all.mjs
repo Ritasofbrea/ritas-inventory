@@ -5,12 +5,24 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const dir = dirname(fileURLToPath(import.meta.url))
-const suites = ['role-checks.mjs', 'step-checks.mjs', 'logout-race.mjs', 'row-cap-checks.mjs']
+const suites = ['role-checks.mjs', 'step-checks.mjs', 'logout-race.mjs', 'row-cap-checks.mjs', 'vendor-schedule-checks.mjs']
+
+// vendor-schedule-checks.mjs imports src/lib/*.ts files that use
+// extensionless relative imports internally (e.g. vendor-schedule.ts's
+// `from './tasks'`) — only bundler-style resolution (tsx, same as
+// Next.js/Turbopack) follows those; plain Node ESM resolution requires an
+// explicit extension and would fail with ERR_MODULE_NOT_FOUND. Every other
+// suite here only imports plain .mjs/leaf .ts files with no such imports,
+// so they still run under plain node.
+const TSX_SUITES = new Set(['vendor-schedule-checks.mjs'])
 
 function runOne(file) {
   return new Promise((resolve) => {
     console.log(`\n=== ${file} ===`)
-    const child = spawn(process.execPath, [join(dir, file)], { stdio: 'inherit', env: process.env })
+    const [cmd, args] = TSX_SUITES.has(file)
+      ? [process.execPath, [join(dir, '..', '..', 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(dir, file)]]
+      : [process.execPath, [join(dir, file)]]
+    const child = spawn(cmd, args, { stdio: 'inherit', env: process.env })
     child.on('exit', (code) => resolve(code === 0))
   })
 }

@@ -34,6 +34,17 @@ points at.
   over a multi-year range for a well-formed 200. Runs against real
   production-sized data, not a seeded dataset, since the bug only
   reproduces once a table is actually past 1000 rows.
+- **`vendor-schedule-checks.mjs`** — patch 44 fix: pure-logic regression
+  for `computeVendorDueInfo` (`src/lib/vendor-schedule.ts`) and
+  `computeWeeksLeft` (`src/lib/weeks-left.ts`). No DB, no dev server —
+  mocked-clock scenarios including explicit Sunday and Monday-morning
+  checks, the Sunday/Monday-due-vendor wraparound (resolving an overdue
+  Monday-due vendor on Sunday must still surface the resolution even
+  though the active status rolls forward to next week's "due tomorrow"),
+  and the weeks-left 8+ cap / thin-data hide rules. Runs via **`tsx`**, not
+  plain `node` — `vendor-schedule.ts` imports other `src/lib` files with
+  extensionless relative imports, which only bundler-style resolution
+  follows.
 
 ## Setup (one time)
 ```
@@ -72,11 +83,12 @@ the normal PIN screen, only through this test helper.
 Nothing needs toggling before or after a run anymore. Just start the dev
 server in another terminal (`npm run dev`) and run:
 ```
-npm run test:e2e                 # all four, in sequence
+npm run test:e2e                 # all five, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
 npm run test:e2e:logout-race     # doesn't need either ZZTEST account
 npm run test:e2e:row-cap-checks
+npm run test:e2e:vendor-schedule # pure logic, doesn't need the dev server or either ZZTEST account
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

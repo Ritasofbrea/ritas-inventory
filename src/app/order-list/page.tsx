@@ -37,12 +37,14 @@ interface OrderRecord {
 // with the raw schedule row and an itemCount). Only vendors with a
 // vendor_schedules row appear here — today that's just Balford/Bunzl; any
 // other distributor bucket has no entry and is always "anytime" by absence.
+type WeekStatusRecord = { status: 'ordered' | 'skipped'; resolved_by: string | null; resolved_at: string }
 interface VendorInfo {
   vendor: string
   order_day: number | null
   cutoff_time: string
   status: VendorDueStatus
-  resolvedThisWeek: { status: 'ordered' | 'skipped'; resolved_by: string | null; resolved_at: string } | null
+  resolvedThisWeek: WeekStatusRecord | null
+  justResolved: WeekStatusRecord | null
   itemCount: number
 }
 
@@ -85,7 +87,7 @@ export default function OrderListPage() {
   // Patch 44: vendor schedules/status, "about N weeks left", per-vendor
   // Order Placed/Nothing-to-order actions, and the "Not due yet" collapse.
   const [vendorInfos, setVendorInfos] = useState<VendorInfo[]>([])
-  const [weeksLeft, setWeeksLeft] = useState<Record<string, number>>({})
+  const [weeksLeft, setWeeksLeft] = useState<Record<string, { value: number; capped: boolean }>>({})
   const [vendorActionWorking, setVendorActionWorking] = useState<string | null>(null)
   const [notDueOpen, setNotDueOpen] = useState(false)
 
@@ -140,9 +142,9 @@ export default function OrderListPage() {
     try {
       const res = await fetch(`/api/reports/weeks-left?ids=${ids.join(',')}`)
       if (!res.ok) return
-      const rows: { item_id: string; weeks_left: number | null }[] = await res.json()
-      const map: Record<string, number> = {}
-      for (const r of rows) if (r.weeks_left != null) map[r.item_id] = r.weeks_left
+      const rows: { item_id: string; weeks_left: number | null; capped: boolean }[] = await res.json()
+      const map: Record<string, { value: number; capped: boolean }> = {}
+      for (const r of rows) if (r.weeks_left != null) map[r.item_id] = { value: r.weeks_left, capped: r.capped }
       setWeeksLeft(map)
     } catch {
       // best-effort — the line is just omitted if this fails
@@ -212,9 +214,19 @@ export default function OrderListPage() {
   // for its current week, so a reminder never keeps nagging about
   // something just ordered through the global button. Silent — no extra
   // confirmation beyond the order save itself.
+  // Fix (live testing): the in-app banner (Navigation.tsx) fetches vendor
+  // status on its own, independent of this page, and only ever refreshed
+  // on navigation — pressing a button here never changed the banner until
+  // the user left and came back. Mirrors the existing 'tasks-changed'
+  // pattern (Navigation's To-Do badge) exactly: fire a DOM event, listen
+  // for it in Navigation.
+  const broadcastVendorStatusChanged = () => {
+    window.dispatchEvent(new Event('vendor-status-changed'))
+  }
+
   const silenceVendorsForItems = async (orderedItems: DistributorItem[]) => {
     const touched = new Set(orderedItems.map((i) => i.distributor ?? 'unmapped'))
-    const toSilence = vendorInfos.filter((v) => touched.has(v.vendor) && v.status !== 'resolved')
+    const toSilence = vendorInfos.filter((v) => touched.has(v.vendor) && !v.resolvedThisWeek)
     await Promise.all(
       toSilence.map((v) =>
         fetch('/api/vendor-week-status', {
@@ -253,6 +265,7 @@ export default function OrderListPage() {
         clearQuantitiesFor(checkedItems.map((i) => i.id))
         setOrderHistory([])
         await loadAll()
+        broadcastVendorStatusChanged()
         setTimeout(() => setMarked(false), 3000)
       }
     } finally {
@@ -291,6 +304,7 @@ export default function OrderListPage() {
         body: JSON.stringify({ vendor, status: 'ordered' }),
       })
       await loadAll()
+      broadcastVendorStatusChanged()
     } finally {
       setVendorActionWorking(null)
     }
@@ -305,6 +319,7 @@ export default function OrderListPage() {
         body: JSON.stringify({ vendor, status: 'skipped' }),
       })
       await fetchVendorInfos()
+      broadcastVendorStatusChanged()
     } finally {
       setVendorActionWorking(null)
     }
@@ -431,7 +446,11 @@ export default function OrderListPage() {
             </div>
           )}
           {preview && <p className="text-xs text-gray-400 mt-1">{preview}</p>}
-          {weeks != null && <p className="text-xs text-gray-400 mt-0.5">~{weeks} week{weeks !== 1 ? 's' : ''} left</p>}
+          {weeks != null && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              {weeks.capped ? `${weeks.value}+ weeks left` : `~${weeks.value} week${weeks.value !== 1 ? 's' : ''} left`}
+            </p>
+          )}
         </div>
         <div className="text-right flex-shrink-0 mr-2">
           <p className="text-sm text-gray-500">
@@ -451,7 +470,13 @@ export default function OrderListPage() {
     const { key, label, colorClass, distItems, vendorInfo } = bucket
     const tag = vendorInfo ? DUE_TAG_LABEL[vendorInfo.status] : undefined
     const dayLabel = vendorInfo ? orderDayLabel(vendorInfo.order_day) : null
-    const showActions = vendorInfo && vendorInfo.status !== 'resolved'
+    // Fix (live testing): keyed off resolvedThisWeek (whether the
+    // occurrence `status` describes is itself resolved), not the old
+    // `status !== 'resolved'` check — that broke on the Sunday/Monday
+    // wraparound, where status rolls forward to a fresh, still-unresolved
+    // 'due_tomorrow' and the buttons correctly need to stay.
+    const showActions = !!vendorInfo && !vendorInfo.resolvedThisWeek
+    const confirmation = vendorInfo?.resolvedThisWeek ?? vendorInfo?.justResolved ?? null
     return (
       <section key={key} className="mb-6">
         <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
@@ -487,10 +512,10 @@ export default function OrderListPage() {
             Due {dayLabel} by {formatTimeOfDay(vendorInfo!.cutoff_time)}
           </p>
         )}
-        {vendorInfo?.resolvedThisWeek && (
+        {confirmation && (
           <p className="text-xs text-green-600 mb-2">
-            ✓ {vendorInfo.resolvedThisWeek.status === 'ordered' ? 'Order placed' : 'Nothing to order'} this week
-            {vendorInfo.resolvedThisWeek.resolved_by ? ` · ${vendorInfo.resolvedThisWeek.resolved_by}` : ''}
+            ✓ {confirmation.status === 'ordered' ? 'Order placed' : 'Nothing to order'} this week
+            {confirmation.resolved_by ? ` · ${confirmation.resolved_by}` : ''}
           </p>
         )}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">

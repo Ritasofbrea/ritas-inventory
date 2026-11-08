@@ -7,7 +7,7 @@ import { clearRole, getRole } from '@/lib/auth'
 import { useEffect, useRef, useState } from 'react'
 import { Role } from '@/lib/types'
 import { SKIP_LOGIN_AUTOSKIP_KEY } from '@/components/SessionGuard'
-import { urgencyRank, formatTimeOfDay, VendorDueStatus } from '@/lib/vendor-schedule'
+import { urgencyRank, formatTimeOfDay, vendorDisplayLabel, VendorDueStatus } from '@/lib/vendor-schedule'
 
 const MORE_DROPDOWN_MARGIN = 16
 
@@ -71,19 +71,32 @@ export default function Navigation() {
 
   // Patch 44: persistent in-app banner for a vendor that's due today or
   // past cutoff — no snooze, same urgency set the push reminders use.
-  // Owner-only (matches every vendor-schedule-aware screen); refreshes on
-  // navigation so acting on /order-list clears it right away.
+  // Owner-only (matches every vendor-schedule-aware screen). Fix (live
+  // testing): this used to only refresh on navigation, so pressing "Order
+  // Placed"/"Nothing to order" on /order-list never updated the banner
+  // without leaving and coming back — it could keep saying overdue after
+  // both vendors had already been marked. Now also listens for
+  // 'vendor-status-changed' (same pattern as the To-Do badge's
+  // 'tasks-changed'), fired by order-list/page.tsx right after a
+  // successful press, so the banner updates immediately, same screen.
   useEffect(() => {
     if (role !== 'owner') return
     let cancelled = false
-    fetch('/api/vendor-schedules')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows: { vendor: string; cutoff_time: string; status: VendorDueStatus; itemCount: number }[]) => {
-        if (cancelled) return
-        setDueVendors(rows.filter((v) => (v.status === 'due_today' || v.status === 'overdue') && v.itemCount > 0))
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
+    const loadDueVendors = () => {
+      fetch('/api/vendor-schedules')
+        .then((r) => (r.ok ? r.json() : []))
+        .then((rows: { vendor: string; cutoff_time: string; status: VendorDueStatus; itemCount: number }[]) => {
+          if (cancelled) return
+          setDueVendors(rows.filter((v) => (v.status === 'due_today' || v.status === 'overdue') && v.itemCount > 0))
+        })
+        .catch(() => {})
+    }
+    loadDueVendors()
+    window.addEventListener('vendor-status-changed', loadDueVendors)
+    return () => {
+      cancelled = true
+      window.removeEventListener('vendor-status-changed', loadDueVendors)
+    }
   }, [role, pathname])
 
   const enableNotifications = async () => {
@@ -323,7 +336,7 @@ export default function Navigation() {
           {[...dueVendors].sort((a, b) => urgencyRank(a.status) - urgencyRank(b.status)).map((v, i) => (
             <span key={v.vendor}>
               {i > 0 && <span className="text-gray-400 mx-1">·</span>}
-              {v.vendor} {v.status === 'overdue' ? 'is overdue' : `due by ${formatTimeOfDay(v.cutoff_time)}`} ({v.itemCount})
+              {vendorDisplayLabel(v.vendor)} {v.status === 'overdue' ? 'is overdue' : `due by ${formatTimeOfDay(v.cutoff_time)}`} ({v.itemCount})
             </span>
           ))}
         </button>

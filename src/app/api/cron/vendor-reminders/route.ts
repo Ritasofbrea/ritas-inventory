@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const info = computeVendorDueInfo(schedule, weekStatusRows, today, nowTime)
 
     // Only a due-today or overdue vendor ever reminds. Never 'anytime',
-    // 'due_tomorrow', 'not_due', or 'resolved'.
+    // 'due_tomorrow', or 'not_due'.
     if (info.status !== 'due_today' && info.status !== 'overdue') {
       skipped[schedule.vendor] = info.status
       continue

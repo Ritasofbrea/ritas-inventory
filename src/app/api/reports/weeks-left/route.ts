@@ -11,6 +11,7 @@ import {
 } from '@/lib/usage-server'
 import { getMainUnitTotal, Item } from '@/lib/types'
 import { todayInTZ, addDays } from '@/lib/tasks'
+import { computeWeeksLeft, WEEKS_LEFT_WINDOW_DAYS } from '@/lib/weeks-left'
 
 // Patch 44: "about N weeks left" for the Order List — restricted to the
 // specific item ids it's asked about (the Order List's own shown items,
@@ -20,8 +21,7 @@ import { todayInTZ, addDays } from '@/lib/tasks'
 // trailing 28-day window — there's no caller-chosen date range here like
 // Velocity's report UI has, so this picks one reasonable, stable window
 // rather than exposing it as a parameter nothing calls with anything else.
-const WINDOW_DAYS = 28
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+const WINDOW_DAYS = WEEKS_LEFT_WINDOW_DAYS
 
 export async function GET(request: NextRequest) {
   const db = getServerSupabase()
@@ -58,28 +58,20 @@ export async function GET(request: NextRequest) {
   }))
   const flowByItem = new Map(flowResults.map((f) => [f.item_id, f.netFlow]))
 
-  const results: { item_id: string; weeks_left: number | null }[] = []
+  const results: { item_id: string; weeks_left: number | null; capped: boolean }[] = []
 
   for (const { item, endRecord, startRecord } of withStart) {
     // No usable history (no start record by the window's beginning): hide.
     if (!startRecord) {
-      results.push({ item_id: item.id, weeks_left: null })
+      results.push({ item_id: item.id, weeks_left: null, capped: false })
       continue
     }
     const netFlow = flowByItem.get(item.id) ?? 0
     const { consumed, flagged } = computeCorrectedConsumed(startRecord.count, endRecord.count, netFlow)
     const elapsedMs = endRecord.ts - startRecord.ts
-    const weeklyRate = elapsedMs > 0 ? consumed / (elapsedMs / WEEK_MS) : null
 
-    // Hide per Phase 1's rules: flagged anomaly, or no positive rate to
-    // divide by (null, zero, or negative).
-    if (flagged || weeklyRate === null || weeklyRate <= 0) {
-      results.push({ item_id: item.id, weeks_left: null })
-      continue
-    }
-
-    const weeksLeft = Math.round((getMainUnitTotal(item) / weeklyRate) * 10) / 10
-    results.push({ item_id: item.id, weeks_left: weeksLeft })
+    const { weeks_left, capped } = computeWeeksLeft({ totalStock: getMainUnitTotal(item), consumed, flagged, elapsedMs })
+    results.push({ item_id: item.id, weeks_left, capped })
   }
 
   // Items with no end record at all (never counted by today) aren't in

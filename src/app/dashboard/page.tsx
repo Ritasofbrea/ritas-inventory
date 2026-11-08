@@ -7,7 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
-import { urgencyRank, formatTimeOfDay, VendorDueStatus } from '@/lib/vendor-schedule'
+import { urgencyRank, formatTimeOfDay, vendorDisplayLabel, VendorDueStatus } from '@/lib/vendor-schedule'
 
 type LastCount = { item_id: string; created_at: string; entered_by: string }
 type VelocityRow = { item_id: string; name: string; unit: string; consumed: number }
@@ -313,8 +313,8 @@ export default function DashboardPage() {
             {dueVendors.map((v) => (
               <div key={v.vendor} className="bg-white border border-gray-300 rounded-2xl px-5 py-3 flex items-center justify-between gap-3">
                 <div>
-                  <p className="font-bold text-gray-900 capitalize">
-                    {v.vendor}
+                  <p className="font-bold text-gray-900">
+                    {vendorDisplayLabel(v.vendor)}
                     <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-300 text-gray-500 uppercase tracking-wide align-middle">
                       {v.status === 'overdue' ? 'Cutoff passed' : v.status === 'due_today' ? 'Due today' : 'Due tomorrow'}
                     </span>
