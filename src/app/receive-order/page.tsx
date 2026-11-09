@@ -7,6 +7,7 @@ import ScrollToSaveButton from '@/components/ScrollToSaveButton'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
+import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
 interface OrderRecord {
   id: string
@@ -462,10 +463,19 @@ export default function ReceiveOrderPage() {
                         className={`flex items-center gap-4 px-5 py-4 ${idx < catItems.length - 1 ? 'border-b border-gray-100' : ''} ${isOnOrder ? 'bg-green-50/40' : ''}`}
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="font-semibold text-gray-900 text-base leading-tight">{item.name}</p>
                             {isOnOrder && <span className="text-xs bg-[#1a7a3c] text-white px-1.5 py-0.5 rounded font-medium">On Order</span>}
                             {item.has_storage && <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 border border-teal-200">📦 STORAGE</span>}
+                            {/* Patch 52: flavor program badge -- label only, same shared
+                                badge as Current Stock/Order List/Count/Par. flex-wrap
+                                above keeps this from crowding On Order/STORAGE on a phone. */}
+                            {item.category === 'Ice Mix' && item.flavor?.program && (
+                              <span className={PROGRAM_BADGE_CLASS}>
+                                <span>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                                {PROGRAM_LABELS[item.flavor.program]}
+                              </span>
+                            )}
                           </div>
                           <p className="text-sm text-gray-400">
                             {item.unit} · on hand: {item.current_count}

@@ -178,6 +178,21 @@ points at.
   same as every other screen using this badge). Uses a disposable
   `ZZTEST Par Badge Flavor` plus two `ZZTEST` items, cleaned up either way.
 
+- **`patch-52-checks.mjs`** — patch 52: adds the same shared flavor
+  program badge to Receive Order's main item row, Correct Count's main
+  item row, and the Count Summary modal — the three places patch 51's
+  report flagged as missing it. Real-browser (Playwright) checks that a
+  `ZZTEST`-linked item shows the right badge on all three, an unlinked one
+  shows none, and a flavor's program change updates the badge on the next
+  load. Also smoke-tests that each page still completes a real save after
+  the JSX change: a standalone Receive Order save including a
+  storage-destination item, a Correct Count adjustment, and a ZZTEST
+  Test-Count submit through to its summary modal — not re-proving the
+  receive/adjust/count logic itself (other suites already do), just that
+  this patch didn't break the page. Uses a disposable `ZZTEST Patch52
+  Flavor` plus three `ZZTEST` items (one storage-enabled), all cleaned up
+  in the same run.
+
 ## Setup (one time)
 ```
 npm install
@@ -231,6 +246,7 @@ npm run test:e2e:receive-order-race
 npm run test:e2e:notes-photo-path
 npm run test:e2e:patch-50
 npm run test:e2e:par-settings-badge
+npm run test:e2e:patch-52
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

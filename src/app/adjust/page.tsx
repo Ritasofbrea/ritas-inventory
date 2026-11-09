@@ -7,6 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
+import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
 const QUICK_REASONS = ['Found extra stock', 'Count error', 'Vendor drop-off', 'Used for event', 'Waste / spoilage']
 
@@ -183,7 +184,19 @@ export default function AdjustPage() {
                           className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-gray-50 transition-colors"
                         >
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900">{item.name}</p>
+                            <p className="font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
+                              {item.name}
+                              {/* Patch 52: flavor program badge -- label only, same shared
+                                  badge as Current Stock/Order List/Count/Par/Receive Order.
+                                  flex-wrap above keeps this from crowding the Adjusted
+                                  badge or chevron on a phone. */}
+                              {item.category === 'Ice Mix' && item.flavor?.program && (
+                                <span className={PROGRAM_BADGE_CLASS}>
+                                  <span>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                                  {PROGRAM_LABELS[item.flavor.program]}
+                                </span>
+                              )}
+                            </p>
                             <p className="text-sm text-gray-400">
                               {displayCount} {unitLabel(item.unit, displayCount)}
                               {item.secondary_unit ? ` + ${displaySecondary} ${unitLabel(item.secondary_unit, displaySecondary)}` : ''} on hand

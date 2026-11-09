@@ -998,7 +998,18 @@ export default function CountPage() {
                       }`}
                     >
                       <p className="font-semibold text-gray-900 text-sm">
-                        {item.name}
+                        <span className="inline-flex items-center gap-1.5 flex-wrap align-bottom">
+                          {item.name}
+                          {/* Patch 52: flavor program badge -- label only, same shared
+                              badge as Current Stock/Order List/Par/Receive Order. The
+                              flex-wrap above keeps it from crowding the count value. */}
+                          {item.category === 'Ice Mix' && item.flavor?.program && (
+                            <span className={PROGRAM_BADGE_CLASS}>
+                              <span>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                              {PROGRAM_LABELS[item.flavor.program]}
+                            </span>
+                          )}
+                        </span>
                         <span className="font-normal text-gray-600">
                           : {primaryDisplay} {unitLabel(item.unit, parseFloat(primaryDisplay) || 0)}
                           {showSecondary && ` · ${secondary} ${unitLabel(item.secondary_unit, secondaryVal)}`}
