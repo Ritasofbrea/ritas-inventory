@@ -7,7 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, getStockStatus } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
-import { getOrderUnitLabel, getDefaultOrderQty, packSizePreview } from '@/lib/order-units'
+import { getOrderUnitLabel, getDefaultOrderQty, packSizePreview, usesBoxOrdering, formatGallonsWithBoxes } from '@/lib/order-units'
 import { isOpenStatus, urgencyRank, orderDayLabel, formatTimeOfDay, vendorKeyForItem, VendorDueStatus } from '@/lib/vendor-schedule'
 import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
@@ -447,7 +447,8 @@ export default function OrderListPage() {
   const renderItemRow = (item: DistributorItem, idx: number, arr: DistributorItem[]) => {
     const status = getStockStatus(item)
     const checked = validSelected.has(item.id)
-    const preview = checked ? packSizePreview(item.unit, item.pack_size) : null
+    const isBoxItem = usesBoxOrdering(item)
+    const preview = checked ? packSizePreview(item.unit, item.pack_size, isBoxItem ? 'box' : 'case') : null
     const weeks = weeksLeft[item.id]
     return (
       <div
@@ -502,13 +503,31 @@ export default function OrderListPage() {
             </p>
           )}
         </div>
-        <div className="text-right flex-shrink-0 mr-2">
-          <p className="text-sm text-gray-500">
-            Have <span className="font-bold text-gray-900">{item.current_count}</span>
-            {', want '}
-            <span className="text-gray-400">{item.par_level} {unitLabel(item.unit, item.par_level)}</span>
-          </p>
-        </div>
+        {isBoxItem ? (
+          // Patch 55: Ice Mix (pack_size=4, unit=gallons) shows the
+          // box/gallon breakdown and the suggested box order up front, so
+          // deciding what to order never needs math -- current_count is
+          // the whole gallon total here (these items' secondary_unit was
+          // cleared in the patch 55 SQL, so there's no sub-unit portion
+          // left to add in).
+          <div className="text-right flex-shrink-0 mr-2">
+            <p className="text-sm text-gray-500">
+              Have: <span className="font-bold text-gray-900">{formatGallonsWithBoxes(item.current_count, item.pack_size as number)}</span>
+            </p>
+            <p className="text-sm text-gray-400">Par: {formatGallonsWithBoxes(item.par_level, item.pack_size as number)}</p>
+            <p className="text-sm font-semibold text-[#1a7a3c]">
+              Order: {getDefaultOrderQty(item)} {unitLabel('boxes', getDefaultOrderQty(item))}
+            </p>
+          </div>
+        ) : (
+          <div className="text-right flex-shrink-0 mr-2">
+            <p className="text-sm text-gray-500">
+              Have <span className="font-bold text-gray-900">{item.current_count}</span>
+              {', want '}
+              <span className="text-gray-400">{item.par_level} {unitLabel(item.unit, item.par_level)}</span>
+            </p>
+          </div>
+        )}
         <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${status === 'out' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
           {status === 'out' ? 'OUT' : 'LOW'}
         </span>
@@ -782,12 +801,27 @@ export default function OrderListPage() {
                         </button>
                         {isExpanded && (
                           <div className="border-t border-gray-100">
-                            {order.order_history_items.map((item, i) => (
-                              <div key={i} className={`flex items-center justify-between px-5 py-3 bg-gray-50 ${i < order.order_history_items.length - 1 ? 'border-b border-gray-100' : ''}`}>
-                                <p className="text-sm font-medium text-gray-900">{item.item_name}</p>
-                                <p className="text-sm font-bold text-gray-700">{item.quantity} <span className="font-normal text-gray-400">{unitLabel(item.unit, item.quantity)}</span></p>
-                              </div>
-                            ))}
+                            {order.order_history_items.map((item, i) => {
+                              // Patch 55: a received/will-call receipt stores an Ice
+                              // Mix box item's quantity in gallons (unchanged math) --
+                              // show the box count alongside it here so the history
+                              // still reads in the unit the person actually counted
+                              // out. "Mark as Ordered" entries (type 'ordered') and
+                              // short records already store box quantities directly,
+                              // so they need no extra conversion text.
+                              const sourceItem = items.find((i2) => i2.id === item.item_id)
+                              const showBoxes = sourceItem && usesBoxOrdering(sourceItem) && (order.type === 'received' || order.type === 'will_call')
+                              const boxCount = showBoxes ? Math.round((item.quantity / (sourceItem!.pack_size as number)) * 100) / 100 : 0
+                              return (
+                                <div key={i} className={`flex items-center justify-between px-5 py-3 bg-gray-50 ${i < order.order_history_items.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                                  <p className="text-sm font-medium text-gray-900">{item.item_name}</p>
+                                  <p className="text-sm font-bold text-gray-700">
+                                    {item.quantity} <span className="font-normal text-gray-400">{unitLabel(item.unit, item.quantity)}</span>
+                                    {showBoxes && <span className="font-normal text-gray-400"> ({boxCount} {unitLabel('boxes', boxCount)})</span>}
+                                  </p>
+                                </div>
+                              )
+                            })}
                             {order.notes && (
                               <div className="px-5 py-3 bg-yellow-50 border-t border-gray-100 flex items-center justify-between gap-3">
                                 <p className="text-xs text-gray-500 italic">{order.notes}</p>

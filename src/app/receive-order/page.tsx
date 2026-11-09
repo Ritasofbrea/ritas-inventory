@@ -8,6 +8,8 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
+import { usesBoxOrdering } from '@/lib/order-units'
+import { unitLabel } from '@/lib/units'
 
 interface OrderRecord {
   id: string
@@ -151,7 +153,15 @@ export default function ReceiveOrderPage() {
         .filter(([, qty]) => qty !== '' && parseFloat(qty) > 0)
         .map(([item_id, qty]) => {
           const item = items.find((i) => i.id === item_id)!
-          return { item_id, item_name: item.name, quantity: parseFloat(qty), unit: item.unit, destination: destinations[item_id] || 'store' }
+          // Patch 55: for an Ice Mix box item, the field the person typed
+          // into is boxes -- convert to gallons here (the one and only
+          // place) before it ever reaches the server, so
+          // /api/order-history's patch-48 compare-and-swap stock write
+          // and order_history_items both keep working in gallons exactly
+          // as they do for every other item, unchanged.
+          const enteredQty = parseFloat(qty)
+          const quantity = usesBoxOrdering(item) ? enteredQty * (item.pack_size as number) : enteredQty
+          return { item_id, item_name: item.name, quantity, unit: item.unit, destination: destinations[item_id] || 'store' }
         })
 
       // Save the receipt
@@ -456,6 +466,14 @@ export default function ReceiveOrderPage() {
                     const receivedVal = parseFloat(received[item.id] || '0') || 0
                     const isShort = isOnOrder && received[item.id] !== undefined && received[item.id] !== '' && receivedVal < Number(orderedQty)
                     const isFull = isOnOrder && received[item.id] !== undefined && received[item.id] !== '' && receivedVal >= Number(orderedQty)
+                    // Patch 55: for these items the field above is boxes,
+                    // not the item's own (gallons) unit -- orderedQty is
+                    // already box-denominated too (Order List's "Mark as
+                    // Ordered" already sends box/case quantities), so the
+                    // short/full comparisons above needed no changes at
+                    // all, only the wording here and the final gallon
+                    // conversion at save time.
+                    const isBoxItem = usesBoxOrdering(item)
 
                     return (
                       <div
@@ -480,7 +498,11 @@ export default function ReceiveOrderPage() {
                           <p className="text-sm text-gray-400">
                             {item.unit} · on hand: {item.current_count}
                             {item.has_storage && <span className="text-teal-600"> · in storage: {item.storage_count}</span>}
-                            {isOnOrder && <span className="text-[#1a7a3c] font-semibold"> · ordered: {orderedQty}</span>}
+                            {isOnOrder && (
+                              <span className="text-[#1a7a3c] font-semibold">
+                                {' '}· ordered: {orderedQty}{isBoxItem ? ` ${unitLabel('boxes', Number(orderedQty))}` : ''}
+                              </span>
+                            )}
                           </p>
                           {/* Patch 38: owner-only destination choice for a
                               has_storage item's received quantity. Default
@@ -520,6 +542,18 @@ export default function ReceiveOrderPage() {
                             onFocus={(e) => e.target.select()}
                             placeholder="0"
                           />
+                          {/* Patch 55: this field is boxes for an Ice Mix
+                              box item -- label it plainly and show the
+                              gallon conversion before saving, so there's
+                              never a question of which unit was typed. */}
+                          {isBoxItem && (
+                            <span className="text-xs text-gray-400 font-medium">{unitLabel('boxes', receivedVal)}</span>
+                          )}
+                          {isBoxItem && receivedVal > 0 && (
+                            <span className="text-xs text-gray-500 font-semibold">
+                              = {receivedVal * (item.pack_size as number)} gal
+                            </span>
+                          )}
                           {isShort && <span className="text-xs text-red-600 font-bold">SHORT</span>}
                           {isFull && <span className="text-xs text-[#1a7a3c] font-bold">✓</span>}
                         </div>

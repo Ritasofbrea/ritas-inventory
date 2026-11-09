@@ -7,7 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 import { unitLabel, subUnitSetupLabel, subUnitPreview } from '@/lib/units'
-import { packSizePreview } from '@/lib/order-units'
+import { packSizePreview, usesBoxOrdering } from '@/lib/order-units'
 import { Flavor, FLAVOR_TYPE_LABELS, PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS, groupFlavorsByType } from '@/lib/flavors'
 
 export default function ManageItemsPage() {
@@ -786,8 +786,8 @@ export default function ManageItemsPage() {
                                   {item.item_number && <span className="font-mono text-gray-400"> · #{item.item_number}</span>}
                                   {item.distributor && <span className="text-gray-300"> · {item.distributor}</span>}
                                 </p>
-                                {packSizePreview(item.unit, item.pack_size) && (
-                                  <p className="text-xs text-gray-400">{packSizePreview(item.unit, item.pack_size)}</p>
+                                {packSizePreview(item.unit, item.pack_size, usesBoxOrdering(item) ? 'box' : 'case') && (
+                                  <p className="text-xs text-gray-400">{packSizePreview(item.unit, item.pack_size, usesBoxOrdering(item) ? 'box' : 'case')}</p>
                                 )}
                                 {item.category === 'Ice Mix' && item.flavor && (
                                   <p className="text-xs text-gray-400">
@@ -801,7 +801,7 @@ export default function ManageItemsPage() {
                             {packSizeEditId === item.id && (
                               <div className="ml-8 bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2">
                                 <p className="text-xs text-gray-500">
-                                  How many {unitLabel(item.unit, 2)} come in one case? Leave blank for no change to today&apos;s default order quantity.
+                                  How many {unitLabel(item.unit, 2)} come in one {item.category === 'Ice Mix' && item.unit === 'gallons' ? 'box' : 'case'}? Leave blank for no change to today&apos;s default order quantity.
                                 </p>
                                 <div className="flex items-center gap-2">
                                   <input
@@ -820,8 +820,10 @@ export default function ManageItemsPage() {
                                     {packSizeSaving ? 'Saving…' : 'Save'}
                                   </button>
                                 </div>
-                                {packSizePreview(item.unit, parseInt(packSizeValue, 10) || null) && (
-                                  <p className="text-xs text-gray-500">{packSizePreview(item.unit, parseInt(packSizeValue, 10) || null)}</p>
+                                {packSizePreview(item.unit, parseInt(packSizeValue, 10) || null, item.category === 'Ice Mix' && item.unit === 'gallons' ? 'box' : 'case') && (
+                                  <p className="text-xs text-gray-500">
+                                    {packSizePreview(item.unit, parseInt(packSizeValue, 10) || null, item.category === 'Ice Mix' && item.unit === 'gallons' ? 'box' : 'case')}
+                                  </p>
                                 )}
                               </div>
                             )}

@@ -23,6 +23,7 @@ const suites = [
   'par-settings-badge-checks.mjs',
   'patch-52-checks.mjs',
   'rename-item-checks.mjs',
+  'patch-55-checks.mjs',
 ]
 
 // vendor-schedule-checks.mjs, order-list-other-merge-checks.mjs, and
@@ -52,6 +53,7 @@ const TSX_SUITES = new Set([
   'par-settings-badge-checks.mjs',
   'patch-52-checks.mjs',
   'rename-item-checks.mjs',
+  'patch-55-checks.mjs',
 ])
 
 function runOne(file) {
