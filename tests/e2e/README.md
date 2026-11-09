@@ -80,6 +80,17 @@ points at.
   `is_off`/par/count are untouched, and that deleting the flavor leaves
   the item intact with `flavor_id` back to null. Uses a disposable
   `ZZTEST Flavor Badge Item` + `ZZTEST Flavor`.
+- **`order-list-other-merge-checks.mjs`** — patch 46: regression for a bug
+  where a null-distributor item showed up TWICE on the Order List, under
+  two separate "Other" headers (`byDistributor['other']`'s
+  `i.distributor ?? 'other'` already caught null, while a separate
+  `unmapped` list ALSO caught it). Pure-logic, no DB — exercises
+  `vendorKeyForItem()` (`src/lib/vendor-schedule.ts`), the one shared key
+  function every grouping site (the Order List's display, its Order
+  Placed/Nothing to order actions, and the server-side item-count-per-
+  vendor helper) now uses, and mirrors the exact bucket-construction shape
+  order-list/page.tsx builds from it. Runs via tsx, same reasoning as
+  vendor-schedule-checks.mjs.
 
 ## Setup (one time)
 ```
@@ -118,7 +129,7 @@ the normal PIN screen, only through this test helper.
 Nothing needs toggling before or after a run anymore. Just start the dev
 server in another terminal (`npm run dev`) and run:
 ```
-npm run test:e2e                 # all nine, in sequence
+npm run test:e2e                 # all ten, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
 npm run test:e2e:logout-race     # doesn't need either ZZTEST account
@@ -128,6 +139,7 @@ npm run test:e2e:notification-linking
 npm run test:e2e:vendor-week-switch
 npm run test:e2e:item-category
 npm run test:e2e:item-flavor-link
+npm run test:e2e:order-list-other-merge # pure logic, doesn't need the dev server
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

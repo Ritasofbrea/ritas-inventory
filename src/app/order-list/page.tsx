@@ -8,7 +8,7 @@ import { getRole } from '@/lib/auth'
 import { Item, getStockStatus } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
 import { getOrderUnitLabel, getDefaultOrderQty, packSizePreview } from '@/lib/order-units'
-import { isOpenStatus, urgencyRank, orderDayLabel, formatTimeOfDay, VendorDueStatus } from '@/lib/vendor-schedule'
+import { isOpenStatus, urgencyRank, orderDayLabel, formatTimeOfDay, vendorKeyForItem, VendorDueStatus } from '@/lib/vendor-schedule'
 import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
 type DistributorItem = Item & { distributor?: string; item_number?: string; distributor_item_name?: string }
@@ -233,7 +233,7 @@ export default function OrderListPage() {
   // meant a global order placed after a vendor had been marked skipped
   // never updated that mark.
   const silenceVendorsForItems = async (orderedItems: DistributorItem[]) => {
-    const touched = new Set(orderedItems.map((i) => i.distributor ?? 'unmapped'))
+    const touched = new Set(orderedItems.map((i) => vendorKeyForItem(i.distributor)))
     const toSilence = vendorInfos.filter((v) => touched.has(v.vendor))
     await Promise.all(
       toSilence.map((v) =>
@@ -287,7 +287,7 @@ export default function OrderListPage() {
   // right now, it still silences the week (the owner may have already
   // ordered by phone/in person without using the checkboxes here).
   const handleMarkOrderedForVendor = async (vendor: string) => {
-    const vendorItems = toOrder.filter((item) => (item.distributor ?? 'unmapped') === vendor && validSelected.has(item.id))
+    const vendorItems = toOrder.filter((item) => vendorKeyForItem(item.distributor) === vendor && validSelected.has(item.id))
     setVendorActionWorking(vendor)
     try {
       if (vendorItems.length > 0) {
@@ -409,24 +409,35 @@ export default function OrderListPage() {
     return a.supplier_order - b.supplier_order
   })
 
+  // Patch 46 fix: a single pass, one key per item (vendorKeyForItem — a
+  // literal 'other' distributor and no distributor at all both become
+  // 'other'), so every item lands in exactly ONE bucket. This used to be
+  // two separate filters with overlapping predicates (`i.distributor ??
+  // 'other'` for the 'other' bucket, plus a separate `unmapped` list for
+  // `!i.distributor`) — a null-distributor item matched both, so it
+  // appeared twice, under two different sections that were each labeled
+  // "Other".
   const byDistributor = DISTRIBUTOR_ORDER.reduce<Record<string, DistributorItem[]>>((acc, d) => {
-    acc[d] = sorted.filter((i) => (i.distributor ?? 'other') === d)
+    acc[d] = sorted.filter((i) => vendorKeyForItem(i.distributor) === d)
     return acc
   }, {})
 
-  const unmapped = sorted.filter((i) => !i.distributor)
-
   const vendorInfoByName = new Map(vendorInfos.map((v) => [v.vendor, v]))
 
-  // Patch 44: one "bucket" per DISTRIBUTOR_ORDER entry plus unmapped —
-  // same 5(+1) groups the Order List has always shown. A bucket with no
-  // vendor_schedules row (today: everything except bunzl/balford) has no
-  // vendorInfo and is always "open" with no due tag, unchanged from before.
+  // Patch 44: one "bucket" per DISTRIBUTOR_ORDER entry — the 5 groups the
+  // Order List has always shown (no distributor and a literal 'other'
+  // distributor now share the one 'other' bucket/section, fixed in patch
+  // 46). A bucket with no vendor_schedules row (today: everything except
+  // bunzl/balford) has no vendorInfo and is always "open" with no due tag,
+  // unchanged from before.
   interface Bucket { key: string; label: string; colorClass: string; distItems: DistributorItem[]; vendorInfo: VendorInfo | undefined }
-  const allBuckets: Bucket[] = [
-    ...DISTRIBUTOR_ORDER.map((d) => ({ key: d, label: DISTRIBUTOR_LABELS[d], colorClass: DISTRIBUTOR_COLORS[d], distItems: byDistributor[d] ?? [], vendorInfo: vendorInfoByName.get(d) })),
-    { key: 'unmapped', label: 'Other', colorClass: 'text-gray-400', distItems: unmapped, vendorInfo: undefined },
-  ].filter((b) => b.distItems.length > 0)
+  const allBuckets: Bucket[] = DISTRIBUTOR_ORDER.map((d) => ({
+    key: d,
+    label: DISTRIBUTOR_LABELS[d],
+    colorClass: DISTRIBUTOR_COLORS[d],
+    distItems: byDistributor[d] ?? [],
+    vendorInfo: vendorInfoByName.get(d),
+  })).filter((b) => b.distItems.length > 0)
 
   const openBuckets = allBuckets
     .filter((b) => !b.vendorInfo || isOpenStatus(b.vendorInfo.status))

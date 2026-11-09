@@ -4,6 +4,25 @@
 // nowTimeInTZ/toHM) instead of re-deriving DST-safe date math from scratch.
 import { weekdayMonday, addDays, nowTimeInTZ, todayInTZ, toHM } from './tasks'
 
+// Patch 46 fix: the single source of truth for "which vendor bucket does
+// this item belong to" — a literal `distributor: 'other'` and no
+// distributor at all (null) must land in the SAME bucket, one "Other"
+// section, not two. Before this, the Order List's display computed this
+// one way (`item.distributor ?? 'other'`, which already folded null into
+// 'other') while ALSO keeping a separate `unmapped` list for null
+// specifically — so a null-distributor item was counted in both, showing
+// twice under two different "Other" headers (confirmed via `git log -S`
+// to date back to the very first commit that added distributor grouping
+// to Order List). Meanwhile the per-vendor action handlers and the
+// server-side item-count-per-vendor helper used a THIRD key ('unmapped')
+// for the same null case, so none of the three ever agreed. Shared here
+// so the Order List's display, its Order Placed/Nothing to order actions,
+// and the cron/status endpoint's item-count helper always agree on one
+// key.
+export function vendorKeyForItem(distributor: string | null | undefined): string {
+  return distributor || 'other'
+}
+
 export interface VendorSchedule {
   vendor: string
   order_day: number | null // 0=Sunday..6=Saturday (JS Date.getDay() convention) — NOT tasks.ts's Monday-start convention

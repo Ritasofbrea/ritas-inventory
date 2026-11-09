@@ -5,10 +5,12 @@
 // vendor's reminder should fire at all — never for an empty vendor list).
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Item, getStockStatus } from './types'
+import { vendorKeyForItem } from './vendor-schedule'
 
-// vendor (items.distributor, or 'unmapped' for null) -> items currently
-// needing order for that vendor, excluding anything already on an
-// unresolved order. Mirrors order-list/page.tsx's loadAll/toOrder exactly.
+// vendor (items.distributor, or 'other' for null — see vendorKeyForItem)
+// -> items currently needing order for that vendor, excluding anything
+// already on an unresolved order. Mirrors order-list/page.tsx's
+// loadAll/toOrder exactly.
 export async function getItemsNeedingOrderByVendor(db: SupabaseClient): Promise<Record<string, Item[]>> {
   const [{ data: items, error: itemsError }, { data: orders, error: ordersError }] = await Promise.all([
     db.from('items').select('*'),
@@ -35,7 +37,7 @@ export async function getItemsNeedingOrderByVendor(db: SupabaseClient): Promise<
 
   const byVendor: Record<string, Item[]> = {}
   for (const item of toOrder) {
-    const key = item.distributor ?? 'unmapped'
+    const key = vendorKeyForItem(item.distributor)
     if (!byVendor[key]) byVendor[key] = []
     byVendor[key].push(item)
   }
