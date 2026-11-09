@@ -15,6 +15,7 @@
     "test:e2e:item-category": "node --env-file=.env.local tests/e2e/item-category-checks.mjs",
     "test:e2e:item-flavor-link": "node --env-file=.env.local tests/e2e/item-flavor-link-checks.mjs",
     "test:e2e:order-list-other-merge": "tsx tests/e2e/order-list-other-merge-checks.mjs",
+    "test:e2e:order-history-paging": "tsx --env-file=.env.local tests/e2e/order-history-paging-checks.mjs",
     "test:e2e:step-checks": "node --env-file=.env.local tests/e2e/step-checks.mjs",
     "test:e2e:logout-race": "node --env-file=.env.local tests/e2e/logout-race.mjs",
     "test:e2e:row-cap-checks": "node --env-file=.env.local tests/e2e/row-cap-checks.mjs",

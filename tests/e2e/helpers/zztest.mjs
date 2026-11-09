@@ -49,4 +49,11 @@ export async function sweepZztestFixtures() {
 
   // item-flavor-link-checks.mjs's flavor fixture — same reasoning.
   await rest('flavors?name=ilike.zztest*', { method: 'DELETE' })
+
+  // order-history-paging-checks.mjs's fixtures — tagged via notes since
+  // order_history_items.item_id only SETs NULL (doesn't cascade) when its
+  // ZZTEST item is deleted, so a crashed run could otherwise leave orphan
+  // order_history rows behind even after the items sweep above runs.
+  // Deleting by notes cascades order_history_items automatically.
+  await rest('order_history?notes=ilike.*zztest*', { method: 'DELETE' })
 }

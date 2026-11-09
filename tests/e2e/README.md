@@ -92,6 +92,30 @@ points at.
   order-list/page.tsx builds from it. Runs via tsx, same reasoning as
   vendor-schedule-checks.mjs.
 
+- **`order-history-paging-checks.mjs`** — patch 47: `order_history` has no
+  upper bound, and an unlimited `.select()` silently truncates at
+  PostgREST's 1000-row cap (same bug class as patch 41's row-cap fix).
+  `src/lib/order-list-server.ts`'s `getItemsNeedingOrderByVendor` (feeds the
+  Order List's vendor counts, `GET /api/vendor-schedules`, and the
+  vendor-reminders cron) used to read `order_history` this way; it now
+  pages through the whole table via `fetchAllOrderHistoryRows` instead.
+  Can't practically grow `order_history` past 1000 real rows in a test, so
+  this proves the paging loop itself is correct by forcing a tiny
+  `pageSize` (2) against a handful of disposable `ZZTEST` order rows and
+  confirming the result exactly matches a plain unbounded `.select()`, then
+  separately confirms `getItemsNeedingOrderByVendor`'s real-data output
+  matches an independent re-implementation of the old (pre-patch-47)
+  single-select matching logic. Also covers
+  `src/lib/vendor-reminder-server.ts`'s `recordReminderSent` (the
+  `vendor_reminder_log` write the cron route now performs *before* sending
+  a push, so a write failure skips that tick's push instead of risking a
+  repeat send) — its failure path is tested with a hand-rolled fake db
+  stub, never a real write, and a loop simulation proves one vendor's
+  failure doesn't stop the next vendor from being processed. Uses a
+  disposable `ZZTEST Paging Item` plus six `ZZTEST`-tagged `order_history`
+  rows, all cleaned up in the same run via the real `DELETE` routes
+  (`order_history_items` cascades off `order_history` on delete).
+
 ## Setup (one time)
 ```
 npm install
@@ -140,6 +164,7 @@ npm run test:e2e:vendor-week-switch
 npm run test:e2e:item-category
 npm run test:e2e:item-flavor-link
 npm run test:e2e:order-list-other-merge # pure logic, doesn't need the dev server
+npm run test:e2e:order-history-paging
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

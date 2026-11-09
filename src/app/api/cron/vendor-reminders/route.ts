@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase'
 import { computeVendorDueInfo, VendorSchedule, VendorWeekStatusRow } from '@/lib/vendor-schedule'
 import { getItemsNeedingOrderByVendor } from '@/lib/order-list-server'
 import { sendPushToSubs, subsForOwnersWithAlert } from '@/lib/push-server'
+import { recordReminderSent } from '@/lib/vendor-reminder-server'
 import { todayInTZ, nowTimeInTZ, toHM } from '@/lib/tasks'
 
 // Hit every few minutes by a GitHub Actions scheduled workflow (Vercel
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
 
   let sent = 0
   const skipped: Record<string, string> = {}
+  const failed: Record<string, string> = {}
 
   for (const schedule of rows) {
     const info = computeVendorDueInfo(schedule, weekStatusRows, today, nowTime)
@@ -79,6 +81,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Patch 47: record the send BEFORE actually sending the push — see
+    // recordReminderSent's comment for why this order, not the reverse.
+    const record = await recordReminderSent(db, schedule.vendor, info.weekStart, (logRow?.send_count ?? 0) + 1)
+    if (!record.ok) {
+      console.error(
+        `vendor-reminders: failed to record vendor_reminder_log for ${schedule.vendor}/${info.weekStart} -- skipping this tick's push: ${record.error}`
+      )
+      failed[schedule.vendor] = record.error
+      continue
+    }
+
     const subs = await subsForOwnersWithAlert(db, 'order_alerts_enabled')
     const overdue = info.status === 'overdue'
     await sendPushToSubs(db, subs, {
@@ -86,15 +99,11 @@ export async function GET(request: NextRequest) {
       body: `${itemCount} item${itemCount !== 1 ? 's' : ''} to order${overdue ? ' — past the usual cutoff' : ` by ${toHM(schedule.cutoff_time)}`}`,
     })
 
-    await db
-      .from('vendor_reminder_log')
-      .upsert(
-        { vendor: schedule.vendor, week_start: info.weekStart, last_sent_at: new Date().toISOString(), send_count: (logRow?.send_count ?? 0) + 1 },
-        { onConflict: 'vendor,week_start' }
-      )
-
     sent++
   }
 
-  return NextResponse.json({ checked: rows.length, sent, skipped })
+  // A non-200 here is what makes the GitHub Actions step (curl -f) go red
+  // on a log-write failure, instead of a silently-swallowed retry loop.
+  const hasFailures = Object.keys(failed).length > 0
+  return NextResponse.json({ checked: rows.length, sent, skipped, failed }, { status: hasFailures ? 500 : 200 })
 }
