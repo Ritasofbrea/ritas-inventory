@@ -56,4 +56,9 @@ export async function sweepZztestFixtures() {
   // order_history rows behind even after the items sweep above runs.
   // Deleting by notes cascades order_history_items automatically.
   await rest('order_history?notes=ilike.*zztest*', { method: 'DELETE' })
+
+  // notes-photo-path-checks.mjs's fixtures -- deleting by content cascades
+  // note_photos automatically; the staff fixture is separate.
+  await rest('notes?content=ilike.*zztest*', { method: 'DELETE' })
+  await rest('staff?name=ilike.zztest*', { method: 'DELETE' })
 }

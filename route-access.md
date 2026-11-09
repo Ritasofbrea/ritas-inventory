@@ -19,10 +19,6 @@ Tiers, most to least permissive:
 |---|---|---|---|
 | `/api/cron/generate-tasks` | GET | PUBLIC (CRON_SECRET) | unchanged |
 | `/api/cron/cleanup-photos` | GET | PUBLIC (CRON_SECRET) | unchanged |
-| `/api/seed` | POST | PUBLIC (CRON_SECRET) | one-time, no caller |
-| `/api/migrate-counts` | POST | PUBLIC (CRON_SECRET) | one-time, no caller |
-| `/api/migrate-distributor` | POST | PUBLIC (CRON_SECRET) | one-time, no caller |
-| `/api/push-debug` | GET | PUBLIC (CRON_SECRET) | debug, no caller |
 | `/api/pins/verify` | POST | PUBLIC | this *is* login (owner/shift_lead); also what the todo page's inline "+Add Task" PinModal calls, which now also grants a real owner session as a side effect |
 | `/api/session` | GET | PUBLIC | tells a device what session (if any) it has, for routing |
 | `/api/session` | POST | PUBLIC | issues a staff session with no name, open to anyone — the To-Do List button is intentionally open on main too; not a security boundary, just gives the server a role to check |

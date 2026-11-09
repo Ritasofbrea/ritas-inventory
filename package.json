@@ -17,6 +17,7 @@
     "test:e2e:order-list-other-merge": "tsx tests/e2e/order-list-other-merge-checks.mjs",
     "test:e2e:order-history-paging": "tsx --env-file=.env.local tests/e2e/order-history-paging-checks.mjs",
     "test:e2e:receive-order-race": "tsx --env-file=.env.local tests/e2e/receive-order-race-checks.mjs",
+    "test:e2e:notes-photo-path": "tsx --env-file=.env.local tests/e2e/notes-photo-path-checks.mjs",
     "test:e2e:step-checks": "node --env-file=.env.local tests/e2e/step-checks.mjs",
     "test:e2e:logout-race": "node --env-file=.env.local tests/e2e/logout-race.mjs",
     "test:e2e:row-cap-checks": "node --env-file=.env.local tests/e2e/row-cap-checks.mjs",

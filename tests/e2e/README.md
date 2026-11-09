@@ -136,6 +136,22 @@ points at.
   exhaustion" technique as patch 47's `recordReminderSent` test, since a
   real HTTP race can't reliably force every attempt to collide on demand).
 
+- **`notes-photo-path-checks.mjs`** — patch 49: note photos used to be
+  saved under a path built only from `Date.now() + Math.random()` in a
+  public-read bucket; `POST /api/notes/photo-upload` now prefixes new
+  uploads with a fresh `crypto.randomUUID()` instead (same unguessable idea
+  as task photos' task-id-prefixed path). Proves a new upload's path
+  matches the UUID-prefixed shape, that it actually uploads and attaches to
+  a real (disposable `ZZTEST Notes Staff`-authored) note correctly, that
+  role rules are unchanged (no session -> 401), and — read-only, against
+  real data, never printing the URL — that an existing photo uploaded
+  under the OLD path still loads. Also proves the four routes patch 49
+  deleted (`push-debug`, `migrate-counts`, `migrate-distributor`, `seed`)
+  now 404 and nothing else broke. Uses a disposable `ZZTEST Notes Staff`
+  (notes require `created_by` to be an active `staff` row, which the
+  ZZTEST owner/shift-lead accounts aren't) plus one uploaded test file,
+  both cleaned up in the same run.
+
 ## Setup (one time)
 ```
 npm install
@@ -186,6 +202,7 @@ npm run test:e2e:item-flavor-link
 npm run test:e2e:order-list-other-merge # pure logic, doesn't need the dev server
 npm run test:e2e:order-history-paging
 npm run test:e2e:receive-order-race
+npm run test:e2e:notes-photo-path
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and
