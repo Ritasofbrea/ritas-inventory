@@ -152,6 +152,22 @@ points at.
   ZZTEST owner/shift-lead accounts aren't) plus one uploaded test file,
   both cleaned up in the same run.
 
+- **`patch-50-checks.mjs`** — patch 50: upload limits, the note-photos
+  orphan cleanup's dry run, and the `order_history_related_order_id_fkey`
+  fix. Proves the 5MB/image-type bucket limits (set once via the Storage
+  admin API, not a route in this app) genuinely reject an oversized or
+  non-image upload and that `friendlyUploadError()` (`src/lib/photo.ts`)
+  translates Storage's raw messages into plain language. Proves
+  `cleanupOrphanedNotePhotos` (`src/lib/note-photo-cleanup-server.ts`)
+  only selects an orphan past its 24h safety window — using an injected
+  clock, since a real Storage object's `created_at` can't be backdated —
+  while a fresh orphan and a referenced file both survive, and that its
+  fail-safes (a broken or unexpectedly-empty `note_photos` lookup) abort
+  without deleting anything. Proves deleting a `ZZTEST` "ordered" row that
+  a `ZZTEST` "received" row points to now succeeds and nulls that row's
+  link, with vendor "needs ordering" counts unchanged. Uses disposable
+  `ZZTEST` items/notes/staff/storage files, all cleaned up in the same run.
+
 ## Setup (one time)
 ```
 npm install
@@ -203,6 +219,7 @@ npm run test:e2e:order-list-other-merge # pure logic, doesn't need the dev serve
 npm run test:e2e:order-history-paging
 npm run test:e2e:receive-order-race
 npm run test:e2e:notes-photo-path
+npm run test:e2e:patch-50
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

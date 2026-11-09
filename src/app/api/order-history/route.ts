@@ -166,7 +166,18 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const { error } = await db.from('order_history').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    // Patch 50 Part C: a kept-as-a-safety-net message in case this route
+    // ever hits a blocking foreign key again (e.g. before
+    // fix-order-history-related-fk.sql is applied, or a future one) --
+    // Postgres code 23503 is foreign_key_violation. Fixing the actual
+    // constraint is the real fix (see that SQL file); this just keeps a
+    // 500 with raw SQL text from ever reaching the Delete button.
+    if (error.code === '23503') {
+      return NextResponse.json({ error: 'This order is still linked to a receipt — it can’t be deleted yet.' }, { status: 409 })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
   return NextResponse.json({ ok: true })
 }
 

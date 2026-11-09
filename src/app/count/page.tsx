@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import ScrollToSaveButton from '@/components/ScrollToSaveButton'
@@ -129,17 +129,17 @@ export default function CountPage() {
     }
   }
 
-  const clearAllBlurTimers = () => {
+  const clearAllBlurTimers = useCallback(() => {
     Object.values(blurTimers.current).forEach(clearTimeout)
     blurTimers.current = {}
-  }
+  }, [])
 
   useEffect(() => {
     return () => {
       if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
       clearAllBlurTimers()
     }
-  }, [])
+  }, [clearAllBlurTimers])
 
   // Add item modal state
   const [showAddModal, setShowAddModal] = useState(false)
@@ -154,7 +154,7 @@ export default function CountPage() {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
 
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     try {
       const res = await fetch('/api/items')
       const data = await res.json()
@@ -175,7 +175,7 @@ export default function CountPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [clearAllBlurTimers])
 
   useEffect(() => {
     const r = getRole()
@@ -191,7 +191,7 @@ export default function CountPage() {
     }
     fetchItems()
     fetch('/api/dashboard-summary').then((res) => res.json()).then((d) => setLastCount(d.lastCount)).catch(() => {})
-  }, [router])
+  }, [router, fetchItems])
 
   const handleCountedByChange = (val: string) => {
     setCountedBy(val)

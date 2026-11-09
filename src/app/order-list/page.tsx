@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
@@ -92,7 +92,7 @@ export default function OrderListPage() {
   const [vendorActionWorking, setVendorActionWorking] = useState<string | null>(null)
   const [notDueOpen, setNotDueOpen] = useState(false)
 
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     try {
       const res = await fetch('/api/items')
       const data: DistributorItem[] = await res.json()
@@ -102,9 +102,9 @@ export default function OrderListPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const fetchPendingOrders = async () => {
+  const fetchPendingOrders = useCallback(async () => {
     const res = await fetch('/api/order-history')
     if (!res.ok) return { onOrderIds: new Set<string>() }
     const all: OrderRecord[] = await res.json()
@@ -128,17 +128,17 @@ export default function OrderListPage() {
     setOnOrderItemIds(itemIds)
     setPendingOrders(pending)
     return { onOrderIds: itemIds }
-  }
+  }, [])
 
-  const fetchVendorInfos = async () => {
+  const fetchVendorInfos = useCallback(async () => {
     const res = await fetch('/api/vendor-schedules')
     if (!res.ok) return
     setVendorInfos(await res.json())
-  }
+  }, [])
 
   // Secondary, non-blocking info line — never awaited by loadAll, so a slow
   // or failed fetch here never delays the main list from showing.
-  const fetchWeeksLeft = async (ids: string[]) => {
+  const fetchWeeksLeft = useCallback(async (ids: string[]) => {
     if (ids.length === 0) { setWeeksLeft({}); return }
     try {
       const res = await fetch(`/api/reports/weeks-left?ids=${ids.join(',')}`)
@@ -150,9 +150,9 @@ export default function OrderListPage() {
     } catch {
       // best-effort — the line is just omitted if this fails
     }
-  }
+  }, [])
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     const [data, { onOrderIds }] = await Promise.all([fetchItems(), fetchPendingOrders(), fetchVendorInfos()])
     if (data) {
       const needsOrder = data.filter((i) => !i.is_off && getStockStatus(i) !== 'ok')
@@ -160,7 +160,7 @@ export default function OrderListPage() {
       setSelectedIds(new Set(toOrderIds))
       fetchWeeksLeft(needsOrder.map((i) => i.id))
     }
-  }
+  }, [fetchItems, fetchPendingOrders, fetchVendorInfos, fetchWeeksLeft])
 
   useEffect(() => {
     const role = getRole()
@@ -168,7 +168,7 @@ export default function OrderListPage() {
     if (role !== 'owner') { router.replace('/count'); return }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
     loadAll()
-  }, [router])
+  }, [router, loadAll])
 
   const fetchHistory = async () => {
     if (orderHistory.length > 0) return

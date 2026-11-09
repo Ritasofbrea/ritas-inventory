@@ -4,6 +4,20 @@ import { NOTE_PHOTO_BUCKET } from './note-photo-constants'
 
 const MAX_EDGE = 1600
 
+// Patch 50: both buckets now enforce a 5MB size limit and an allowed-
+// image-types list server-side (via Storage's own bucket config, set
+// once with the admin API — see the patch 50 report, not a route in this
+// app). The upload itself goes straight from the browser to Supabase
+// Storage, so a rejection surfaces here as a StorageApiError with one of
+// Storage's own technical messages — translated to something a
+// non-technical person can act on. Everything else (any other storage
+// error) falls back to its original message unchanged.
+export function friendlyUploadError(message: string): string {
+  if (message.includes('exceeded the maximum allowed size')) return 'That photo is too big — try a smaller one.'
+  if (message.includes('mime type') && message.includes('not supported')) return "That file isn't a supported photo type."
+  return message
+}
+
 // Downscales to a JPEG so iPhone photos (often 3–6MB) upload quickly on cell data.
 async function resizeToJpeg(file: File): Promise<Blob> {
   const url = URL.createObjectURL(file)
@@ -44,7 +58,7 @@ export async function uploadTaskPhoto(taskId: string, file: File): Promise<strin
   const { error } = await supabase.storage
     .from(TASK_PHOTO_BUCKET)
     .uploadToSignedUrl(body.path, body.token, blob, { contentType: 'image/jpeg' })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(friendlyUploadError(error.message))
 
   return body.publicUrl as string
 }
@@ -62,7 +76,7 @@ export async function uploadNotePhoto(file: File): Promise<string> {
   const { error } = await supabase.storage
     .from(NOTE_PHOTO_BUCKET)
     .uploadToSignedUrl(body.path, body.token, blob, { contentType: 'image/jpeg' })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(friendlyUploadError(error.message))
 
   return body.publicUrl as string
 }

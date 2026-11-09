@@ -19,6 +19,7 @@ const suites = [
   'order-history-paging-checks.mjs',
   'receive-order-race-checks.mjs',
   'notes-photo-path-checks.mjs',
+  'patch-50-checks.mjs',
 ]
 
 // vendor-schedule-checks.mjs, order-list-other-merge-checks.mjs, and
@@ -27,17 +28,19 @@ const suites = [
 // `from './tasks'`) — only bundler-style resolution (tsx, same as Next.js/
 // Turbopack) follows those; plain Node ESM resolution requires an explicit
 // extension and would fail with ERR_MODULE_NOT_FOUND. receive-order-race-
-// checks.mjs and notes-photo-path-checks.mjs's own imports (storage-
-// server.ts/supabase.ts/note-photo-constants.ts) don't need it, but they
-// run under tsx too for consistency. Every other suite here only imports
-// plain .mjs/leaf .ts files with no such imports, so they still run under
-// plain node.
+// checks.mjs, notes-photo-path-checks.mjs, and patch-50-checks.mjs's own
+// imports (storage-server.ts/supabase.ts/note-photo-constants.ts/photo.ts/
+// note-photo-cleanup-server.ts/order-list-server.ts) don't need it, but
+// they run under tsx too for consistency. Every other suite here only
+// imports plain .mjs/leaf .ts files with no such imports, so they still
+// run under plain node.
 const TSX_SUITES = new Set([
   'vendor-schedule-checks.mjs',
   'order-list-other-merge-checks.mjs',
   'order-history-paging-checks.mjs',
   'receive-order-race-checks.mjs',
   'notes-photo-path-checks.mjs',
+  'patch-50-checks.mjs',
 ])
 
 function runOne(file) {
