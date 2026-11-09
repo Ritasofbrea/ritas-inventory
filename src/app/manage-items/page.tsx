@@ -8,6 +8,7 @@ import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 import { unitLabel, subUnitSetupLabel, subUnitPreview } from '@/lib/units'
 import { packSizePreview } from '@/lib/order-units'
+import { Flavor, FLAVOR_TYPE_LABELS, PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS, groupFlavorsByType } from '@/lib/flavors'
 
 export default function ManageItemsPage() {
   const router = useRouter()
@@ -53,6 +54,12 @@ export default function ManageItemsPage() {
   const [packSizeValue, setPackSizeValue] = useState('')
   const [packSizeSaving, setPackSizeSaving] = useState(false)
 
+  // Patch 45: flavor link inline editor state (Ice Mix items only)
+  const [flavors, setFlavors] = useState<Flavor[]>([])
+  const [flavorEditId, setFlavorEditId] = useState<string | null>(null)
+  const [flavorValue, setFlavorValue] = useState('')
+  const [flavorSaving, setFlavorSaving] = useState(false)
+
   // Patch 38: storage switch + add/move/correction panel state
   const [storageTogglingId, setStorageTogglingId] = useState<string | null>(null)
   const [storagePanelId, setStoragePanelId] = useState<string | null>(null)
@@ -81,12 +88,26 @@ export default function ManageItemsPage() {
     }
   }
 
+  // ?all=true so an item currently linked to an inactive flavor (Cola,
+  // Blue Hawaii) can still show its current link in the picker, marked
+  // inactive — the picker's own option list below filters to active-only
+  // otherwise.
+  const fetchFlavors = async () => {
+    try {
+      const res = await fetch('/api/flavors?all=true')
+      if (res.ok) setFlavors(await res.json())
+    } catch {
+      // non-critical — the Flavor field just won't offer choices if this fails
+    }
+  }
+
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
     if (role !== 'owner') { router.replace('/count'); return }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
     fetchItems()
+    fetchFlavors()
   }, [router])
 
   const handleAdd = async () => {
@@ -185,6 +206,34 @@ export default function ManageItemsPage() {
       setError('Could not save pack size. Try again.')
     } finally {
       setPackSizeSaving(false)
+    }
+  }
+
+  // Patch 45: owner-only, separate route from the shared SL+ items PATCH
+  // (same reasoning as pack_size/is_off/storage — see
+  // src/app/api/items/flavor). Ice Mix items only.
+  const openFlavorEdit = (item: Item) => {
+    setFlavorEditId(item.id)
+    setFlavorValue(item.flavor_id ?? '')
+  }
+
+  const saveFlavor = async (item: Item) => {
+    setFlavorSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/items/flavor', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, flavor_id: flavorValue || null }),
+      })
+      if (!res.ok) throw new Error()
+      const updated = await res.json()
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)))
+      setFlavorEditId(null)
+    } catch {
+      setError('Could not save flavor. Try again.')
+    } finally {
+      setFlavorSaving(false)
     }
   }
 
@@ -688,13 +737,23 @@ export default function ManageItemsPage() {
                                 </button>
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="font-semibold text-gray-900 flex items-center gap-1.5">
+                                <p className="font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
                                   {item.name}
                                   {item.is_off && (
                                     <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">❄️ OFF</span>
                                   )}
                                   {item.has_storage && (
                                     <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 border border-teal-200">📦 STORAGE</span>
+                                  )}
+                                  {/* Patch 45: flavor program badge -- label only, reuses the
+                                      exact shared badge from the Flavor Catalog/weekly planner
+                                      (src/lib/flavors.ts), never a new style. flex-wrap above
+                                      keeps this from crowding OFF/STORAGE on a phone. */}
+                                  {item.category === 'Ice Mix' && item.flavor?.program && (
+                                    <span className={PROGRAM_BADGE_CLASS}>
+                                      <span>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                                      {PROGRAM_LABELS[item.flavor.program]}
+                                    </span>
                                   )}
                                 </p>
                                 <p className="text-sm text-gray-400">
@@ -705,6 +764,11 @@ export default function ManageItemsPage() {
                                 </p>
                                 {packSizePreview(item.unit, item.pack_size) && (
                                   <p className="text-xs text-gray-400">{packSizePreview(item.unit, item.pack_size)}</p>
+                                )}
+                                {item.category === 'Ice Mix' && item.flavor && (
+                                  <p className="text-xs text-gray-400">
+                                    Flavor: {item.flavor.name} ({FLAVOR_TYPE_LABELS[item.flavor.type]}){!item.flavor.active && ' — inactive'}
+                                  </p>
                                 )}
                               </div>
                             </div>
@@ -735,6 +799,40 @@ export default function ManageItemsPage() {
                                 {packSizePreview(item.unit, parseInt(packSizeValue, 10) || null) && (
                                   <p className="text-xs text-gray-500">{packSizePreview(item.unit, parseInt(packSizeValue, 10) || null)}</p>
                                 )}
+                              </div>
+                            )}
+
+                            {/* Patch 45: flavor link inline editor, Ice Mix only */}
+                            {flavorEditId === item.id && (
+                              <div className="ml-8 bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2">
+                                <p className="text-xs text-gray-500">
+                                  Which flavor is this? Changing the flavor&apos;s program tag in the Flavor Catalog updates the badge here automatically.
+                                </p>
+                                <select
+                                  value={flavorValue}
+                                  onChange={(e) => setFlavorValue(e.target.value)}
+                                  className="min-h-[44px] border border-gray-300 rounded-xl px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-gray-500"
+                                >
+                                  <option value="">No flavor</option>
+                                  {groupFlavorsByType(
+                                    flavors.filter((f) => f.active || f.id === item.flavor_id)
+                                  ).map(({ type, flavors: typeFlavors }) => (
+                                    <optgroup key={type} label={FLAVOR_TYPE_LABELS[type]}>
+                                      {typeFlavors.map((f) => (
+                                        <option key={f.id} value={f.id}>
+                                          {f.name}{!f.active ? ' (inactive)' : ''}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => saveFlavor(item)}
+                                  disabled={flavorSaving}
+                                  className="min-h-[40px] bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white font-semibold text-sm px-3 py-1.5 rounded-lg self-start"
+                                >
+                                  {flavorSaving ? 'Saving…' : 'Save'}
+                                </button>
                               </div>
                             )}
 
@@ -787,6 +885,14 @@ export default function ManageItemsPage() {
                               >
                                 {packSizeEditId === item.id ? 'Close' : item.pack_size ? 'Edit Pack Size' : 'Set Pack Size'}
                               </button>
+                              {item.category === 'Ice Mix' && (
+                                <button
+                                  onClick={() => (flavorEditId === item.id ? setFlavorEditId(null) : openFlavorEdit(item))}
+                                  className="min-h-[40px] text-sm font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:border-gray-400"
+                                >
+                                  {flavorEditId === item.id ? 'Close' : item.flavor ? 'Change Flavor' : 'Set Flavor'}
+                                </button>
+                              )}
                               <button
                                 onClick={() => startEdit(item)}
                                 className="min-h-[40px] text-sm text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg border border-blue-100 hover:border-blue-300"

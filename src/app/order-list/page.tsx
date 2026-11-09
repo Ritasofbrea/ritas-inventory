@@ -9,6 +9,7 @@ import { Item, getStockStatus } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
 import { getOrderUnitLabel, getDefaultOrderQty, packSizePreview } from '@/lib/order-units'
 import { isOpenStatus, urgencyRank, orderDayLabel, formatTimeOfDay, VendorDueStatus } from '@/lib/vendor-schedule'
+import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
 type DistributorItem = Item & { distributor?: string; item_number?: string; distributor_item_name?: string }
 
@@ -451,7 +452,19 @@ export default function OrderListPage() {
           className="w-5 h-5 flex-shrink-0 accent-[#1a7a3c] cursor-pointer"
         />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-900">{item.name}</p>
+          <p className="font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
+            {item.name}
+            {/* Patch 45: flavor program badge -- label only, same shared badge
+                as the Flavor Catalog/weekly planner. flex-wrap above keeps
+                this from crowding any other badge on a phone (Order List
+                itself never shows OFF/STORAGE on this row today). */}
+            {item.category === 'Ice Mix' && item.flavor?.program && (
+              <span className={PROGRAM_BADGE_CLASS}>
+                <span>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                {PROGRAM_LABELS[item.flavor.program]}
+              </span>
+            )}
+          </p>
           <p className="text-sm text-gray-400">
             {item.item_number && <span className="font-mono text-gray-500 mr-2">#{item.item_number}</span>}
             {item.distributor_item_name ?? item.category}

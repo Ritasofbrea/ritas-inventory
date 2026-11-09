@@ -118,6 +118,16 @@ async function run() {
     check('OWNER: PATCH /api/items/pack-size as shift_lead -> 403', asShiftLead.status === 403)
   }
   {
+    // Patch 45: owner-only flavor link, same gate as pack-size/is_off/storage.
+    const body = JSON.stringify({ id: '00000000-0000-0000-0000-000000000000', flavor_id: null })
+    const noSession = await apiFetch('/api/items/flavor', null, { method: 'PATCH', body })
+    check('OWNER: PATCH /api/items/flavor with no session -> 401', noSession.status === 401)
+    const asShiftLead = await apiFetch('/api/items/flavor', shiftLead.cookie, { method: 'PATCH', body })
+    check('OWNER: PATCH /api/items/flavor as shift_lead -> 403', asShiftLead.status === 403)
+    const asStaff = await apiFetch('/api/items/flavor', staff.cookie, { method: 'PATCH', body })
+    check('OWNER: PATCH /api/items/flavor as staff -> 403', asStaff.status === 403)
+  }
+  {
     const res = await apiFetch('/api/cron/vendor-reminders', null, { method: 'GET', headers: { Authorization: 'Bearer wrong-secret' } })
     check('SECRET: GET /api/cron/vendor-reminders with wrong bearer -> 401', res.status === 401)
   }

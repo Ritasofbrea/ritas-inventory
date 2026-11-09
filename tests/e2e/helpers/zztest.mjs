@@ -42,7 +42,11 @@ export async function sweepZztestFixtures() {
   await rest('vendor_week_status?vendor=eq.ZZTEST%20Vendor', { method: 'DELETE' })
   await rest('vendor_week_status_log?vendor=eq.ZZTEST%20Vendor', { method: 'DELETE' }).catch(() => {})
 
-  // item-category-checks.mjs's fixture — normally deleted in its own
-  // try/finally, this only matters if that run crashed first.
+  // item-category-checks.mjs's and item-flavor-link-checks.mjs's item
+  // fixtures — normally deleted in their own try/finally, this only
+  // matters if a run crashed first.
   await rest('items?name=ilike.zztest*', { method: 'DELETE' })
+
+  // item-flavor-link-checks.mjs's flavor fixture — same reasoning.
+  await rest('flavors?name=ilike.zztest*', { method: 'DELETE' })
 }

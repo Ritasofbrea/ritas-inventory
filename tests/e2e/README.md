@@ -71,6 +71,15 @@ points at.
   field in the same form still saves (together, in one request), and the
   new "nothing matched" 400 guard. Uses a disposable `ZZTEST Category Bug
   Item`.
+- **`item-flavor-link-checks.mjs`** — patch 45: `items.flavor_id`
+  (owner-only `PATCH /api/items/flavor`, validated against a real flavor;
+  shared `PATCH /api/items` ignores it; the shift_lead/staff/no-session
+  gates). Cycles one `ZZTEST Flavor` through all six program values and
+  re-fetches `GET /api/items` each time to prove the embedded badge is a
+  live join (never copied), confirms a hibernate-tagged linked item's
+  `is_off`/par/count are untouched, and that deleting the flavor leaves
+  the item intact with `flavor_id` back to null. Uses a disposable
+  `ZZTEST Flavor Badge Item` + `ZZTEST Flavor`.
 
 ## Setup (one time)
 ```
@@ -109,7 +118,7 @@ the normal PIN screen, only through this test helper.
 Nothing needs toggling before or after a run anymore. Just start the dev
 server in another terminal (`npm run dev`) and run:
 ```
-npm run test:e2e                 # all eight, in sequence
+npm run test:e2e                 # all nine, in sequence
 npm run test:e2e:role-checks
 npm run test:e2e:step-checks
 npm run test:e2e:logout-race     # doesn't need either ZZTEST account
@@ -118,6 +127,7 @@ npm run test:e2e:vendor-schedule # pure logic, doesn't need the dev server or ei
 npm run test:e2e:notification-linking
 npm run test:e2e:vendor-week-switch
 npm run test:e2e:item-category
+npm run test:e2e:item-flavor-link
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

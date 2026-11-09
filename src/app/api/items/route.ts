@@ -6,9 +6,14 @@ export async function GET(request: NextRequest) {
   const db = getServerSupabase()
   const auth = await requireRole(db, request, ['owner', 'shift_lead'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  // Patch 45: embeds each item's linked flavor (name/type/program/active)
+  // via the flavor_id FK in the same query — a per-row join, not a second
+  // bulk fetch, so it's immune to the 1000-row cap that applies to a
+  // growing log table (flavors is a small, bounded catalog table, same as
+  // items itself). null when flavor_id is null, exactly like today.
   const { data, error } = await db
     .from('items')
-    .select('*')
+    .select('*, flavor:flavors(id, name, type, program, active)')
     .order('category')
     .order('sort_order')
 
@@ -70,6 +75,11 @@ export async function POST(request: NextRequest) {
 // applyStorageCorrection in src/lib/storage-server.ts, which also writes
 // the storage_moves history row a direct update here would skip). Do not
 // add any of the three to the whitelist below.
+// Patch 44: pack_size is likewise owner-only, via /api/items/pack-size.
+// Patch 45: same for flavor_id -- owner-only via /api/items/flavor, which
+// also validates the flavor actually exists (400 otherwise). A shift_lead
+// session must never be able to set it through this shared route; if a
+// caller sends flavor_id here it's silently ignored, same as the others.
 export async function PATCH(request: NextRequest) {
   const db = getServerSupabase()
   const auth = await requireRole(db, request, ['owner', 'shift_lead'])

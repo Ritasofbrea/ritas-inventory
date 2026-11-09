@@ -14,6 +14,7 @@ const suites = [
   'notification-linking-checks.mjs',
   'vendor-week-switch-checks.mjs',
   'item-category-checks.mjs',
+  'item-flavor-link-checks.mjs',
 ]
 
 // vendor-schedule-checks.mjs imports src/lib/*.ts files that use

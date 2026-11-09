@@ -1,3 +1,5 @@
+import type { FlavorType, Program } from './flavors'
+
 export type Category =
   | 'Containers & Cups'
   | 'Lids'
@@ -49,8 +51,25 @@ export interface Item {
   // granularity concept — see getMainUnitTotal) even though some real items
   // blur the two; pack_size never participates in stock math.
   pack_size: number | null
+  // Patch 45: links an Ice Mix item to ONE flavor so its program tag
+  // (Everyday/Seasonal/LTO/...) can show on Manage Items/Current Stock/
+  // Order List/Count. Owner-set only (src/app/api/items/flavor/route.ts),
+  // nullable — null means no badge, same as today. `flavor` is a live join
+  // (GET /api/items embeds it), never a snapshot — it's null whenever
+  // flavor_id is null, and reflects the flavor's CURRENT program/name/type/
+  // active even if those change after the link was made.
+  flavor_id: string | null
+  flavor: ItemFlavor | null
   created_at: string
   updated_at: string
+}
+
+export interface ItemFlavor {
+  id: string
+  name: string
+  type: FlavorType
+  program: Program | null
+  active: boolean
 }
 
 export interface InventoryCount {

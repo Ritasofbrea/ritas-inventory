@@ -7,6 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES, getStockStatus, getMainUnitTotal } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
+import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
 const STATUS_ORDER = { out: 0, low: 1, ok: 2 }
 
@@ -215,13 +216,22 @@ export default function CurrentStockPage() {
                         className={`flex items-center gap-4 px-5 py-3.5 ${item.is_off ? 'opacity-50 bg-gray-50' : stale ? 'bg-orange-50' : ''} ${idx < arr.length - 1 ? 'border-b border-gray-100' : ''}`}
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5">
+                          <p className="font-semibold text-gray-900 text-sm flex items-center gap-1.5 flex-wrap">
                             {item.name}
                             {item.is_off && (
                               <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">❄️ OFF</span>
                             )}
                             {item.has_storage && (
                               <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 border border-teal-200">📦 STORAGE</span>
+                            )}
+                            {/* Patch 45: flavor program badge -- label only, same shared
+                                badge as the Flavor Catalog/weekly planner. flex-wrap above
+                                keeps this from crowding OFF/STORAGE on a phone. */}
+                            {item.category === 'Ice Mix' && item.flavor?.program && (
+                              <span className={PROGRAM_BADGE_CLASS}>
+                                <span>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                                {PROGRAM_LABELS[item.flavor.program]}
+                              </span>
                             )}
                           </p>
                           <p className={`text-xs mt-0.5 ${stale && !item.is_off ? 'text-orange-500' : 'text-gray-400'}`}>

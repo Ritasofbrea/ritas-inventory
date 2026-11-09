@@ -9,6 +9,7 @@ import { getRole, getShiftLeadName } from '@/lib/auth'
 import { Item, InventoryCount, CATEGORIES, Category } from '@/lib/types'
 import { useBlockReload } from '@/lib/reload-guard'
 import { unitLabel, subUnitSetupLabel, subUnitPreview } from '@/lib/units'
+import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
 interface CountDraft {
   [itemId: string]: string
@@ -529,10 +530,20 @@ export default function CountPage() {
                     counted normally, so typing/reading its input must not
                     get harder. */}
                 <div className={`flex-1 min-w-0 ${item.is_off ? 'opacity-60' : ''}`}>
-                  <p className="font-semibold text-gray-900 text-base leading-tight flex items-center gap-1.5">
+                  <p className="font-semibold text-gray-900 text-base leading-tight flex items-center gap-1.5 flex-wrap">
                     {item.name}
                     {item.is_off && (
                       <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 border border-indigo-200">❄️ OFF</span>
+                    )}
+                    {/* Patch 45: flavor program badge, read-only here -- label
+                        only, same shared badge as the Flavor Catalog/weekly
+                        planner. flex-wrap above keeps this from crowding OFF
+                        (Count doesn't show STORAGE on this line). */}
+                    {item.category === 'Ice Mix' && item.flavor?.program && (
+                      <span className={PROGRAM_BADGE_CLASS}>
+                        <span>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                        {PROGRAM_LABELS[item.flavor.program]}
+                      </span>
                     )}
                   </p>
                   <p className="text-sm text-gray-400">{item.unit}</p>
