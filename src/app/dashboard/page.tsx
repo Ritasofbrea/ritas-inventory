@@ -8,6 +8,7 @@ import { getRole } from '@/lib/auth'
 import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
 import { urgencyRank, formatTimeOfDay, vendorDisplayLabel, VendorDueStatus } from '@/lib/vendor-schedule'
+import { PROGRAM_LABELS, PROGRAM_BADGE_ICON } from '@/lib/flavors'
 
 type LastCount = { item_id: string; created_at: string; entered_by: string }
 type VelocityRow = { item_id: string; name: string; unit: string; consumed: number }
@@ -518,6 +519,11 @@ export default function DashboardPage() {
                 return (
                   <span key={item.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-orange-100 text-orange-800 border border-orange-200">
                     {item.name}
+                    {/* Patch 53: flavor program badge, symbol only -- same glyph as
+                        the shared badge elsewhere, no label text (no room in a pill). */}
+                    {item.category === 'Ice Mix' && item.flavor?.program && (
+                      <span title={PROGRAM_LABELS[item.flavor.program]}>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                    )}
                     <span className="text-xs font-normal text-orange-500">{label}</span>
                   </span>
                 )
@@ -546,6 +552,11 @@ function StockPill({ item, variant }: { item: Item; variant: 'out' | 'low' }) {
           total vs par (what actually decided its status) with a small
           storage icon -- not a full breakdown, that's Current Stock's job. */}
       {item.has_storage && <span title="includes storage">📦</span>}
+      {/* Patch 53: flavor program badge, symbol only -- same glyph as the
+          shared badge elsewhere, no label text (no room in a pill). */}
+      {item.category === 'Ice Mix' && item.flavor?.program && (
+        <span title={PROGRAM_LABELS[item.flavor.program]}>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+      )}
       <span className={`text-xs font-normal ${variant === 'out' ? 'text-red-500' : 'text-amber-600'}`}>
         {item.has_storage ? getMainUnitTotal(item) : item.current_count}/{item.par_level} {unitLabel(item.unit, item.par_level)}
         {hasSecondary && !item.has_storage ? ` · ${item.secondary_count} ${unitLabel(item.secondary_unit, item.secondary_count)}` : ''}
