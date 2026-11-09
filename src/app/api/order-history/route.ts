@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSupabase } from '@/lib/supabase'
 import { requireRole } from '@/lib/session'
-import { applyStorageChange } from '@/lib/storage-server'
+import { applyStorageChange, applyCurrentCountIncrement, applyRawCountDelta } from '@/lib/storage-server'
 import { sendPushToSubs, subsForOwnersWithAlert } from '@/lib/push-server'
 
 export async function GET(request: NextRequest) {
@@ -92,30 +92,66 @@ export async function POST(request: NextRequest) {
   // an item without has_storage, behaves exactly as before: straight into
   // current_count. The has_storage check is re-verified server-side from
   // the DB, never trusted from the request body.
+  //
+  // Patch 48: each item's write now goes through applyStorageChange/
+  // applyCurrentCountIncrement, both of which read-guard-retry (compare-
+  // and-swap) against concurrent writes to the same item instead of a bare
+  // read-then-write, fixing a lost-update race (two overlapping receipts
+  // for the same item). Processed sequentially (not Promise.all) so that
+  // if one item's write ultimately fails after retries are exhausted, every
+  // item already applied in THIS receipt can be rolled back (a
+  // compensating negative delta) before deleting the order_history_items
+  // and order_history rows just inserted above -- so a failed receipt never
+  // leaves a "received" record with stock that doesn't match it, and
+  // nothing is left half-written.
   if (type === 'received' || type === 'will_call') {
     const isOwner = auth.session.role === 'owner'
-    await Promise.all(
-      items
-        .filter((i: { item_id: string; quantity: number }) => i.item_id && i.quantity > 0)
-        .map(async (i: { item_id: string; quantity: number; destination?: string }) => {
-          if (isOwner && i.destination === 'storage') {
-            const { data: storageItem } = await db.from('items').select('has_storage').eq('id', i.item_id).maybeSingle()
-            if (storageItem?.has_storage) {
-              await applyStorageChange(db, {
-                itemId: i.item_id,
-                kind: 'receive_to_storage',
-                amount: Number(i.quantity),
-                byName: auth.session.name,
-              })
-              return
-            }
+    const applied: { itemId: string; column: 'current_count' | 'storage_count'; amount: number }[] = []
+    let failure: { error: string; status: number } | null = null
+
+    for (const i of items as { item_id: string; quantity: number; destination?: string }[]) {
+      if (!i.item_id || !(i.quantity > 0)) continue
+
+      let routedToStorage = false
+      if (isOwner && i.destination === 'storage') {
+        const { data: storageItem } = await db.from('items').select('has_storage').eq('id', i.item_id).maybeSingle()
+        if (storageItem?.has_storage) {
+          const result = await applyStorageChange(db, {
+            itemId: i.item_id,
+            kind: 'receive_to_storage',
+            amount: Number(i.quantity),
+            byName: auth.session.name,
+          })
+          if (!result.ok) {
+            failure = { error: result.error, status: result.status }
+            break
           }
-          const { data: item } = await db.from('items').select('current_count').eq('id', i.item_id).single()
-          if (item) {
-            await db.from('items').update({ current_count: Number(item.current_count) + Number(i.quantity) }).eq('id', i.item_id)
-          }
-        })
-    )
+          applied.push({ itemId: i.item_id, column: 'storage_count', amount: Number(i.quantity) })
+          routedToStorage = true
+        }
+      }
+
+      if (!routedToStorage) {
+        const result = await applyCurrentCountIncrement(db, { itemId: i.item_id, amount: Number(i.quantity) })
+        if (!result.ok) {
+          failure = { error: result.error, status: result.status }
+          break
+        }
+        applied.push({ itemId: i.item_id, column: 'current_count', amount: Number(i.quantity) })
+      }
+    }
+
+    if (failure) {
+      for (const a of applied) {
+        await applyRawCountDelta(db, { itemId: a.itemId, column: a.column, delta: -a.amount })
+      }
+      await db.from('order_history_items').delete().eq('order_id', order.id)
+      await db.from('order_history').delete().eq('id', order.id)
+      return NextResponse.json(
+        { error: `Could not update stock for this receipt (${failure.error}). Nothing was saved -- please try again.` },
+        { status: failure.status === 404 || failure.status === 400 ? 400 : 500 }
+      )
+    }
   }
 
   return NextResponse.json({ ...order, order_history_items: rows })

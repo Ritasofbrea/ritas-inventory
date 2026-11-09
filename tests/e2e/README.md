@@ -116,6 +116,26 @@ points at.
   rows, all cleaned up in the same run via the real `DELETE` routes
   (`order_history_items` cascades off `order_history` on delete).
 
+- **`receive-order-race-checks.mjs`** — patch 48: `POST /api/order-history`'s
+  non-storage receive branch used to do a naive read-then-write on
+  `items.current_count` (no compare-and-swap, no retry) -- two overlapping
+  receipts for the same item could silently lose one increment. Fixed via
+  `applyCurrentCountIncrement` (`src/lib/storage-server.ts`), a new sibling
+  to the existing storage writers built on the same shared `withRetry`
+  control flow. Proves: a normal single receipt (storage and non-storage)
+  still gives the exact same number as before; five rounds of two
+  overlapping concurrent receipts for the same `ZZTEST` item never lose an
+  increment; a receipt with one item that genuinely can't be applied (a
+  real, deterministic Postgres numeric-overflow forced by pre-loading a
+  second `ZZTEST` item right up against `current_count`'s `DECIMAL(10,2)`
+  limit -- not a mock) rolls back completely -- the other item's
+  already-applied increment is reversed and no `order_history` row is left
+  behind; and, separately, that the retry primitive itself genuinely gives
+  up with a clear 409 after exactly `MAX_RETRIES` attempts, tested against
+  a hand-rolled fake db that always reports a conflict (same "mock to force
+  exhaustion" technique as patch 47's `recordReminderSent` test, since a
+  real HTTP race can't reliably force every attempt to collide on demand).
+
 ## Setup (one time)
 ```
 npm install
@@ -165,6 +185,7 @@ npm run test:e2e:item-category
 npm run test:e2e:item-flavor-link
 npm run test:e2e:order-list-other-merge # pure logic, doesn't need the dev server
 npm run test:e2e:order-history-paging
+npm run test:e2e:receive-order-race
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

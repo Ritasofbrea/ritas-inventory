@@ -17,6 +17,7 @@ const suites = [
   'item-flavor-link-checks.mjs',
   'order-list-other-merge-checks.mjs',
   'order-history-paging-checks.mjs',
+  'receive-order-race-checks.mjs',
 ]
 
 // vendor-schedule-checks.mjs, order-list-other-merge-checks.mjs, and
@@ -24,10 +25,17 @@ const suites = [
 // extensionless relative imports internally (e.g. vendor-schedule.ts's
 // `from './tasks'`) — only bundler-style resolution (tsx, same as Next.js/
 // Turbopack) follows those; plain Node ESM resolution requires an explicit
-// extension and would fail with ERR_MODULE_NOT_FOUND. Every other suite
-// here only imports plain .mjs/leaf .ts files with no such imports, so they
-// still run under plain node.
-const TSX_SUITES = new Set(['vendor-schedule-checks.mjs', 'order-list-other-merge-checks.mjs', 'order-history-paging-checks.mjs'])
+// extension and would fail with ERR_MODULE_NOT_FOUND. receive-order-race-
+// checks.mjs's own imports (storage-server.ts/supabase.ts) don't need it,
+// but it runs under tsx too for consistency. Every other suite here only
+// imports plain .mjs/leaf .ts files with no such imports, so they still run
+// under plain node.
+const TSX_SUITES = new Set([
+  'vendor-schedule-checks.mjs',
+  'order-list-other-merge-checks.mjs',
+  'order-history-paging-checks.mjs',
+  'receive-order-race-checks.mjs',
+])
 
 function runOne(file) {
   return new Promise((resolve) => {
