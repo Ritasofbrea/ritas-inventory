@@ -25,7 +25,9 @@
     "test:e2e:step-checks": "node --env-file=.env.local tests/e2e/step-checks.mjs",
     "test:e2e:logout-race": "node --env-file=.env.local tests/e2e/logout-race.mjs",
     "test:e2e:row-cap-checks": "node --env-file=.env.local tests/e2e/row-cap-checks.mjs",
-    "test:e2e:cleanup": "node --env-file=.env.local tests/e2e/cleanup.mjs"
+    "test:e2e:cleanup": "node --env-file=.env.local tests/e2e/cleanup.mjs",
+    "backup": "node scripts/backup.mjs",
+    "backup:check": "node scripts/backup-check.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

@@ -36,6 +36,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# patch 54: backups live outside the repo (iCloud Drive), never in it --
+# these patterns are a defensive safety net only, in case a backup or its
+# test output is ever accidentally created inside the repo folder.
+/Ritas-backups/
+.tmp-*/
+backup-test-tmp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

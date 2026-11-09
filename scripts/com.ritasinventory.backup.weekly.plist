@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Patch 54: weekly full-database backup. Template -- do not load this file
+  directly. scripts/install-backup-jobs.sh fills in __NODE__ (the absolute
+  path to the node binary actually in use) and __REPO__ (this repo's
+  absolute path) and installs the result into ~/Library/LaunchAgents/.
+
+  Runs every Sunday at 10:00 PM local time. StartCalendarInterval jobs
+  that were missed because the Mac was asleep run once automatically the
+  next time the Mac wakes -- no RunAtLoad/extra config needed for that.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ritasinventory.backup.weekly</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__NODE__</string>
+        <string>__REPO__/scripts/backup.mjs</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>22</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Mobile Documents/com~apple~CloudDocs/Ritas-backups/backup.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Mobile Documents/com~apple~CloudDocs/Ritas-backups/backup.log</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

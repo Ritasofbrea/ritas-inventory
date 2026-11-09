@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Patch 54: daily dead-man's-switch check for the weekly backup. Template
+  -- do not load this file directly. scripts/install-backup-jobs.sh fills
+  in __NODE__ and __REPO__ and installs the result into
+  ~/Library/LaunchAgents/.
+
+  Runs every day at 9:00 AM local time -- notifies (via osascript) if the
+  last backup FAILED or is more than 10 days old, so a silently dead
+  weekly job still gets noticed instead of just quietly not running.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ritasinventory.backup.check</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__NODE__</string>
+        <string>__REPO__/scripts/backup-check.mjs</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Mobile Documents/com~apple~CloudDocs/Ritas-backups/backup-check.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Mobile Documents/com~apple~CloudDocs/Ritas-backups/backup-check.log</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
