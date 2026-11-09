@@ -7,6 +7,7 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
+import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
 interface ParDraft {
   [itemId: string]: string
@@ -235,7 +236,20 @@ export default function ParSettingsPage() {
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900">{item.name}</p>
+                  <p className="font-semibold text-gray-900 flex items-center gap-1.5 flex-wrap">
+                    {item.name}
+                    {/* Patch 51: flavor program badge -- label only, same shared
+                        badge as Manage Items/Current Stock/Order List/Count.
+                        flex-wrap above keeps this from crowding the par/Save
+                        boxes on a phone (this row has no OFF/STORAGE badge
+                        today, but the same wrap would absorb one if added later). */}
+                    {item.category === 'Ice Mix' && item.flavor?.program && (
+                      <span className={PROGRAM_BADGE_CLASS}>
+                        <span>{PROGRAM_BADGE_ICON[item.flavor.program]}</span>
+                        {PROGRAM_LABELS[item.flavor.program]}
+                      </span>
+                    )}
+                  </p>
                   <p className="text-sm text-gray-400">{item.unit}</p>
                   {showSuggestion && (
                     <button

@@ -149,9 +149,6 @@ async function run() {
 
     // Since real deletion is off, all three fixtures should still exist in
     // storage no matter what the dry run decided.
-    const { data: afterList } = await db.storage.from(NOTE_PHOTO_BUCKET).list('', { limit: 1000 })
-    const stillThere = (p) => fixturePaths.some((fp) => fp === p) // flat check, fixtures are one folder deep so compare against listDir separately below
-    void stillThere
     for (const p of [freshOrphan.path, oldOrphan.path, referencedFile.path]) {
       const folder = p.split('/')[0]
       const { data: inFolder } = await db.storage.from(NOTE_PHOTO_BUCKET).list(folder, { limit: 1000 })

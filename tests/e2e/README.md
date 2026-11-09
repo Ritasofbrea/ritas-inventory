@@ -168,6 +168,16 @@ points at.
   link, with vendor "needs ordering" counts unchanged. Uses disposable
   `ZZTEST` items/notes/staff/storage files, all cleaned up in the same run.
 
+- **`par-settings-badge-checks.mjs`** — patch 51: the Par screen was
+  missing the flavor program badge patch 45 added to Manage Items/Current
+  Stock/Order List/Count. Drives a real browser (the second Playwright
+  suite, after `logout-race.mjs` — the point is what actually renders, not
+  just the API response) to prove a `ZZTEST`-linked Ice Mix item shows the
+  right badge, an unlinked one shows none, and changing the linked
+  flavor's program updates the badge on the next page load (a live read,
+  same as every other screen using this badge). Uses a disposable
+  `ZZTEST Par Badge Flavor` plus two `ZZTEST` items, cleaned up either way.
+
 ## Setup (one time)
 ```
 npm install
@@ -220,6 +230,7 @@ npm run test:e2e:order-history-paging
 npm run test:e2e:receive-order-race
 npm run test:e2e:notes-photo-path
 npm run test:e2e:patch-50
+npm run test:e2e:par-settings-badge
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

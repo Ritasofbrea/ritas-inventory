@@ -19,6 +19,7 @@
     "test:e2e:receive-order-race": "tsx --env-file=.env.local tests/e2e/receive-order-race-checks.mjs",
     "test:e2e:notes-photo-path": "tsx --env-file=.env.local tests/e2e/notes-photo-path-checks.mjs",
     "test:e2e:patch-50": "tsx --env-file=.env.local tests/e2e/patch-50-checks.mjs",
+    "test:e2e:par-settings-badge": "tsx --env-file=.env.local tests/e2e/par-settings-badge-checks.mjs",
     "test:e2e:step-checks": "node --env-file=.env.local tests/e2e/step-checks.mjs",
     "test:e2e:logout-race": "node --env-file=.env.local tests/e2e/logout-race.mjs",
     "test:e2e:row-cap-checks": "node --env-file=.env.local tests/e2e/row-cap-checks.mjs",
