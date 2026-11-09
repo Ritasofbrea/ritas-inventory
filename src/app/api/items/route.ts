@@ -85,7 +85,7 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireRole(db, request, ['owner', 'shift_lead'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
-  const { id, current_count, par_level, par_level_secondary, name, category, unit, secondary_count, secondary_unit, units_per_sub_unit, distributor, item_number, distributor_item_name } = body
+  const { id, current_count, par_level, par_level_secondary, name, category, unit, secondary_count, secondary_unit, units_per_sub_unit, distributor, item_number, distributor_item_name, supplier_order } = body
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -93,7 +93,21 @@ export async function PATCH(request: NextRequest) {
   if (current_count !== undefined) updates.current_count = current_count
   if (par_level !== undefined) updates.par_level = par_level
   if (par_level_secondary !== undefined) updates.par_level_secondary = par_level_secondary
-  if (name !== undefined) updates.name = name
+  // Bug fix (patch 53): same silent-failure shape as the category bug --
+  // Manage Items' up/down reorder arrows (moveItem) have always PATCHed
+  // only { id, supplier_order }, but this field was never whitelisted, so
+  // every reorder returned 400 "Nothing to update" (the client never
+  // checked the response and optimistically updated local state anyway,
+  // so the UI looked like it worked until the next refresh/re-sort).
+  if (supplier_order !== undefined) updates.supplier_order = supplier_order
+  // Patch 53: the Manage Items Save button already disables itself for a
+  // blank name, but items.name has no DB-level check -- a blank name sent
+  // directly to this route (bypassing that UI guard) used to succeed
+  // silently. Reject it explicitly instead.
+  if (name !== undefined) {
+    if (!name.trim()) return NextResponse.json({ error: "Name can't be blank." }, { status: 400 })
+    updates.name = name
+  }
   // Bug fix: Manage Items' edit form has always sent `category` in this
   // PATCH body (it's in the same request as name/unit/distributor/etc.),
   // but it was never destructured or added to `updates` above — a category

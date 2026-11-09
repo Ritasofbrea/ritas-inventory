@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
@@ -15,6 +15,16 @@ export default function ManageItemsPage() {
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const errorRef = useRef<HTMLDivElement>(null)
+  // Patch 53: a failed save anywhere on this (often long, scrolled-down)
+  // page used to leave the error banner off-screen at the top -- the Save
+  // button correctly stopped saying "Saving…", but with nothing visible
+  // changing where the user was actually looking, it read as "nothing
+  // happened." Scrolls the banner into view the moment any setError call
+  // on this page sets a real message.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [error])
 
   // Add form state
   const [newName, setNewName] = useState('')
@@ -156,7 +166,13 @@ export default function ManageItemsPage() {
           id: item.id,
           name: editName.trim(),
           unit: editUnit.trim(),
-          secondary_unit: editSecondaryUnit.trim() || null,
+          // Bug fix (patch 53): items.secondary_unit is NOT NULL DEFAULT ''
+          // -- sending null here (instead of '') violated that constraint
+          // and made the server 500 on every save for any item with no
+          // secondary unit, name changes included. '' is the column's own
+          // "none" value everywhere else it's read (`item.secondary_unit &&`
+          // is already falsy for either '' or null).
+          secondary_unit: editSecondaryUnit.trim(),
           units_per_sub_unit: editSecondaryUnit.trim() && editUnitsPerSubUnit ? parseInt(editUnitsPerSubUnit, 10) : null,
           category: editCategory,
           distributor: editDistributor || null,
@@ -253,16 +269,24 @@ export default function ManageItemsPage() {
     const aOrder = itemA.supplier_order ?? idx * 10
     const bOrder = itemB.supplier_order ?? swapIdx * 10
     setMoving(true)
+    setError('')
     try {
-      await Promise.all([
+      // Bug fix (patch 53): neither call's response was ever checked, so a
+      // failure (e.g. supplier_order not yet whitelisted server-side) was
+      // invisible -- local state still optimistically "moved" the item,
+      // making the reorder look like it worked until the next refresh.
+      const [resA, resB] = await Promise.all([
         fetch('/api/items', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: itemA.id, supplier_order: bOrder }) }),
         fetch('/api/items', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: itemB.id, supplier_order: aOrder }) }),
       ])
+      if (!resA.ok || !resB.ok) throw new Error('Could not reorder. Try again.')
       setItems((prev) => prev.map((i) => {
         if (i.id === itemA.id) return { ...i, supplier_order: bOrder }
         if (i.id === itemB.id) return { ...i, supplier_order: aOrder }
         return i
       }))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not reorder. Try again.')
     } finally {
       setMoving(false)
     }
@@ -425,7 +449,7 @@ export default function ManageItemsPage() {
         </div>
 
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
+          <div ref={errorRef} className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3">
             {error}
           </div>
         )}

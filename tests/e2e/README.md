@@ -193,6 +193,26 @@ points at.
   Flavor` plus three `ZZTEST` items (one storage-enabled), all cleaned up
   in the same run.
 
+- **`rename-item-checks.mjs`** — patch 53: a Manage Items rename (reported
+  against the real "Wild Cherry" item) hung on "Saving…" and never
+  persisted. Real cause: `handleSaveEdit` always sent
+  `secondary_unit: ... || null`, but `items.secondary_unit` is
+  `NOT NULL DEFAULT ''` — so *any* save (not just a rename) on an item with
+  no secondary unit 500'd. Fixed by sending `''` instead of `null`. Also
+  found and fixed the same silent-failure shape as the old category bug:
+  `supplier_order` (the up/down reorder arrows) was missing from
+  `PATCH /api/items`'s whitelist, so every reorder 400'd invisibly (the
+  client never checked the response and optimistically "moved" the item
+  locally anyway) — and added a plain 400 for a blank name sent directly
+  to the route (the Save button already disables itself for this, but the
+  route itself didn't check). Drives a real browser for the actual
+  rename-and-save flow, plus API-level checks that duplicate names aren't
+  blocked (confirmed, not the cause, left unchanged), par/pack
+  size/flavor link/counts are untouched by a rename, and role rules are
+  unchanged (shift_lead can rename, staff/no-session cannot). Uses a
+  disposable `ZZTEST Rename Item` (+ a `ZZTEST Rename Dup Target` and a
+  `ZZTEST Rename Flavor`), all cleaned up in the same run.
+
 ## Setup (one time)
 ```
 npm install
@@ -247,6 +267,7 @@ npm run test:e2e:notes-photo-path
 npm run test:e2e:patch-50
 npm run test:e2e:par-settings-badge
 npm run test:e2e:patch-52
+npm run test:e2e:rename-item
 npm run test:e2e:cleanup         # sweep any leftover ZZTEST fixtures
 ```
 Each script prints `ok - <check>` / `FAIL - <check>` per assertion and

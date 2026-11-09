@@ -22,6 +22,7 @@ const suites = [
   'patch-50-checks.mjs',
   'par-settings-badge-checks.mjs',
   'patch-52-checks.mjs',
+  'rename-item-checks.mjs',
 ]
 
 // vendor-schedule-checks.mjs, order-list-other-merge-checks.mjs, and
@@ -31,15 +32,16 @@ const suites = [
 // Turbopack) follows those; plain Node ESM resolution requires an explicit
 // extension and would fail with ERR_MODULE_NOT_FOUND. receive-order-race-
 // checks.mjs, notes-photo-path-checks.mjs, patch-50-checks.mjs,
-// par-settings-badge-checks.mjs, and patch-52-checks.mjs's own imports
-// (storage-server.ts/supabase.ts/note-photo-constants.ts/photo.ts/
-// note-photo-cleanup-server.ts/order-list-server.ts/session-token.ts)
-// don't need it, but they run under tsx too for consistency. Every other
-// suite here only imports plain .mjs/leaf .ts files with no such imports,
-// so they still run under plain node. par-settings-badge-checks.mjs and
-// patch-52-checks.mjs are the suites (after logout-race.mjs) that drive a
-// real browser via Playwright, since the point is what actually renders,
-// not just the API response.
+// par-settings-badge-checks.mjs, patch-52-checks.mjs, and
+// rename-item-checks.mjs's own imports (storage-server.ts/supabase.ts/
+// note-photo-constants.ts/photo.ts/note-photo-cleanup-server.ts/
+// order-list-server.ts/session-token.ts) don't need it, but they run
+// under tsx too for consistency. Every other suite here only imports
+// plain .mjs/leaf .ts files with no such imports, so they still run under
+// plain node. par-settings-badge-checks.mjs, patch-52-checks.mjs, and
+// rename-item-checks.mjs are the suites (after logout-race.mjs) that
+// drive a real browser via Playwright, since the point is what actually
+// renders, not just the API response.
 const TSX_SUITES = new Set([
   'vendor-schedule-checks.mjs',
   'order-list-other-merge-checks.mjs',
@@ -49,6 +51,7 @@ const TSX_SUITES = new Set([
   'patch-50-checks.mjs',
   'par-settings-badge-checks.mjs',
   'patch-52-checks.mjs',
+  'rename-item-checks.mjs',
 ])
 
 function runOne(file) {
