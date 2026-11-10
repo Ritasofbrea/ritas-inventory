@@ -87,11 +87,15 @@ Migration files run roughly in this order: `schema.sql` → `update-secondary-co
 - After a change: push to `main` (Vercel auto-deploys on push), wait for the deployment, and report back the commit sha and that production reached Ready.
 - Don't change behavior beyond what's asked. If something surprising turns up mid-task, report it rather than silently working around it.
 - Keep reports short and plain.
+- No em dashes in replies to Josh.
+- Never sign off messages "-J".
+- When a reply uses a coding concept (e.g. "debounce," "optimistic concurrency," "memoization"), briefly name/define it rather than assuming it's familiar.
 
 ---
 
 ## 7. Design rules
 - Never reuse an existing color's/badge's/icon's/border's established meaning for something new — invent a new badge/icon/border instead of overloading one that already means something else.
+- New tags/labels default to a neutral gray outlined badge (not a solid color), so they never collide with an existing status color's meaning (see patch 40/43 for shipped examples).
 - Custom `TimeField` only, never a native `<input type="time">` — Safari/WebKit renders an empty native time input with a misleading phantom time instead of truly blank.
 - Prefer deactivate/archive over hard delete; when something is deleted/renamed, snapshot the name/value it had so history displays correctly after the source changes or disappears.
 - Big touch targets everywhere (shared touchscreen device) — buttons are `min-h-[48px]` or larger.
