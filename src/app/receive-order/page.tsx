@@ -29,6 +29,12 @@ interface ShortItem { item_id: string; item_name: string; unit: string; ordered:
 // time, not on every keystroke, so a confirm popup never appears mid-typing.
 interface MistakeItem { item_id: string; item_name: string; typedQty: number; stockQty: number; orderWord: string; stockUnit: string }
 
+// Patch 57: one row of the will_call summary popup -- `detail` is the
+// already-formatted "2 boxes = 12 bottles" (pack_size item) or "3 bags"
+// (plain item) half of the line, item_name is kept separate so the modal
+// can bold it the same way MistakeGuardModal bolds item names.
+interface WillCallRow { item_id: string; item_name: string; detail: string }
+
 type Step = 'select' | 'enter' | 'shorts' | 'done'
 
 function formatDate(d: string) {
@@ -80,6 +86,53 @@ function MistakeGuardModal({ items, onConfirm, onCancel }: { items: MistakeItem[
   )
 }
 
+// Patch 57: will_call's one summary popup at Save, replacing the per-item
+// mistake guard for this delivery type only -- a will_call almost never has
+// a prior order line to compare against, so every entered line is shown,
+// always, regardless of quantity. Same gray/neutral styling as
+// MistakeGuardModal, same two-big-button shape, deliberately a separate
+// component (not a shared one with different props) since the two modals'
+// trigger conditions and content are different enough that sharing would
+// need more branching than just writing both out.
+function WillCallSummaryModal({ rows, onConfirm, onCancel }: { rows: WillCallRow[]; onConfirm: () => void; onCancel: () => void }) {
+  useBlockReload(true)
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onCancel}>
+      <div
+        role="alertdialog"
+        aria-label="Confirm will call receipt"
+        className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Confirm Will Call Receipt</h2>
+          <div className="text-sm text-gray-600 mt-2 flex flex-col gap-1.5">
+            {rows.map((r) => (
+              <p key={r.item_id}>
+                <span className="font-semibold text-gray-800">{r.item_name}:</span> {r.detail}
+              </p>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 min-h-[48px] bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-xl"
+          >
+            Go back
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 min-h-[48px] bg-gray-700 hover:bg-gray-800 text-white font-semibold rounded-xl"
+          >
+            Yes, save all
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ReceiveOrderPage() {
   const router = useRouter()
   const [items, setItems] = useState<Item[]>([])
@@ -99,6 +152,8 @@ export default function ReceiveOrderPage() {
   const [shorts, setShorts] = useState<ShortItem[]>([])
   const [mistakeItems, setMistakeItems] = useState<MistakeItem[]>([])
   const [showMistakeModal, setShowMistakeModal] = useState(false)
+  const [willCallRows, setWillCallRows] = useState<WillCallRow[]>([])
+  const [showWillCallSummary, setShowWillCallSummary] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [role, setRole] = useState<string | null>(null)
@@ -191,6 +246,34 @@ export default function ReceiveOrderPage() {
     return flagged
   }
 
+  // Patch 57: builds every entered line's summary row for the will_call
+  // popup -- box/case math for a pack_size item (matching the live math
+  // line already shown under that field), plain "qty unit" for everything
+  // else. Mirrors detectMistakes()'s iteration but never filters anything
+  // out -- will_call shows every entered line, always.
+  const buildWillCallRows = (): WillCallRow[] => {
+    const rows: WillCallRow[] = []
+    for (const [itemId, val] of Object.entries(received)) {
+      if (val === '' || !(parseFloat(val) > 0)) continue
+      const item = items.find((i) => i.id === itemId)
+      if (!item) continue
+      const typedQty = parseFloat(val)
+      if (usesBoxOrdering(item)) {
+        const packSize = item.pack_size as number
+        const stockQty = Math.round(typedQty * packSize * 100) / 100
+        const orderWord = getOrderUnitLabel(item)
+        rows.push({
+          item_id: itemId,
+          item_name: item.name,
+          detail: `${typedQty} ${unitLabel(orderWord, typedQty)} = ${stockQty} ${unitLabel(item.unit, stockQty)}`,
+        })
+      } else {
+        rows.push({ item_id: itemId, item_name: item.name, detail: `${typedQty} ${unitLabel(item.unit, typedQty)}` })
+      }
+    }
+    return rows
+  }
+
   // The shorts-detection + proceed flow -- unchanged from before patch 56,
   // just pulled out so the mistake-guard confirm can sit in front of it.
   const continueAfterMistakeCheck = () => {
@@ -227,6 +310,18 @@ export default function ReceiveOrderPage() {
     const entered = Object.entries(received).filter(([, v]) => v !== '' && parseFloat(v) > 0)
     if (entered.length === 0) { setError('Enter at least one quantity before continuing.'); return }
 
+    // Patch 57: will_call always gets the one summary popup instead of
+    // patch 56's per-item mistake guard -- a will_call line has nothing to
+    // compare against (see the WillCallSummaryModal comment above), so
+    // every entered line is shown, every time, and detectMistakes() (which
+    // is built around "bigger than what was ordered" / "a full pack_size
+    // with nothing ordered") never runs for this delivery type.
+    if (deliveryType === 'will_call') {
+      setWillCallRows(buildWillCallRows())
+      setShowWillCallSummary(true)
+      return
+    }
+
     const flagged = detectMistakes()
     if (flagged.length > 0) {
       setMistakeItems(flagged)
@@ -244,6 +339,15 @@ export default function ReceiveOrderPage() {
   const cancelMistakeModal = () => {
     setShowMistakeModal(false)
     setMistakeItems([])
+  }
+
+  const confirmWillCallAndContinue = () => {
+    setShowWillCallSummary(false)
+    continueAfterMistakeCheck()
+  }
+
+  const cancelWillCallSummary = () => {
+    setShowWillCallSummary(false)
   }
 
   const toggleAck = (idx: number) => {
@@ -696,6 +800,9 @@ export default function ReceiveOrderPage() {
 
       {showMistakeModal && (
         <MistakeGuardModal items={mistakeItems} onConfirm={confirmMistakeAndContinue} onCancel={cancelMistakeModal} />
+      )}
+      {showWillCallSummary && (
+        <WillCallSummaryModal rows={willCallRows} onConfirm={confirmWillCallAndContinue} onCancel={cancelWillCallSummary} />
       )}
 
       <ScrollToSaveButton targetRef={submitRef} show={step === 'enter'} retryKey={step} />

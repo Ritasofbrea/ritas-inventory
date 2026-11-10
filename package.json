@@ -24,6 +24,7 @@
     "test:e2e:rename-item": "tsx --env-file=.env.local tests/e2e/rename-item-checks.mjs",
     "test:e2e:patch-55": "tsx --env-file=.env.local tests/e2e/patch-55-checks.mjs",
     "test:e2e:patch-56": "tsx --env-file=.env.local tests/e2e/patch-56-checks.mjs",
+    "test:e2e:patch-57": "tsx --env-file=.env.local tests/e2e/patch-57-checks.mjs",
     "test:e2e:step-checks": "node --env-file=.env.local tests/e2e/step-checks.mjs",
     "test:e2e:logout-race": "node --env-file=.env.local tests/e2e/logout-race.mjs",
     "test:e2e:row-cap-checks": "node --env-file=.env.local tests/e2e/row-cap-checks.mjs",

@@ -25,6 +25,7 @@ const suites = [
   'rename-item-checks.mjs',
   'patch-55-checks.mjs',
   'patch-56-checks.mjs',
+  'patch-57-checks.mjs',
 ]
 
 // vendor-schedule-checks.mjs, order-list-other-merge-checks.mjs, and
@@ -38,12 +39,14 @@ const suites = [
 // rename-item-checks.mjs's own imports (storage-server.ts/supabase.ts/
 // note-photo-constants.ts/photo.ts/note-photo-cleanup-server.ts/
 // order-list-server.ts/session-token.ts) don't need it, but they run
-// under tsx too for consistency. Every other suite here only imports
-// plain .mjs/leaf .ts files with no such imports, so they still run under
-// plain node. par-settings-badge-checks.mjs, patch-52-checks.mjs, and
-// rename-item-checks.mjs are the suites (after logout-race.mjs) that
-// drive a real browser via Playwright, since the point is what actually
-// renders, not just the API response.
+// under tsx too for consistency -- patch-57-checks.mjs imports
+// session-token.ts the same way and is added here for the same reason.
+// Every other suite here only imports plain .mjs/leaf .ts files with no
+// such imports, so they still run under plain node.
+// par-settings-badge-checks.mjs, patch-52-checks.mjs, rename-item-
+// checks.mjs, patch-55/56/57-checks.mjs are the suites (after logout-
+// race.mjs) that drive a real browser via Playwright, since the point is
+// what actually renders, not just the API response.
 const TSX_SUITES = new Set([
   'vendor-schedule-checks.mjs',
   'order-list-other-merge-checks.mjs',
@@ -56,6 +59,7 @@ const TSX_SUITES = new Set([
   'rename-item-checks.mjs',
   'patch-55-checks.mjs',
   'patch-56-checks.mjs',
+  'patch-57-checks.mjs',
 ])
 
 function runOne(file) {
