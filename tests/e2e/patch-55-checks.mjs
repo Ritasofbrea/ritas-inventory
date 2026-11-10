@@ -112,7 +112,12 @@ async function run() {
     await page.waitForTimeout(200)
     const rowBodyAfter = await page.locator('body').innerText()
     check('Receive Order: "boxes" caption under the input', rowBodyAfter.includes('boxes'))
-    check('Receive Order: live conversion preview "= 8 gal"', rowBodyAfter.includes('= 8 gal'))
+    // Patch 56: this preview line was generalized off a hardcoded "gal"
+    // abbreviation to the item's real unit word via unitLabel() (so Sugar
+    // Free/Syrups/other pack_size items read correctly too) -- now reads
+    // "= 8 gallons", matching every other full-word unit display in this
+    // app (e.g. Order List's own "6 gallons (1 box + 2 gallons)" below).
+    check('Receive Order: live conversion preview "= 8 gallons"', rowBodyAfter.includes('= 8 gallons'))
 
     await page.getByRole('button', { name: /Review & Save/i }).click()
     await page.waitForSelector('text=Receipt Saved', { timeout: 10000 }).catch(() => {})

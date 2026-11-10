@@ -8,8 +8,9 @@ import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
-import { usesBoxOrdering } from '@/lib/order-units'
+import { usesBoxOrdering, getOrderUnitLabel, packSizePreview, getPackWord } from '@/lib/order-units'
 import { unitLabel } from '@/lib/units'
+import { useBlockReload } from '@/lib/reload-guard'
 
 interface OrderRecord {
   id: string
@@ -22,10 +23,61 @@ interface OrderRecord {
 interface ReceivedQty { [itemId: string]: string }
 interface ShortItem { item_id: string; item_name: string; unit: string; ordered: number; received: number; short: number; acknowledged: boolean }
 
+// Patch 56: a pack_size item whose typed box/case count looks like a
+// mistake (typed more than was ordered, or -- when nothing was ordered for
+// it -- typed a whole pack_size's worth or more). Flagged at Review & Save
+// time, not on every keystroke, so a confirm popup never appears mid-typing.
+interface MistakeItem { item_id: string; item_name: string; typedQty: number; stockQty: number; orderWord: string; stockUnit: string }
+
 type Step = 'select' | 'enter' | 'shorts' | 'done'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// Patch 56: gray/neutral confirm popup for a suspiciously large pack_size
+// quantity -- deliberately not amber/red/green/teal/indigo, since those
+// already mean SHORT/FULL/storage/flavor-badge elsewhere in this app. A
+// separate component (not inline JSX) so useBlockReload can be called
+// unconditionally while it's mounted, same pattern as ConfirmModal.
+function MistakeGuardModal({ items, onConfirm, onCancel }: { items: MistakeItem[]; onConfirm: () => void; onCancel: () => void }) {
+  useBlockReload(true)
+  const singleTotal = items.length === 1 ? items[0].stockQty : null
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onCancel}>
+      <div
+        role="alertdialog"
+        aria-label="Double-check this quantity"
+        className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Double-check this quantity</h2>
+          <div className="text-sm text-gray-600 mt-2 flex flex-col gap-1.5">
+            {items.map((m) => (
+              <p key={m.item_id}>
+                <span className="font-semibold text-gray-800">{m.item_name}:</span> you typed {m.typedQty} {unitLabel(m.orderWord, m.typedQty)} = {m.stockQty} {unitLabel(m.stockUnit, m.stockQty)}. Is that right?
+              </p>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 min-h-[48px] bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-xl"
+          >
+            Fix it
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 min-h-[48px] bg-gray-700 hover:bg-gray-800 text-white font-semibold rounded-xl"
+          >
+            {singleTotal != null ? `Yes, add ${singleTotal}` : 'Yes, add all'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function ReceiveOrderPage() {
@@ -45,6 +97,8 @@ export default function ReceiveOrderPage() {
   const [notes, setNotes] = useState('')
   const [receivedBy, setReceivedBy] = useState('')
   const [shorts, setShorts] = useState<ShortItem[]>([])
+  const [mistakeItems, setMistakeItems] = useState<MistakeItem[]>([])
+  const [showMistakeModal, setShowMistakeModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [role, setRole] = useState<string | null>(null)
@@ -105,15 +159,43 @@ export default function ReceiveOrderPage() {
     }
   }
 
-  const handleContinue = () => {
-    setError('')
-    if (role !== 'owner' && !receivedBy.trim()) { setError('Please enter your name before continuing.'); return }
-    const entered = Object.entries(received).filter(([, v]) => v !== '' && parseFloat(v) > 0)
-    if (entered.length === 0) { setError('Enter at least one quantity before continuing.'); return }
+  // Patch 56: pack_size items only (plain items are never flagged, same as
+  // today). Flags a typed box/case count that's either bigger than what
+  // was actually ordered for that item, or -- when the item isn't on the
+  // order at all (including a standalone/no-order receive) -- at or above
+  // one full pack_size, since typing "6" for a 6-per-case item usually
+  // means "I received 6 bottles," not "I received 6 cases."
+  const detectMistakes = (): MistakeItem[] => {
+    const flagged: MistakeItem[] = []
+    for (const [itemId, val] of Object.entries(received)) {
+      if (val === '' || !(parseFloat(val) > 0)) continue
+      const item = items.find((i) => i.id === itemId)
+      if (!item || !usesBoxOrdering(item)) continue
+      const typedQty = parseFloat(val)
+      const packSize = item.pack_size as number
+      const onOrder = orderedItemIds.has(itemId)
+      const orderedQtyForItem = onOrder ? Number(orderedQtyMap[itemId]) : null
+      const isOverOrder = onOrder && orderedQtyForItem != null && typedQty > orderedQtyForItem
+      const isOverPackWithNoOrder = !onOrder && typedQty >= packSize
+      if (isOverOrder || isOverPackWithNoOrder) {
+        flagged.push({
+          item_id: itemId,
+          item_name: item.name,
+          typedQty,
+          stockQty: Math.round(typedQty * packSize * 100) / 100,
+          orderWord: getOrderUnitLabel(item),
+          stockUnit: item.unit,
+        })
+      }
+    }
+    return flagged
+  }
 
+  // The shorts-detection + proceed flow -- unchanged from before patch 56,
+  // just pulled out so the mistake-guard confirm can sit in front of it.
+  const continueAfterMistakeCheck = () => {
     if (!selectedOrder) { proceedToSave([]); return }
 
-    // Detect shorts against the selected order
     const detectedShorts: ShortItem[] = []
     for (const orderedItem of selectedOrder.order_history_items) {
       const orderedQty = Number(orderedItem.quantity)
@@ -137,6 +219,31 @@ export default function ReceiveOrderPage() {
     } else {
       proceedToSave([])
     }
+  }
+
+  const handleContinue = () => {
+    setError('')
+    if (role !== 'owner' && !receivedBy.trim()) { setError('Please enter your name before continuing.'); return }
+    const entered = Object.entries(received).filter(([, v]) => v !== '' && parseFloat(v) > 0)
+    if (entered.length === 0) { setError('Enter at least one quantity before continuing.'); return }
+
+    const flagged = detectMistakes()
+    if (flagged.length > 0) {
+      setMistakeItems(flagged)
+      setShowMistakeModal(true)
+      return
+    }
+    continueAfterMistakeCheck()
+  }
+
+  const confirmMistakeAndContinue = () => {
+    setShowMistakeModal(false)
+    continueAfterMistakeCheck()
+  }
+
+  const cancelMistakeModal = () => {
+    setShowMistakeModal(false)
+    setMistakeItems([])
   }
 
   const toggleAck = (idx: number) => {
@@ -500,10 +607,18 @@ export default function ReceiveOrderPage() {
                             {item.has_storage && <span className="text-teal-600"> · in storage: {item.storage_count}</span>}
                             {isOnOrder && (
                               <span className="text-[#1a7a3c] font-semibold">
-                                {' '}· ordered: {orderedQty}{isBoxItem ? ` ${unitLabel('boxes', Number(orderedQty))}` : ''}
+                                {' '}· ordered: {orderedQty}{isBoxItem ? ` ${unitLabel(getOrderUnitLabel(item), Number(orderedQty))}` : ''}
                               </span>
                             )}
                           </p>
+                          {/* Patch 56: the conversion factor itself ("1 box
+                              = 6 bottles"), shown for every pack_size item
+                              regardless of whether anything's been typed
+                              yet -- same shared helper Order List/Manage
+                              Items use. */}
+                          {isBoxItem && (
+                            <p className="text-xs text-gray-400">{packSizePreview(item.unit, item.pack_size, getPackWord(item))}</p>
+                          )}
                           {/* Patch 38: owner-only destination choice for a
                               has_storage item's received quantity. Default
                               stays Store -- shift_lead never sees this, and
@@ -542,16 +657,17 @@ export default function ReceiveOrderPage() {
                             onFocus={(e) => e.target.select()}
                             placeholder="0"
                           />
-                          {/* Patch 55: this field is boxes for an Ice Mix
-                              box item -- label it plainly and show the
-                              gallon conversion before saving, so there's
-                              never a question of which unit was typed. */}
+                          {/* Patch 55/56: this field is boxes/cases for any
+                              pack_size item -- label it plainly and show
+                              the real-stock-unit conversion before saving,
+                              so there's never a question of which unit was
+                              typed. */}
                           {isBoxItem && (
-                            <span className="text-xs text-gray-400 font-medium">{unitLabel('boxes', receivedVal)}</span>
+                            <span className="text-xs text-gray-400 font-medium">{unitLabel(getOrderUnitLabel(item), receivedVal)}</span>
                           )}
                           {isBoxItem && receivedVal > 0 && (
                             <span className="text-xs text-gray-500 font-semibold">
-                              = {receivedVal * (item.pack_size as number)} gal
+                              = {Math.round(receivedVal * (item.pack_size as number) * 100) / 100} {unitLabel(item.unit, Math.round(receivedVal * (item.pack_size as number) * 100) / 100)}
                             </span>
                           )}
                           {isShort && <span className="text-xs text-red-600 font-bold">SHORT</span>}
@@ -577,6 +693,10 @@ export default function ReceiveOrderPage() {
           </button>
         </div>
       </main>
+
+      {showMistakeModal && (
+        <MistakeGuardModal items={mistakeItems} onConfirm={confirmMistakeAndContinue} onCancel={cancelMistakeModal} />
+      )}
 
       <ScrollToSaveButton targetRef={submitRef} show={step === 'enter'} retryKey={step} />
       {/* Patch 34: back-to-top stacks above the scroll-to-save button so
