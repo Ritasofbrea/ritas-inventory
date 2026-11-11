@@ -138,4 +138,4 @@ SELECT id, public, file_size_limit, allowed_mime_types FROM storage.buckets WHER
 SELECT count(*) AS bucket_policy_count FROM pg_policies
  WHERE schemaname = 'storage' AND (qual ILIKE '%invoice-photos%' OR with_check ILIKE '%invoice-photos%');
 
--- COMMIT;   -- uncomment after the checks look right (or ROLLBACK;)
+ COMMIT;   -- uncomment after the checks look right (or ROLLBACK;)
