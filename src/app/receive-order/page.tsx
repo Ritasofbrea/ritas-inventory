@@ -11,12 +11,15 @@ import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/f
 import { usesBoxOrdering, getOrderUnitLabel, packSizePreview, getPackWord } from '@/lib/order-units'
 import { unitLabel } from '@/lib/units'
 import { useBlockReload } from '@/lib/reload-guard'
+import { vendorDisplayLabel } from '@/lib/vendor-schedule'
 
 interface OrderRecord {
   id: string
   type: string
   created_at: string
   related_order_id: string | null
+  // Split orders by vendor: set on new 'ordered' rows only; null on older ones.
+  vendor?: string | null
   order_history_items: { item_id: string; item_name: string; quantity: number; unit: string }[]
 }
 
@@ -575,7 +578,10 @@ export default function ReceiveOrderPage() {
                 <label key={order.id} className={`flex items-center gap-3 px-5 py-4 cursor-pointer border-b border-gray-100 last:border-0 transition-colors ${selectedOrder?.id === order.id ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
                   <input type="radio" name="order" checked={selectedOrder?.id === order.id} onChange={() => handleSelectOrder(order)} className="accent-[#1a7a3c]" />
                   <div>
-                    <p className="font-semibold text-gray-900">{formatDate(order.created_at)}</p>
+                    <p className="font-semibold text-gray-900">
+                      {order.vendor ? vendorDisplayLabel(order.vendor) : 'Unknown vendor'}
+                      <span className="font-normal text-gray-500"> · {formatDate(order.created_at)}</span>
+                    </p>
                     <p className="text-xs text-gray-400">{order.order_history_items.length} items on this order</p>
                   </div>
                 </label>

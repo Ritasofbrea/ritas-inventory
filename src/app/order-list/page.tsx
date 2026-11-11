@@ -8,7 +8,7 @@ import { getRole } from '@/lib/auth'
 import { Item, getStockStatus } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
 import { getOrderUnitLabel, getDefaultOrderQty, packSizePreview, usesBoxOrdering, getPackWord, formatUnitsWithBoxes } from '@/lib/order-units'
-import { isOpenStatus, urgencyRank, orderDayLabel, formatTimeOfDay, vendorKeyForItem, VendorDueStatus } from '@/lib/vendor-schedule'
+import { isOpenStatus, urgencyRank, orderDayLabel, formatTimeOfDay, vendorKeyForItem, vendorDisplayLabel, VendorDueStatus } from '@/lib/vendor-schedule'
 import { PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS } from '@/lib/flavors'
 
 type DistributorItem = Item & { distributor?: string; item_number?: string; distributor_item_name?: string }
@@ -30,6 +30,9 @@ interface OrderRecord {
   resolved_at: string | null
   resolved_by: string | null
   note_review_needed?: boolean
+  // Split orders by vendor: set on new 'ordered' rows only; null on every
+  // older order and on all receipt rows.
+  vendor?: string | null
   order_history_items: OrderHistoryItem[]
 }
 
@@ -246,35 +249,72 @@ export default function OrderListPage() {
     )
   }
 
+  // One order line per item, in the shape POST /api/order-history expects.
+  // Shared by the general and per-vendor Order Placed buttons.
+  const toOrderLines = (orderItems: DistributorItem[]) =>
+    orderItems.map((item) => ({
+      item_id: item.id,
+      item_name: item.name,
+      quantity: parseFloat(orderQuantities[item.id] ?? '') || getDefaultOrderQty(item),
+      // Patch 44 bug fix (new orders only — existing history rows are
+      // never rewritten): this used to always save `item.unit` (the
+      // STOCK unit) even when the quantity above is in CASES, so History
+      // could show "2 gallons" for an order that was actually 2 cases (8
+      // gallons). Now saves the real order-unit word the quantity is in.
+      unit: getOrderUnitLabel(item),
+    }))
+
+  // Split orders by vendor: the general button groups the checked items by
+  // vendorKeyForItem (no distributor -> 'other') and saves ONE order per
+  // vendor, so every order belongs to exactly one vendor and can later be
+  // matched against that vendor's invoice. Saved one vendor at a time; if
+  // one vendor's save fails, the ones that did save stay saved (they drop
+  // off the checked list on reload, since they're now on order), the
+  // failed vendor's items stay checked with their quantities, and an alert
+  // says which vendor didn't save, so pressing again never re-orders the
+  // vendors that already went through.
   const handleMarkOrdered = async () => {
     if (selectedIds.size === 0) return
     setMarking(true)
     try {
       const checkedItems = toOrder.filter((item) => selectedIds.has(item.id))
-      const orderItems = checkedItems.map((item) => ({
-        item_id: item.id,
-        item_name: item.name,
-        quantity: parseFloat(orderQuantities[item.id] ?? '') || getDefaultOrderQty(item),
-        // Patch 44 bug fix (new orders only — existing history rows are
-        // never rewritten): this used to always save `item.unit` (the
-        // STOCK unit) even when the quantity above is in CASES, so History
-        // could show "2 gallons" for an order that was actually 2 cases (8
-        // gallons). Now saves the real order-unit word the quantity is in.
-        unit: getOrderUnitLabel(item),
-      }))
-      const res = await fetch('/api/order-history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'ordered', items: orderItems }),
-      })
-      if (res.ok) {
-        await silenceVendorsForItems(checkedItems)
-        setMarked(true)
-        clearQuantitiesFor(checkedItems.map((i) => i.id))
+      const byVendor = new Map<string, DistributorItem[]>()
+      for (const item of checkedItems) {
+        const vendor = vendorKeyForItem(item.distributor)
+        const group = byVendor.get(vendor)
+        if (group) group.push(item)
+        else byVendor.set(vendor, [item])
+      }
+
+      const savedItems: DistributorItem[] = []
+      const failedVendors: string[] = []
+      for (const [vendor, vendorItems] of byVendor) {
+        const res = await fetch('/api/order-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'ordered', vendor, items: toOrderLines(vendorItems) }),
+        })
+        if (res.ok) savedItems.push(...vendorItems)
+        else failedVendors.push(vendor)
+      }
+
+      if (savedItems.length > 0) {
+        await silenceVendorsForItems(savedItems)
+        clearQuantitiesFor(savedItems.map((i) => i.id))
         setOrderHistory([])
         await loadAll()
         broadcastVendorStatusChanged()
+      }
+      if (failedVendors.length === 0) {
+        setMarked(true)
         setTimeout(() => setMarked(false), 3000)
+      } else {
+        const failedNames = failedVendors.map(vendorDisplayLabel).join(', ')
+        window.alert(
+          savedItems.length > 0
+            ? `The ${failedNames} order did not save. The other vendors' orders did save. Press the button again to retry ${failedNames}.`
+            : `The order did not save. Please try again.`
+        )
       }
     } finally {
       setMarking(false)
@@ -291,16 +331,10 @@ export default function OrderListPage() {
     setVendorActionWorking(vendor)
     try {
       if (vendorItems.length > 0) {
-        const orderItems = vendorItems.map((item) => ({
-          item_id: item.id,
-          item_name: item.name,
-          quantity: parseFloat(orderQuantities[item.id] ?? '') || getDefaultOrderQty(item),
-          unit: getOrderUnitLabel(item),
-        }))
         const res = await fetch('/api/order-history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'ordered', items: orderItems }),
+          body: JSON.stringify({ type: 'ordered', vendor, items: toOrderLines(vendorItems) }),
         })
         if (!res.ok) return
         clearQuantitiesFor(vendorItems.map((i) => i.id))
@@ -788,6 +822,9 @@ export default function OrderListPage() {
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-gray-900">{formatDate(order.created_at)}</p>
                               <p className="text-xs text-gray-400">
+                                {order.type === 'ordered' && (
+                                  <span className="font-semibold text-gray-600">{order.vendor ? vendorDisplayLabel(order.vendor) : 'Unknown vendor'} · </span>
+                                )}
                                 {order.order_history_items.length} items
                                 {order.received_by && <span className="text-[#1a7a3c] font-medium"> · {order.received_by}</span>}
                                 {order.type === 'short' && relatedOrder && (

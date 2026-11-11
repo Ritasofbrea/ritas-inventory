@@ -31,10 +31,20 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole(db, request, ['owner', 'shift_lead'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
-  const { type, notes, items, related_order_id, resolved, received_by } = body
+  const { type, notes, items, related_order_id, resolved, received_by, vendor } = body
 
   if (!type || !Array.isArray(items) || items.length === 0)
     return NextResponse.json({ error: 'Missing type or items' }, { status: 400 })
+
+  // Split orders by vendor (supabase/patch-57-order-vendor.sql): an
+  // 'ordered' row from the Order List carries the one vendor key its items
+  // belong to (vendorKeyForItem's output). Optional and only ever sent by
+  // the Order List's Order Placed buttons; receipts never send it. The
+  // column is only included in the insert when a vendor was actually sent,
+  // so a receipt save never depends on the column existing.
+  if (vendor !== undefined && vendor !== null && (typeof vendor !== 'string' || !vendor.trim()))
+    return NextResponse.json({ error: 'vendor must be a non-empty string' }, { status: 400 })
+  const trimmedVendor = typeof vendor === 'string' ? vendor.trim() : null
 
   // Patch 44: a receipt (received/will_call) saved with a non-empty note
   // needs an owner's attention — flips note_review_needed on, independent
@@ -53,6 +63,7 @@ export async function POST(request: NextRequest) {
       resolved: resolved !== undefined ? resolved : true,
       received_by: received_by || null,
       note_review_needed: needsNoteReview,
+      ...(trimmedVendor ? { vendor: trimmedVendor } : {}),
     })
     .select()
     .single()
