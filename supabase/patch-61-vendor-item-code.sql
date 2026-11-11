@@ -137,4 +137,13 @@ UPDATE items SET vendor_item_code = '75006270' WHERE id = '5ff4c7e9-4af2-4ca3-a1
 SELECT count(*) FROM items WHERE vendor_item_code IS NOT NULL;
 SELECT name, category, item_number, vendor_item_code FROM items WHERE distributor = 'bunzl' ORDER BY category, name;
 
--- COMMIT;   -- uncomment after the counts look right (or ROLLBACK;)
+ COMMIT;   -- uncomment after the counts look right (or ROLLBACK;)
+
+-- ---------------------------------------------------------------------------
+-- RUN AFTER (run manually by the owner on 2026-11-11, after the transaction above committed)
+-- Follow-up UPDATEs, each pinned to id + item_number + name like the ones above.
+-- Note: these items' item_number (and Sour Blue Pucker's distributor -> 'bunzl')
+-- were set outside this file, before these ran.
+-- ---------------------------------------------------------------------------
+UPDATE items SET vendor_item_code = 'L6390025' WHERE id = '11f45427-7ea9-40e9-b6ad-e3d7c3a9ef7e' AND item_number = '1742' AND name = 'Salted Caramel';  -- Syrups | Bunzl invoice 70282859
+UPDATE items SET vendor_item_code = 'J3950016' WHERE id = 'e3f31f36-d4f8-497c-b79c-5fa2fad8b7b1' AND item_number = '2148' AND name = 'Sour Blue Pucker';  -- Ice Mix | "Sour Blue Pucker Dark Blue 4x1gal"
