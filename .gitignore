@@ -46,3 +46,8 @@ backup-test-tmp/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# patch 63: invoice photos must never be committed (public repo). Keep any
+# local test invoices in a folder with this name, anywhere in the tree.
+test-invoices/
+invoice-photos/

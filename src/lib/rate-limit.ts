@@ -40,3 +40,24 @@ export async function cleanupOldLoginAttempts(db: SupabaseClient): Promise<numbe
   if (error) throw new Error(error.message)
   return data?.length ?? 0
 }
+
+// Patch 63: invoice scanning limit. Not tied to login_attempts -- counts
+// invoices created in the last 15 minutes (any status). The store scans a
+// handful of invoices a week, so 20 per window only ever stops a runaway
+// client or a leaked session, never real use. Combined with the per-draft
+// page cap (MAX_INVOICE_PAGES) and the "uploads only to a fresh draft"
+// rule in /api/invoices/photo-upload, this bounds how many signed upload
+// URLs can ever be handed out.
+const INVOICE_WINDOW_MINUTES = 15
+const MAX_INVOICES_PER_WINDOW = 20
+
+export async function isInvoiceScanRateLimited(db: SupabaseClient): Promise<boolean> {
+  const since = new Date(Date.now() - INVOICE_WINDOW_MINUTES * 60 * 1000).toISOString()
+  const { count, error } = await db
+    .from('invoices')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', since)
+  // Fail closed: if the count itself can't be read, don't hand out uploads.
+  if (error) return true
+  return (count ?? 0) >= MAX_INVOICES_PER_WINDOW
+}

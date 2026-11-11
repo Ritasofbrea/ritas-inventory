@@ -551,6 +551,14 @@ export default function ReceiveOrderPage() {
             <p className="text-gray-500 mt-1">What are you receiving?</p>
           </div>
 
+          {/* Patch 63: link only -- Scan Invoice saves photos as a draft; nothing on this screen changes. */}
+          <button
+            onClick={() => router.push('/scan-invoice')}
+            className="w-full mb-5 bg-white border-2 border-[#1a7a3c] text-[#1a7a3c] font-bold py-4 rounded-2xl text-base hover:bg-green-50"
+          >
+            📷 Scan Invoice
+          </button>
+
           {/* Delivery type */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-5 flex gap-3">
             <button

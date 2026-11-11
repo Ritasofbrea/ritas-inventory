@@ -14,6 +14,7 @@ const MORE_DROPDOWN_MARGIN = 16
 const MORE_LINKS = [
   { href: '/count', label: 'Count Entry' },
   { href: '/receive-order', label: 'Receive Order' },
+  { href: '/scan-invoice', label: 'Scan Invoice' },
   { href: '/adjust', label: 'Adjustment' },
   { href: '/par-settings', label: 'Par Levels' },
   { href: '/manage-items', label: 'Manage Items' },

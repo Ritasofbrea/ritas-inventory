@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { TASK_PHOTO_BUCKET } from './task-constants'
 import { NOTE_PHOTO_BUCKET } from './note-photo-constants'
+import { INVOICE_PHOTO_BUCKET, INVOICE_PHOTO_MAX_EDGE } from './invoice-constants'
 
 const MAX_EDGE = 1600
 
@@ -19,7 +20,9 @@ export function friendlyUploadError(message: string): string {
 }
 
 // Downscales to a JPEG so iPhone photos (often 3–6MB) upload quickly on cell data.
-async function resizeToJpeg(file: File): Promise<Blob> {
+// Patch 63: maxEdge is optional -- notes and tasks still get 1600px
+// (MAX_EDGE, unchanged); invoice pages pass INVOICE_PHOTO_MAX_EDGE.
+export async function resizeToJpeg(file: File, maxEdge: number = MAX_EDGE): Promise<Blob> {
   const url = URL.createObjectURL(file)
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -28,7 +31,7 @@ async function resizeToJpeg(file: File): Promise<Blob> {
       el.onerror = () => reject(new Error('Could not read that photo'))
       el.src = url
     })
-    const scale = Math.min(1, MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight))
+    const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight))
     const canvas = document.createElement('canvas')
     canvas.width = Math.round(img.naturalWidth * scale)
     canvas.height = Math.round(img.naturalHeight * scale)
@@ -79,4 +82,27 @@ export async function uploadNotePhoto(file: File): Promise<string> {
   if (error) throw new Error(friendlyUploadError(error.message))
 
   return body.publicUrl as string
+}
+
+// Patch 63: uploads one invoice page into the PRIVATE invoice-photos
+// bucket at the server-made path "<invoice id>/<page>.jpg". Returns the
+// path only -- there is no public URL; viewing goes through
+// GET /api/invoices?id=... signed links.
+export async function uploadInvoicePage(invoiceId: string, page: number, file: File): Promise<string> {
+  const blob = await resizeToJpeg(file, INVOICE_PHOTO_MAX_EDGE)
+
+  const res = await fetch('/api/invoices/photo-upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invoice_id: invoiceId, page }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || 'Could not start upload')
+
+  const { error } = await supabase.storage
+    .from(INVOICE_PHOTO_BUCKET)
+    .uploadToSignedUrl(body.path, body.token, blob, { contentType: 'image/jpeg', upsert: true })
+  if (error) throw new Error(friendlyUploadError(error.message))
+
+  return body.path as string
 }
