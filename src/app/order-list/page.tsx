@@ -626,7 +626,7 @@ export default function OrderListPage() {
                   disabled={working}
                   className="text-xs font-semibold text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg disabled:opacity-50"
                 >
-                  Undo
+                  Undo checkmark
                 </button>
               )}
             </div>
@@ -641,6 +641,15 @@ export default function OrderListPage() {
           <p className="text-xs text-green-600 mb-2">
             ✓ {confirmation.status === 'ordered' ? 'Order placed' : 'Nothing to order'} this week
             {confirmation.resolved_by ? ` · ${confirmation.resolved_by}` : ''}
+          </p>
+        )}
+        {/* "Undo checkmark" only clears this week's mark (vendor_week_status);
+            it never touches the saved order. Cancel Order in the On Order
+            section deletes the order itself -- say so, since one Order
+            Placed press creates both. */}
+        {vendorInfo?.resolvedThisWeek?.status === 'ordered' && (
+          <p className="text-xs text-gray-400 mb-2">
+            Undo checkmark only clears this week&apos;s mark. To cancel the order itself, use Cancel Order in On Order below.
           </p>
         )}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -763,7 +772,10 @@ export default function OrderListPage() {
                       {pendingOrders.map((order) => (
                         <div key={order.id} className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
                           <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-                            <p className="text-xs text-gray-400">Ordered {formatShort(order.created_at)} · {order.order_history_items.length} items</p>
+                            <p className="text-xs text-gray-400">
+                              <span className="font-semibold text-gray-600">{order.vendor ? vendorDisplayLabel(order.vendor) : 'Unknown vendor'}</span>
+                              {' · '}Ordered {formatShort(order.created_at)} · {order.order_history_items.length} items
+                            </p>
                             <button
                               onClick={() => cancelOrder(order.id)}
                               disabled={cancellingOrderId === order.id}

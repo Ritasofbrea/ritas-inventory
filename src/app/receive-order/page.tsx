@@ -212,8 +212,13 @@ export default function ReceiveOrderPage() {
         prefilled[i.item_id] = String(i.quantity)
       })
       setReceived(prefilled)
+      // Open exactly the categories that hold this order's items; every
+      // other category starts collapsed.
+      const orderItemIds = new Set(order.order_history_items.map((i) => i.item_id))
+      setExpandedCategories(new Set(items.filter((i) => orderItemIds.has(i.id)).map((i) => i.category)))
     } else {
       setReceived({})
+      setExpandedCategories(new Set())
     }
   }
 
@@ -662,6 +667,11 @@ export default function ReceiveOrderPage() {
             const catItems = itemsByCategory[category] || []
             if (catItems.length === 0) return null
             const expanded = expandedCategories.has(category)
+            // Items from the SELECTED order in this category (none when
+            // "No specific order" is picked). Counted over the whole
+            // category, not just search matches, so the badge never changes
+            // while typing in the search box.
+            const onOrderCount = selectedOrder ? items.filter((i) => i.category === category && orderedItemIds.has(i.id)).length : 0
             return (
               <section key={category}>
                 <button
@@ -670,7 +680,12 @@ export default function ReceiveOrderPage() {
                   aria-expanded={expanded}
                   className="w-full min-h-[48px] flex items-center justify-between gap-3 px-4 py-3 mb-3 bg-white rounded-xl border border-gray-100 shadow-sm active:bg-gray-50 transition-colors"
                 >
-                  <span className="text-xs font-bold uppercase tracking-widest text-blue-500">{category}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-bold uppercase tracking-widest text-blue-500">{category}</span>
+                    {onOrderCount > 0 && (
+                      <span className="flex-shrink-0 text-xs bg-[#1a7a3c] text-white px-1.5 py-0.5 rounded font-medium">{onOrderCount} on order</span>
+                    )}
+                  </span>
                   <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
                   </svg>
