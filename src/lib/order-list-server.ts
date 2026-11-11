@@ -21,8 +21,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Item, getStockStatus } from './types'
 import { vendorKeyForItem } from './vendor-schedule'
+import { getPendingOrders } from './order-status'
 
-type OrderRow = { id: string; type: string; related_order_id: string | null; order_history_items: { item_id: string | null }[] }
+type OrderRow = { id: string; type: string; related_order_id: string | null; canceled_at: string | null; order_history_items: { item_id: string | null }[] }
 
 // Exported for tests: order-history-paging-checks.mjs forces a tiny
 // pageSize against real (small) data to prove the paging loop assembles
@@ -35,7 +36,7 @@ export async function fetchAllOrderHistoryRows(db: SupabaseClient, pageSize = 50
   do {
     const { data, error } = await db
       .from('order_history')
-      .select('id, type, related_order_id, order_history_items(item_id)')
+      .select('id, type, related_order_id, canceled_at, order_history_items(item_id)')
       .order('created_at', { ascending: true })
       .order('id', { ascending: true })
       .range(from, from + pageSize - 1)
@@ -56,10 +57,8 @@ export async function getItemsNeedingOrderByVendor(db: SupabaseClient): Promise<
   const [itemsRes, all] = await Promise.all([db.from('items').select('*'), fetchAllOrderHistoryRows(db)])
   if (itemsRes.error) throw new Error(itemsRes.error.message)
 
-  const fulfilledOrderIds = new Set(
-    all.filter((r) => r.type === 'received' || r.type === 'will_call').map((r) => r.related_order_id).filter(Boolean) as string[]
-  )
-  const pending = all.filter((r) => r.type === 'ordered' && !fulfilledOrderIds.has(r.id))
+  // Patch 62: canceled orders are excluded (shared rule, ./order-status).
+  const pending = getPendingOrders(all)
   const onOrderItemIds = new Set<string>()
   for (const order of pending) {
     for (const line of order.order_history_items) {

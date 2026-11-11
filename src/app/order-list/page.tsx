@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
-import { getRole } from '@/lib/auth'
+import { getRole, getOwnerName } from '@/lib/auth'
+import { getPendingOrders, isCanceledOrder } from '@/lib/order-status'
 import { Item, getStockStatus } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
 import { getOrderUnitLabel, getDefaultOrderQty, packSizePreview, usesBoxOrdering, getPackWord, formatUnitsWithBoxes } from '@/lib/order-units'
@@ -33,6 +34,9 @@ interface OrderRecord {
   // Split orders by vendor: set on new 'ordered' rows only; null on every
   // older order and on all receipt rows.
   vendor?: string | null
+  // Patch 62: soft cancel. Set = canceled; the row stays in history.
+  canceled_at?: string | null
+  canceled_by?: string | null
   order_history_items: OrderHistoryItem[]
 }
 
@@ -80,6 +84,8 @@ export default function OrderListPage() {
   // On-order tracking
   const [onOrderItemIds, setOnOrderItemIds] = useState<Set<string>>(new Set())
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null)
+  // Patch 62: the order waiting on the "Cancel this order?" confirm popup.
+  const [confirmCancelOrder, setConfirmCancelOrder] = useState<OrderRecord | null>(null)
   const [pendingOrders, setPendingOrders] = useState<OrderRecord[]>([])
 
   // Order history tab
@@ -112,14 +118,8 @@ export default function OrderListPage() {
     if (!res.ok) return { onOrderIds: new Set<string>() }
     const all: OrderRecord[] = await res.json()
 
-    const fulfilledOrderIds = new Set(
-      all
-        .filter((r) => r.type === 'received' || r.type === 'will_call')
-        .map((r) => r.related_order_id)
-        .filter(Boolean) as string[]
-    )
-
-    const pending = all.filter((r) => r.type === 'ordered' && !fulfilledOrderIds.has(r.id))
+    // Patch 62: canceled orders are never on order (shared rule, @/lib/order-status).
+    const pending = getPendingOrders(all)
 
     const itemIds = new Set<string>()
     for (const order of pending) {
@@ -401,12 +401,27 @@ export default function OrderListPage() {
     }
   }
 
+  // Patch 62: soft cancel. Marks the order canceled (canceled_at/canceled_by)
+  // instead of deleting it, so it and its lines stay in Order History. Any
+  // linked receipt is left alone. The server records the session's name and
+  // falls back to the owner name this device is signed in as.
   const cancelOrder = async (orderId: string) => {
     setCancellingOrderId(orderId)
-    await fetch('/api/order-history', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: orderId }) })
-    setOrderHistory([])
-    await loadAll()
-    setCancellingOrderId(null)
+    try {
+      const res = await fetch('/api/order-history', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: orderId, cancel: true, canceled_by: getOwnerName() }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        alert(body.error || 'Could not cancel this order. Try again.')
+      }
+      setOrderHistory([])
+      await loadAll()
+    } finally {
+      setCancellingOrderId(null)
+    }
   }
 
   const markNoteReviewed = async (id: string) => {
@@ -817,7 +832,7 @@ export default function OrderListPage() {
                               {' · '}Ordered {formatShort(order.created_at)} · {order.order_history_items.length} items
                             </p>
                             <button
-                              onClick={() => cancelOrder(order.id)}
+                              onClick={() => setConfirmCancelOrder(order)}
                               disabled={cancellingOrderId === order.id}
                               className="text-xs text-red-500 hover:text-red-700 font-semibold disabled:opacity-50"
                             >
@@ -856,23 +871,30 @@ export default function OrderListPage() {
                   return orderHistory.map((order, idx, arr) => {
                     const isExpanded = expandedOrders.has(order.id)
                     const relatedOrder = order.related_order_id ? orderById[order.related_order_id] : null
+                    // Patch 62: canceled orders stay listed, grayed out, with a Canceled label.
+                    const canceled = isCanceledOrder(order)
                     return (
-                      <div key={order.id} className={idx < arr.length - 1 ? 'border-b border-gray-100' : ''}>
+                      <div key={order.id} className={`${idx < arr.length - 1 ? 'border-b border-gray-100' : ''} ${canceled ? 'bg-gray-50' : ''}`}>
                         <button
                           onClick={() => toggleOrder(order.id)}
                           className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${TYPE_COLORS[order.type] ?? 'bg-gray-100 text-gray-500'}`}>
+                            <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${canceled ? 'bg-gray-200 text-gray-400 line-through' : TYPE_COLORS[order.type] ?? 'bg-gray-100 text-gray-500'}`}>
                               {TYPE_LABELS[order.type] ?? order.type}
                             </span>
+                            {canceled && (
+                              <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-500 text-white uppercase tracking-wide">
+                                Canceled
+                              </span>
+                            )}
                             {order.note_review_needed && (
                               <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-300 text-gray-500 uppercase tracking-wide">
                                 Note
                               </span>
                             )}
                             <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900">{formatDate(order.created_at)}</p>
+                              <p className={`text-sm font-semibold ${canceled ? 'text-gray-400' : 'text-gray-900'}`}>{formatDate(order.created_at)}</p>
                               <p className="text-xs text-gray-400">
                                 {order.type === 'ordered' && (
                                   <span className="font-semibold text-gray-600">{order.vendor ? vendorDisplayLabel(order.vendor) : 'Unknown vendor'} · </span>
@@ -883,6 +905,12 @@ export default function OrderListPage() {
                                   <span className="text-gray-400"> · from {formatDate(relatedOrder.created_at)} delivery</span>
                                 )}
                               </p>
+                              {canceled && (
+                                <p className="text-xs text-gray-500 font-medium">
+                                  Canceled {formatDate(order.canceled_at as string)}
+                                  {order.canceled_by && <span> · {order.canceled_by}</span>}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -946,6 +974,33 @@ export default function OrderListPage() {
           </>
         )}
       </main>
+      {confirmCancelOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setConfirmCancelOrder(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Cancel this order?</h2>
+              <p className="text-sm text-gray-600 mt-2">It will stay in history marked canceled.</p>
+              <p className="text-xs text-gray-400 mt-2">
+                {confirmCancelOrder.vendor ? vendorDisplayLabel(confirmCancelOrder.vendor) : 'Unknown vendor'} · Ordered {formatShort(confirmCancelOrder.created_at)} · {confirmCancelOrder.order_history_items.length} items
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmCancelOrder(null)}
+                className="flex-1 min-h-[48px] bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-xl"
+              >
+                Keep order
+              </button>
+              <button
+                onClick={() => { const id = confirmCancelOrder.id; setConfirmCancelOrder(null); cancelOrder(id) }}
+                className="flex-1 min-h-[48px] bg-[#c8102e] hover:bg-red-800 text-white font-semibold rounded-xl"
+              >
+                Yes, cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <BackToTop />
     </div>
   )

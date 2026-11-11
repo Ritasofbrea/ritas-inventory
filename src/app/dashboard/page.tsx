@@ -9,6 +9,7 @@ import { Item, getStockStatus, getMainUnitTotal } from '@/lib/types'
 import { unitLabel } from '@/lib/units'
 import { urgencyRank, formatTimeOfDay, vendorDisplayLabel, VendorDueStatus } from '@/lib/vendor-schedule'
 import { PROGRAM_LABELS, PROGRAM_BADGE_ICON } from '@/lib/flavors'
+import { getPendingOrders } from '@/lib/order-status'
 
 type LastCount = { item_id: string; created_at: string; entered_by: string }
 type VelocityRow = { item_id: string; name: string; unit: string; consumed: number }
@@ -96,7 +97,7 @@ export default function DashboardPage() {
   const fetchOrderHistory = async () => {
     const res = await fetch('/api/order-history')
     if (!res.ok) return
-    type HistoryRecord = { id: string; type: string; resolved: boolean; related_order_id: string | null; received_by?: string | null; notes: string; created_at: string; note_review_needed?: boolean; order_history_items: { item_id?: string; item_name: string; quantity: number; unit: string }[] }
+    type HistoryRecord = { id: string; type: string; resolved: boolean; related_order_id: string | null; canceled_at?: string | null; received_by?: string | null; notes: string; created_at: string; note_review_needed?: boolean; order_history_items: { item_id?: string; item_name: string; quantity: number; unit: string }[] }
     const all = (await res.json()) as HistoryRecord[]
     setShorts(all.filter((r) => r.type === 'short' && r.resolved === false) as ShortRecord[])
     setNoteReviews(
@@ -105,8 +106,8 @@ export default function DashboardPage() {
     const byId: Record<string, string | null> = {}
     all.filter((r) => r.type === 'received' || r.type === 'will_call').forEach((r) => { byId[r.id] = r.received_by ?? null })
     setReceiptReceivedBy(byId)
-    const fulfilledIds = new Set(all.filter((r) => r.type === 'received' || r.type === 'will_call').map((r) => r.related_order_id).filter(Boolean) as string[])
-    const pending = all.filter((r) => r.type === 'ordered' && !fulfilledIds.has(r.id))
+    // Patch 62: canceled orders don't count as on order.
+    const pending = getPendingOrders(all)
     const itemIds = new Set(pending.flatMap((o) => o.order_history_items.map((i) => i.item_id).filter(Boolean)))
     setOnOrderCount(itemIds.size)
   }

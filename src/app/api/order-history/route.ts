@@ -168,6 +168,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ...order, order_history_items: rows })
 }
 
+// Patch 62: no longer used by Cancel Order (that's now a soft cancel via
+// PATCH { cancel: true } below). Kept for the e2e cleanup scripts.
 export async function DELETE(request: NextRequest) {
   const db = getServerSupabase()
   const auth = await requireRole(db, request, ['owner'])
@@ -197,8 +199,29 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireRole(db, request, ['owner'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
-  const { id, resolved, resolved_by, mark_note_reviewed } = body
+  const { id, resolved, resolved_by, mark_note_reviewed, cancel, canceled_by } = body
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+
+  // Patch 62: soft cancel (supabase/patch-62-soft-cancel.sql). Replaces the
+  // old Cancel Order hard DELETE: stamps canceled_at/canceled_by and keeps
+  // the row and its order_history_items as proof of what was ordered. Only
+  // an 'ordered' row that isn't already canceled can be canceled; any
+  // receipt linked via related_order_id is left untouched. Who canceled:
+  // the server session's name first, else the name the page sends.
+  if (cancel === true) {
+    const byName = auth.session.name || (typeof canceled_by === 'string' && canceled_by.trim() ? canceled_by.trim() : null)
+    const { data, error } = await db
+      .from('order_history')
+      .update({ canceled_at: new Date().toISOString(), canceled_by: byName })
+      .eq('id', id)
+      .eq('type', 'ordered')
+      .is('canceled_at', null)
+      .select()
+      .maybeSingle()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!data) return NextResponse.json({ error: 'This order was already canceled or is not an order.' }, { status: 409 })
+    return NextResponse.json(data)
+  }
 
   const updates: Record<string, unknown> = { resolved }
   if (resolved === true) {

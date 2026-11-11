@@ -12,6 +12,7 @@ import { usesBoxOrdering, getOrderUnitLabel, packSizePreview, getPackWord } from
 import { unitLabel } from '@/lib/units'
 import { useBlockReload } from '@/lib/reload-guard'
 import { vendorDisplayLabel } from '@/lib/vendor-schedule'
+import { getPendingOrders } from '@/lib/order-status'
 
 interface OrderRecord {
   id: string
@@ -20,6 +21,8 @@ interface OrderRecord {
   related_order_id: string | null
   // Split orders by vendor: set on new 'ordered' rows only; null on older ones.
   vendor?: string | null
+  // Patch 62: set when the order was soft-canceled; never offered here.
+  canceled_at?: string | null
   order_history_items: { item_id: string; item_name: string; quantity: number; unit: string }[]
 }
 
@@ -183,10 +186,8 @@ export default function ReceiveOrderPage() {
     const res = await fetch('/api/order-history')
     const data = await res.json()
     const all: OrderRecord[] = Array.isArray(data) ? data : []
-    const fulfilledIds = new Set(
-      all.filter((r) => r.type === 'received' || r.type === 'will_call').map((r) => r.related_order_id).filter(Boolean) as string[]
-    )
-    const pending = all.filter((r) => r.type === 'ordered' && !fulfilledIds.has(r.id))
+    // Patch 62: canceled orders never appear in "Receiving against which order?".
+    const pending = getPendingOrders(all)
     setRecentOrders(pending.slice(0, 6))
   }
 
