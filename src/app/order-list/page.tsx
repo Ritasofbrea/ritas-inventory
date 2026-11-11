@@ -189,6 +189,21 @@ export default function OrderListPage() {
     if (v === 'history') fetchHistory()
   }
 
+  // Select all / Unselect all: checks or unchecks exactly the given Order
+  // List items (the whole list, or one vendor's bucket -- including ones
+  // inside the collapsed "Not due yet" section, since callers pass the full
+  // item lists, not what's rendered). Never adds an id that isn't passed in.
+  const setItemsSelected = (ids: string[], select: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (select) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+
   const toggleItem = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -570,6 +585,22 @@ export default function OrderListPage() {
     )
   }
 
+  // Shared "Select all" / "Unselect all" button: "Unselect all" only when
+  // every one of `list` is already checked.
+  const renderSelectAllButton = (list: DistributorItem[]) => {
+    const allChecked = list.length > 0 && list.every((i) => validSelected.has(i.id))
+    return (
+      <button
+        type="button"
+        onClick={() => setItemsSelected(list.map((i) => i.id), !allChecked)}
+        disabled={marking}
+        className="min-h-[48px] px-4 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-xl active:bg-gray-100 disabled:opacity-50"
+      >
+        {allChecked ? 'Unselect all' : 'Select all'}
+      </button>
+    )
+  }
+
   const renderBucket = (bucket: Bucket) => {
     const { key, label, colorClass, distItems, vendorInfo } = bucket
     const tag = vendorInfo ? DUE_TAG_LABEL[vendorInfo.status] : undefined
@@ -652,6 +683,9 @@ export default function OrderListPage() {
             Undo checkmark only clears this week&apos;s mark. To cancel the order itself, use Cancel Order in On Order below.
           </p>
         )}
+        <div className="flex justify-end mb-2">
+          {renderSelectAllButton(distItems)}
+        </div>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           {distItems.map((item, idx) => renderItemRow(item, idx, distItems))}
         </div>
@@ -734,6 +768,12 @@ export default function OrderListPage() {
                       >
                         {marked ? '✓ Order Saved' : marking ? 'Saving…' : validSelected.size < toOrder.length && validSelected.size > 0 ? `Order ${validSelected.size} Item${validSelected.size !== 1 ? 's' : ''}` : 'Mark as Ordered'}
                       </button>
+                    </div>
+
+                    {/* Whole list, every vendor, including the collapsed
+                        "Not due yet" section (toOrder, not what's showing). */}
+                    <div className="flex justify-end mb-6 -mt-3">
+                      {renderSelectAllButton(toOrder)}
                     </div>
 
                     {openBuckets.map(renderBucket)}
