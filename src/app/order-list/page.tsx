@@ -879,7 +879,11 @@ export default function OrderListPage() {
                           onClick={() => toggleOrder(order.id)}
                           className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors text-left"
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          {/* Patch 62 follow-up: on phone widths a canceled row stacks its labels
+                              above the date/details so the badges don't squeeze the date column;
+                              from sm up it's the same single line as every other row. */}
+                          <div className={`flex min-w-0 ${canceled ? 'flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:gap-3' : 'items-center gap-3'}`}>
+                            <div className="flex items-center gap-3 flex-shrink-0">
                             <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg ${canceled ? 'bg-gray-200 text-gray-400 line-through' : TYPE_COLORS[order.type] ?? 'bg-gray-100 text-gray-500'}`}>
                               {TYPE_LABELS[order.type] ?? order.type}
                             </span>
@@ -893,6 +897,7 @@ export default function OrderListPage() {
                                 Note
                               </span>
                             )}
+                            </div>
                             <div className="min-w-0">
                               <p className={`text-sm font-semibold ${canceled ? 'text-gray-400' : 'text-gray-900'}`}>{formatDate(order.created_at)}</p>
                               <p className="text-xs text-gray-400">
