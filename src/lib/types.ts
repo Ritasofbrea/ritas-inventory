@@ -36,6 +36,9 @@ export interface Item {
   distributor: string | null
   item_number: string | null
   distributor_item_name: string | null
+  // Patch 61: vendor's invoice product code (e.g. Bunzl 53790032), for
+  // matching invoice lines. Separate from the 4-digit item_number.
+  vendor_item_code?: string | null
   secondary_count: number
   secondary_unit: string
   units_per_sub_unit: number | null

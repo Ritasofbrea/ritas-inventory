@@ -85,7 +85,7 @@ export async function PATCH(request: NextRequest) {
   const auth = await requireRole(db, request, ['owner', 'shift_lead'])
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const body = await request.json()
-  const { id, current_count, par_level, par_level_secondary, name, category, unit, secondary_count, secondary_unit, units_per_sub_unit, distributor, item_number, distributor_item_name, supplier_order } = body
+  const { id, current_count, par_level, par_level_secondary, name, category, unit, secondary_count, secondary_unit, units_per_sub_unit, distributor, item_number, distributor_item_name, vendor_item_code, supplier_order } = body
 
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
@@ -126,6 +126,12 @@ export async function PATCH(request: NextRequest) {
   if (distributor !== undefined) updates.distributor = distributor
   if (item_number !== undefined) updates.item_number = item_number
   if (distributor_item_name !== undefined) updates.distributor_item_name = distributor_item_name
+  // Patch 61: invoice product code. Trimmed; blank clears it to null.
+  // GET already returns it via select('*') once the column exists.
+  if (vendor_item_code !== undefined) {
+    const code = typeof vendor_item_code === 'string' ? vendor_item_code.trim() : vendor_item_code
+    updates.vendor_item_code = code ? String(code) : null
+  }
 
   // Defense-in-depth for the same failure mode in general: if nothing in
   // the body matched anything this route knows how to update (a typo'd or
