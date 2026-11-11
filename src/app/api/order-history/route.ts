@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   if (!type || !Array.isArray(items) || items.length === 0)
     return NextResponse.json({ error: 'Missing type or items' }, { status: 400 })
 
-  // Split orders by vendor (supabase/patch-57-order-vendor.sql): an
+  // Split orders by vendor (supabase/patch-58-order-vendor.sql): an
   // 'ordered' row from the Order List carries the one vendor key its items
   // belong to (vendorKeyForItem's output). Optional and only ever sent by
   // the Order List's Order Placed buttons; receipts never send it. The
