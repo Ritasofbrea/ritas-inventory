@@ -90,6 +90,8 @@ Migration files run roughly in this order: `schema.sql` → `update-secondary-co
 - For any nontrivial feature with open design questions, propose a plan first (two-phase: plan → explicit go-ahead → implement) rather than guessing intent.
 - Testing is ZZTEST-only, on `localhost` via `npm run dev` — see §2. Always give back the exact cleanup SQL/script used.
 - **Never** read, `cat`, or print `.env.local` or any secret value. Never run `vercel link`. Never touch Vercel protection/bypass settings.
+- **Secret-history check done 2026-11-11** (the repo is public). Scanned all 270 commits on every ref (`main`, `patch-29-sessions`, remotes, stash) plus 42 local unreachable objects, for key/token patterns, the exact live `.env.local` values, committed `.env`/backup/photo files, and PIN digits in SQL/seed/test files. Result: no live secret was ever committed. One old, dead fallback PIN was hardcoded in past commits (`process.env.NEXT_PUBLIC_OWNER_PIN || '<digits>'` in `login/page.tsx` and `PinModal.tsx`, removed in `f6e2a1c` on 2026-10-07); it matches no current PIN, so a history rewrite isn't worth it. Don't reuse those digits as a PIN. The stale `NEXT_PUBLIC_OWNER_PIN` and `E2E_*_PIN` lines were deleted from `.env.local`; the Vercel env vars were checked and have no stale PIN variables.
+- GitHub secret scanning and push protection were turned ON for the repo on 2026-11-11. Push protection blocks a push that contains a known key format; don't bypass it.
 - Vercel Preview deployments are SSO-protected — don't try to test against them; test on localhost instead.
 - Env var changes in the Vercel dashboard need a redeploy to actually take effect (the running deployment keeps its old values).
 - After a change: push to `main` (Vercel auto-deploys on push), wait for the deployment, and report back the commit sha and that production reached Ready.
@@ -175,6 +177,5 @@ Paused/queued (not started in code — see §5 for what "paused" does and doesn'
 
 ## 10. Known open items
 - No duplicate Vercel project — checked `list_projects`, only one project (`ritas-inventory`) exists under the team. (A prior note here claimed an unverified duplicate named `ritas-app`; not found.)
-- A public-repo secret-history check (confirming no secret was ever committed to git history) has not been done.
 - Patch 61 held codes (9 characters, confirm on a real invoice first): Glitter Sprinkles `M95700001`, Tajin `L59900031`, DoorDash Stickers `743043191`. Large Hole Milkshake Lids and Skittles Ice Mix have no code.
 - PIN hashing (patch 31) is planned/paused, not started in code — PINs are plaintext today, protected by RLS until it ships. See §5/§9.
