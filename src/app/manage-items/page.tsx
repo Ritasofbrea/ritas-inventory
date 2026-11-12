@@ -8,6 +8,7 @@ import { getRole } from '@/lib/auth'
 import { Item, CATEGORIES } from '@/lib/types'
 import { unitLabel, subUnitSetupLabel, subUnitPreview } from '@/lib/units'
 import { packSizePreview, getPackWord } from '@/lib/order-units'
+import { normalizeVendorCode, VENDOR_CODE_MAX } from '@/lib/vendor-code'
 import { Flavor, FLAVOR_TYPE_LABELS, PROGRAM_LABELS, PROGRAM_BADGE_ICON, PROGRAM_BADGE_CLASS, groupFlavorsByType } from '@/lib/flavors'
 
 export default function ManageItemsPage() {
@@ -69,6 +70,13 @@ export default function ManageItemsPage() {
   const [flavorEditId, setFlavorEditId] = useState<string | null>(null)
   const [flavorValue, setFlavorValue] = useState('')
   const [flavorSaving, setFlavorSaving] = useState(false)
+
+  // Patch 67: vendor code (invoice product code) editor state
+  const [vendorCodeEditId, setVendorCodeEditId] = useState<string | null>(null)
+  const [vendorCodeValue, setVendorCodeValue] = useState('')
+  const [vendorCodeSaving, setVendorCodeSaving] = useState(false)
+  const [vendorCodeError, setVendorCodeError] = useState('')
+  const [vendorCodeConflicts, setVendorCodeConflicts] = useState<{ id: string; name: string }[] | null>(null)
 
   // Patch 38: storage switch + add/move/correction panel state
   const [storageTogglingId, setStorageTogglingId] = useState<string | null>(null)
@@ -250,6 +258,53 @@ export default function ManageItemsPage() {
       setError('Could not save flavor. Try again.')
     } finally {
       setFlavorSaving(false)
+    }
+  }
+
+  // Patch 67: owner-only, separate route from the shared SL+ items PATCH
+  // (same reasoning as pack_size/flavor -- see src/app/api/items/vendor-code).
+  // The code is cleaned the same way invoice matching will compare it. If
+  // it's already on a different item the server saves nothing and names
+  // that item; the owner can then "Use it anyway" (confirm_shared).
+  const openVendorCodeEdit = (item: Item) => {
+    setVendorCodeEditId(item.id)
+    setVendorCodeValue(item.vendor_item_code ?? '')
+    setVendorCodeError('')
+    setVendorCodeConflicts(null)
+  }
+
+  const closeVendorCodeEdit = () => {
+    setVendorCodeEditId(null)
+    setVendorCodeError('')
+    setVendorCodeConflicts(null)
+  }
+
+  const saveVendorCode = async (item: Item, confirmShared = false) => {
+    const cleaned = normalizeVendorCode(vendorCodeValue)
+    if (!cleaned.ok) { setVendorCodeError(cleaned.error); return }
+    setVendorCodeSaving(true)
+    setVendorCodeError('')
+    try {
+      const res = await fetch('/api/items/vendor-code', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, vendor_item_code: cleaned.code, confirm_shared: confirmShared }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.status === 409 && body.error === 'code_in_use') {
+        setVendorCodeConflicts(Array.isArray(body.conflicts) ? body.conflicts : [])
+        return
+      }
+      if (!res.ok) {
+        setVendorCodeError(typeof body.error === 'string' ? body.error : 'Could not save the code. Try again.')
+        return
+      }
+      setItems((prev) => prev.map((i) => (i.id === item.id ? body : i)))
+      closeVendorCodeEdit()
+    } catch {
+      setVendorCodeError('Could not save the code. Try again.')
+    } finally {
+      setVendorCodeSaving(false)
     }
   }
 
@@ -794,6 +849,12 @@ export default function ManageItemsPage() {
                                     Flavor: {item.flavor.name} ({FLAVOR_TYPE_LABELS[item.flavor.type]}){!item.flavor.active && ' — inactive'}
                                   </p>
                                 )}
+                                {/* Patch 67: vendor code, owners only (this whole page is owner-only) */}
+                                {item.vendor_item_code && (
+                                  <p className="text-xs text-gray-400" data-testid="vendor-code-label">
+                                    Code: <span className="font-mono">{item.vendor_item_code}</span>
+                                  </p>
+                                )}
                               </div>
                             </div>
 
@@ -862,6 +923,82 @@ export default function ManageItemsPage() {
                               </div>
                             )}
 
+                            {/* Patch 67: vendor code editor */}
+                            {vendorCodeEditId === item.id && (() => {
+                              const preview = normalizeVendorCode(vendorCodeValue)
+                              return (
+                                <div className="ml-8 bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col gap-2" data-testid="vendor-code-panel">
+                                  <p className="text-sm font-semibold text-gray-800 break-words">{item.name}</p>
+                                  <p className="text-xs text-gray-500">
+                                    Current code: {item.vendor_item_code
+                                      ? <span className="font-mono text-gray-700">{item.vendor_item_code}</span>
+                                      : 'none'}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    The code printed on the vendor&apos;s invoice. Letters, numbers and hyphens, up to {VENDOR_CODE_MAX} characters. Leave blank and save to remove it.
+                                  </p>
+                                  <input
+                                    type="text"
+                                    value={vendorCodeValue}
+                                    onChange={(e) => { setVendorCodeValue(e.target.value); setVendorCodeError(''); setVendorCodeConflicts(null) }}
+                                    placeholder="e.g. 53790032"
+                                    autoCapitalize="characters"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    aria-label="Vendor code"
+                                    className="w-full min-h-[44px] border border-gray-300 rounded-xl px-3 py-2 text-base font-mono text-gray-900 focus:outline-none focus:border-gray-500"
+                                  />
+                                  {preview.ok && preview.code && preview.code !== vendorCodeValue && (
+                                    <p className="text-xs text-gray-500">Will save as <span className="font-mono text-gray-700">{preview.code}</span></p>
+                                  )}
+                                  {(vendorCodeError || !preview.ok) && (
+                                    <p className="text-xs text-red-600" role="alert">{vendorCodeError || (!preview.ok ? preview.error : '')}</p>
+                                  )}
+                                  {vendorCodeConflicts ? (
+                                    <div className="bg-white border border-gray-300 rounded-lg p-3 flex flex-col gap-2" data-testid="vendor-code-conflict">
+                                      <p className="text-sm text-gray-800">
+                                        This code is already on {vendorCodeConflicts.map((c) => c.name).join(', ') || 'another item'}.
+                                      </p>
+                                      <p className="text-xs text-gray-500">Some codes are shared between items. Invoice matching will ask which item to use.</p>
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() => saveVendorCode(item, true)}
+                                          disabled={vendorCodeSaving}
+                                          className="flex-1 min-h-[44px] bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white font-semibold text-sm px-3 py-2 rounded-xl"
+                                        >
+                                          {vendorCodeSaving ? 'Saving…' : 'Use it anyway'}
+                                        </button>
+                                        <button
+                                          onClick={() => setVendorCodeConflicts(null)}
+                                          disabled={vendorCodeSaving}
+                                          className="flex-1 min-h-[44px] bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-sm px-3 py-2 rounded-xl"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => saveVendorCode(item)}
+                                        disabled={vendorCodeSaving || !preview.ok}
+                                        className="flex-1 min-h-[44px] bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white font-semibold text-sm px-3 py-2 rounded-xl"
+                                      >
+                                        {vendorCodeSaving ? 'Saving…' : 'Save'}
+                                      </button>
+                                      <button
+                                        onClick={closeVendorCodeEdit}
+                                        disabled={vendorCodeSaving}
+                                        className="flex-1 min-h-[44px] bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold text-sm px-3 py-2 rounded-xl"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })()}
+
                             {/* Patch 38: storage number + last-updated, only for flagged items */}
                             {item.has_storage && (
                               <div className="ml-8 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
@@ -910,6 +1047,12 @@ export default function ManageItemsPage() {
                                 className="min-h-[40px] text-sm font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:border-gray-400"
                               >
                                 {packSizeEditId === item.id ? 'Close' : item.pack_size ? 'Edit Pack Size' : 'Set Pack Size'}
+                              </button>
+                              <button
+                                onClick={() => (vendorCodeEditId === item.id ? closeVendorCodeEdit() : openVendorCodeEdit(item))}
+                                className="min-h-[40px] text-sm font-semibold px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:border-gray-400"
+                              >
+                                {vendorCodeEditId === item.id ? 'Close' : 'Vendor Code'}
                               </button>
                               {item.category === 'Ice Mix' && (
                                 <button

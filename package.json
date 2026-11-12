@@ -30,6 +30,7 @@
     "test:e2e:row-cap-checks": "node --env-file=.env.local tests/e2e/row-cap-checks.mjs",
     "test:e2e:invoice-read": "tsx --env-file=.env.local tests/e2e/invoice-read-checks.mjs",
     "test:e2e:invoice-read-live": "INVOICE_READ_LIVE=1 tsx --env-file=.env.local tests/e2e/invoice-read-live.mjs",
+    "test:e2e:vendor-code": "tsx --env-file=.env.local tests/e2e/vendor-code-checks.mjs",
     "test:e2e:cleanup": "node --env-file=.env.local tests/e2e/cleanup.mjs",
     "backup": "node scripts/backup.mjs",
     "backup:check": "node scripts/backup-check.mjs"
