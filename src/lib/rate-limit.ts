@@ -61,3 +61,51 @@ export async function isInvoiceScanRateLimited(db: SupabaseClient): Promise<bool
   if (error) return true
   return (count ?? 0) >= MAX_INVOICES_PER_WINDOW
 }
+
+// Patch 65: invoice READ limits (each read is a paid Anthropic API call).
+// There is no separate reads table: every read attempt is recorded in its
+// invoice's raw_extraction.attempts (see invoice-read-server.ts), and
+// raw_extraction.last_attempt_at lets this query only touch invoices read
+// recently. A draft that has been read is never hard-deleted (DELETE marks
+// it 'discarded' instead), so its attempts keep counting.
+//   - 30 reads per 15 minutes across the app (stops a runaway client)
+//   - 60 reads per rolling 24 hours across the app (cost ceiling)
+// Attempts with outcome 'busy' (overloaded, not billed) don't count.
+const INVOICE_READ_WINDOW_MINUTES = 15
+export const MAX_INVOICE_READS_PER_WINDOW = 30
+export const INVOICE_DAILY_READ_CAP = 60
+
+// Returns null when the count can't be read -- callers fail closed.
+export async function countInvoiceReadsSince(db: SupabaseClient, sinceIso: string): Promise<number | null> {
+  let total = 0
+  const pageSize = 1000
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await db
+      .from('invoices')
+      .select('raw_extraction')
+      .gte('raw_extraction->>last_attempt_at', sinceIso)
+      .order('id')
+      .range(from, from + pageSize - 1)
+    if (error) return null
+    for (const row of data ?? []) {
+      const attempts = (row.raw_extraction as { attempts?: { at?: string; outcome?: string }[] } | null)?.attempts ?? []
+      for (const a of attempts) if (a.at && a.at >= sinceIso && a.outcome !== 'busy') total++
+    }
+    if (!data || data.length < pageSize) break
+  }
+  return total
+}
+
+export async function isInvoiceReadRateLimited(db: SupabaseClient): Promise<boolean> {
+  const since = new Date(Date.now() - INVOICE_READ_WINDOW_MINUTES * 60 * 1000).toISOString()
+  const count = await countInvoiceReadsSince(db, since)
+  if (count === null) return true
+  return count >= MAX_INVOICE_READS_PER_WINDOW
+}
+
+export async function isInvoiceDailyReadCapReached(db: SupabaseClient, cap: number = INVOICE_DAILY_READ_CAP): Promise<boolean> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const count = await countInvoiceReadsSince(db, since)
+  if (count === null) return true
+  return count >= cap
+}

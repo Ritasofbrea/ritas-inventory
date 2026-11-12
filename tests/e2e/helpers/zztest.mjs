@@ -3,6 +3,7 @@
 // fixtures -- logout-race.mjs doesn't write any test data). Run standalone
 // via cleanup.mjs if a suite ever crashes mid-run and leaves fixtures behind.
 import { rest } from './rest.mjs'
+import { sweepZztestInvoices } from './invoices.mjs'
 
 export const ZZTEST = 'ZZTEST'
 
@@ -61,4 +62,7 @@ export async function sweepZztestFixtures() {
   // note_photos automatically; the staff fixture is separate.
   await rest('notes?content=ilike.*zztest*', { method: 'DELETE' })
   await rest('staff?name=ilike.zztest*', { method: 'DELETE' })
+  // invoice-read-checks.mjs / invoice-read-live.mjs (patch 65): invoices
+  // created by the ZZTEST accounts, photos first, by id.
+  await sweepZztestInvoices()
 }

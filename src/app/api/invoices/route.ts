@@ -126,7 +126,11 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json(data)
 }
 
-// Drafts only. Removes the photos first, then the row.
+// Drafts only. Removes the photos first, then the row -- except a draft that
+// has already been read (patch 65): its photos are still removed, but the
+// row is kept as 'discarded' so its read attempts keep counting toward the
+// app-wide read caps (raw_extraction.attempts is the cost ledger). GET's
+// list already hides 'discarded', so the crew never sees it.
 export async function DELETE(request: NextRequest) {
   const db = getServerSupabase()
   const auth = await requireRole(db, request, ROLES)
@@ -136,7 +140,7 @@ export async function DELETE(request: NextRequest) {
   const id = typeof body.id === 'string' ? body.id : ''
   if (!UUID_RE.test(id)) return NextResponse.json({ error: 'Bad id' }, { status: 400 })
 
-  const { data: invoice } = await db.from('invoices').select('id, status').eq('id', id).maybeSingle()
+  const { data: invoice } = await db.from('invoices').select('id, status, raw_extraction').eq('id', id).maybeSingle()
   if (!invoice) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
   if (invoice.status !== 'draft') return NextResponse.json({ error: 'Only a draft can be deleted' }, { status: 409 })
 
@@ -146,6 +150,17 @@ export async function DELETE(request: NextRequest) {
   if (paths.length > 0) {
     const { error: removeError } = await db.storage.from(INVOICE_PHOTO_BUCKET).remove(paths)
     if (removeError) return NextResponse.json({ error: removeError.message }, { status: 500 })
+  }
+
+  const attempts = (invoice.raw_extraction as { attempts?: unknown[] } | null)?.attempts
+  if (Array.isArray(attempts) && attempts.length > 0) {
+    const { error } = await db
+      .from('invoices')
+      .update({ status: 'discarded', photo_paths: [] })
+      .eq('id', id)
+      .eq('status', 'draft')
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true, removed_photos: paths.length, discarded: true })
   }
 
   const { error } = await db.from('invoices').delete().eq('id', id).eq('status', 'draft')

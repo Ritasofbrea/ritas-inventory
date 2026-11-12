@@ -28,11 +28,14 @@
     "test:e2e:step-checks": "node --env-file=.env.local tests/e2e/step-checks.mjs",
     "test:e2e:logout-race": "node --env-file=.env.local tests/e2e/logout-race.mjs",
     "test:e2e:row-cap-checks": "node --env-file=.env.local tests/e2e/row-cap-checks.mjs",
+    "test:e2e:invoice-read": "tsx --env-file=.env.local tests/e2e/invoice-read-checks.mjs",
+    "test:e2e:invoice-read-live": "INVOICE_READ_LIVE=1 tsx --env-file=.env.local tests/e2e/invoice-read-live.mjs",
     "test:e2e:cleanup": "node --env-file=.env.local tests/e2e/cleanup.mjs",
     "backup": "node scripts/backup.mjs",
     "backup:check": "node scripts/backup-check.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
     "next": "16.2.9",
