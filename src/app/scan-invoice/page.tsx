@@ -1,9 +1,14 @@
 'use client'
 
-// Patch 63: Scan Invoice -- storage only. Crew picks the vendor, takes or
-// picks one photo per invoice page, and saves them as a DRAFT invoice in
-// the private invoice-photos bucket. Nothing is read and no stock moves;
-// reading the invoice and checking off lines come in later patches.
+// Patch 63: Scan Invoice. Crew picks the vendor, takes or picks one photo
+// per invoice page, and saves them as a DRAFT invoice in the private
+// invoice-photos bucket.
+// Patch 68: after saving, the draft opens with a "Read Invoice" button that
+// reads the pages one at a time through POST /api/invoices/read (about 15s
+// each), with a Retry for just the page that failed. Once every page is
+// read it goes to the check-off screen (/scan-invoice/check). Recent
+// invoices open the right place: a draft opens here (to read it), a read
+// invoice opens the check-off screen. No stock moves until patch 69.
 // Owners and shift leads only (the API enforces this too).
 
 import { useEffect, useRef, useState } from 'react'
@@ -23,6 +28,8 @@ interface InvoiceSummary {
   id: string
   vendor: string
   status: string
+  invoice_number: string | null
+  invoice_date: string | null
   photo_paths: string[]
   created_by: string | null
   created_at: string
@@ -30,8 +37,12 @@ interface InvoiceSummary {
 
 interface InvoiceDetail extends InvoiceSummary {
   pages: { page: number; url: string | null }[]
+  pages_read: number[]
+  reads_used: Record<string, number>
   expires_in: number
 }
+
+const MAX_READS_PER_PAGE = 2
 
 const VENDOR_LABELS: Record<InvoiceVendor, string> = { bunzl: 'Bunzl', balford: 'Balford', other: 'Other' }
 
@@ -56,6 +67,9 @@ export default function ScanInvoicePage() {
   const [recentLoading, setRecentLoading] = useState(true)
   const [viewing, setViewing] = useState<InvoiceDetail | null>(null)
   const [viewLoadingId, setViewLoadingId] = useState<string | null>(null)
+  const [reading, setReading] = useState(false)
+  const [readProgress, setReadProgress] = useState('')
+  const [readError, setReadError] = useState<{ page: number; message: string; canRetry: boolean } | null>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const libraryRef = useRef<HTMLInputElement>(null)
   const pagesRef = useRef<PickedPage[]>([])
@@ -142,6 +156,7 @@ export default function ScanInvoicePage() {
       setSavedMessage(`Saved ${vendorLabel(vendor)} invoice draft (${finished.photo_paths.length} page${finished.photo_paths.length === 1 ? '' : 's'}).`)
       setVendor(null)
       loadRecent()
+      openInvoice(invoiceId) // straight to the draft, where Read Invoice is
     } catch (e) {
       // Don't leave a half-saved draft behind: remove it and its photos.
       if (invoiceId) {
@@ -161,6 +176,7 @@ export default function ScanInvoicePage() {
   const openInvoice = async (id: string) => {
     setViewLoadingId(id)
     setError('')
+    setReadError(null)
     try {
       const res = await fetch(`/api/invoices?id=${encodeURIComponent(id)}`)
       const body = await res.json().catch(() => ({}))
@@ -173,6 +189,61 @@ export default function ScanInvoicePage() {
     }
   }
 
+  // A read invoice goes to the check-off screen; anything else opens here.
+  const openRecent = (inv: InvoiceSummary) => {
+    if (inv.status === 'read') router.push(`/scan-invoice/check?id=${encodeURIComponent(inv.id)}`)
+    else openInvoice(inv.id)
+  }
+
+  // Patch 68: read every page that hasn't been read yet, one at a time.
+  // Stops at the first page that fails and offers a Retry for that page.
+  const readInvoice = async (inv: InvoiceDetail) => {
+    if (reading) return
+    setReading(true)
+    setReadError(null)
+    const total = inv.photo_paths.length
+    const done = new Set(inv.pages_read)
+    const used = { ...inv.reads_used }
+    try {
+      for (let page = 1; page <= total; page++) {
+        if (done.has(page)) continue
+        setReadProgress(`Reading page ${page} of ${total}, about 15 seconds each…`)
+        let res: Response
+        let body: { error?: string } = {}
+        try {
+          res = await fetch('/api/invoices/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ invoice_id: inv.id, page }),
+          })
+          body = await res.json().catch(() => ({}))
+        } catch {
+          setReadError({ page, message: `Couldn't reach the server while reading page ${page}. Check the connection and try again.`, canRetry: true })
+          return
+        }
+        if (!res.ok) {
+          // A failed attempt may still have used up one of the page's reads.
+          const fresh = await fetch(`/api/invoices?id=${encodeURIComponent(inv.id)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+          if (fresh) setViewing(fresh as InvoiceDetail)
+          const usedNow = fresh ? (fresh.reads_used?.[String(page)] ?? 0) : (used[String(page)] ?? 0)
+          setReadError({
+            page,
+            message: body.error || `Couldn't read page ${page}. Try again.`,
+            canRetry: usedNow < MAX_READS_PER_PAGE,
+          })
+          return
+        }
+        done.add(page)
+        used[String(page)] = (used[String(page)] ?? 0) + 1
+        setViewing((v) => (v && v.id === inv.id ? { ...v, pages_read: [...done].sort((a, b) => a - b), reads_used: { ...used } } : v))
+      }
+      setReadProgress('All pages read. Opening the check-off screen…')
+      router.push(`/scan-invoice/check?id=${encodeURIComponent(inv.id)}`)
+    } finally {
+      setReading(false)
+    }
+  }
+
   if (!allowed) return null
 
   // Viewing one saved draft's pages (signed links, short-lived).
@@ -181,12 +252,63 @@ export default function ScanInvoicePage() {
       <div className="min-h-screen flex flex-col bg-[#d4edda]">
         <Navigation />
         <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6">
-          <button onClick={() => setViewing(null)} className="text-sm text-gray-500 hover:text-gray-700 mb-2 flex items-center gap-1">← Back</button>
+          <button onClick={() => { if (!reading) { setViewing(null); loadRecent() } }} disabled={reading} className="text-sm text-gray-500 hover:text-gray-700 mb-2 flex items-center gap-1 disabled:opacity-40">← Back</button>
           <h1 className="text-2xl font-bold text-gray-900">{vendorLabel(viewing.vendor)} invoice</h1>
           <p className="text-gray-500 mt-1 text-sm">
-            Draft · {formatWhen(viewing.created_at)}{viewing.created_by ? ` · ${viewing.created_by}` : ''}
+            {viewing.status === 'draft' ? 'Draft' : viewing.status === 'read' ? 'Read' : viewing.status} · {formatWhen(viewing.created_at)}{viewing.created_by ? ` · ${viewing.created_by}` : ''}
           </p>
-          <p className="text-xs text-gray-400 mt-1 mb-4">These photo links stop working after {Math.round(viewing.expires_in / 60)} minutes. Open the draft again to see them.</p>
+
+          {viewing.status === 'draft' && viewing.photo_paths.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mt-4" data-testid="read-panel">
+              <p className="font-semibold text-gray-900">Read this invoice</p>
+              <p className="text-sm text-gray-500 mt-1">Pages are read one at a time, about 15 seconds each. Stay on this screen until it finishes.</p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                {viewing.photo_paths.map((_, i) => {
+                  const page = i + 1
+                  const isRead = viewing.pages_read.includes(page)
+                  return (
+                    <span key={page} className="text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 text-gray-600">
+                      Page {page}: {isRead ? '✓ read' : 'not read'}
+                    </span>
+                  )
+                })}
+              </div>
+              {readError && (
+                <div className="mt-3 border border-gray-300 rounded-xl p-3 bg-gray-50" role="alert">
+                  <p className="text-sm text-gray-800">{readError.message}</p>
+                  {readError.canRetry ? (
+                    <button
+                      onClick={() => readInvoice(viewing)}
+                      disabled={reading}
+                      className="mt-2 min-h-[48px] w-full bg-gray-700 hover:bg-gray-800 text-white font-semibold rounded-xl disabled:opacity-50"
+                    >
+                      Retry page {readError.page}
+                    </button>
+                  ) : (
+                    <p className="text-xs text-gray-500 mt-1">Page {readError.page} can&apos;t be read again. Start a new scan with a clearer photo of that page.</p>
+                  )}
+                </div>
+              )}
+              {!readError && (
+                <button
+                  onClick={() => readInvoice(viewing)}
+                  disabled={reading}
+                  className="mt-3 min-h-[56px] w-full bg-[#c8102e] hover:bg-[#a50d26] text-white font-bold rounded-2xl text-lg disabled:opacity-70"
+                >
+                  {reading ? readProgress || 'Reading…' : viewing.pages_read.length > 0 ? 'Continue Reading' : 'Read Invoice'}
+                </button>
+              )}
+            </div>
+          )}
+          {viewing.status === 'read' && (
+            <button
+              onClick={() => router.push(`/scan-invoice/check?id=${encodeURIComponent(viewing.id)}`)}
+              className="mt-4 min-h-[56px] w-full bg-[#1a7a3c] hover:bg-[#155f2f] text-white font-bold rounded-2xl text-lg"
+            >
+              Go to Check-Off
+            </button>
+          )}
+          <p className="text-xs text-gray-400 mt-4 mb-4">These photo links stop working after {Math.round(viewing.expires_in / 60)} minutes. Open the draft again to see them.</p>
           <div className="space-y-4">
             {viewing.pages.map((p) => (
               <div key={p.page} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -216,7 +338,7 @@ export default function ScanInvoicePage() {
         </div>
 
         <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-2xl px-4 py-3 mb-5 text-sm">
-          This only saves the photos. Reading the invoice and checking off what arrived comes in a later step. No stock is changed here.
+          Save the photos, then tap Read Invoice to check off what arrived. No stock is changed yet.
         </div>
 
         {/* Vendor */}
@@ -316,13 +438,13 @@ export default function ScanInvoicePage() {
             recent.map((inv) => (
               <button
                 key={inv.id}
-                onClick={() => openInvoice(inv.id)}
+                onClick={() => openRecent(inv)}
                 disabled={viewLoadingId !== null}
                 className="w-full flex items-center justify-between px-5 py-4 border-b border-gray-100 last:border-0 text-left hover:bg-gray-50"
               >
                 <div className="min-w-0">
                   <p className="font-semibold text-gray-900">
-                    {vendorLabel(inv.vendor)}
+                    {vendorLabel(inv.vendor)}{inv.invoice_number ? ` #${inv.invoice_number}` : ''}
                     <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-300 text-gray-500 uppercase tracking-wide align-middle">{inv.status}</span>
                   </p>
                   <p className="text-xs text-gray-400">
@@ -330,7 +452,7 @@ export default function ScanInvoicePage() {
                     {inv.created_by ? ` · ${inv.created_by}` : ''}
                   </p>
                 </div>
-                <span className="text-sm text-gray-400 flex-shrink-0">{viewLoadingId === inv.id ? 'Opening…' : 'View →'}</span>
+                <span className="text-sm text-gray-400 flex-shrink-0">{viewLoadingId === inv.id ? 'Opening…' : inv.status === 'read' ? 'Check off →' : 'Open →'}</span>
               </button>
             ))
           )}

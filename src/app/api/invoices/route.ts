@@ -38,13 +38,21 @@ export async function GET(request: NextRequest) {
   const id = new URL(request.url).searchParams.get('id')
   if (id) {
     if (!UUID_RE.test(id)) return NextResponse.json({ error: 'Bad id' }, { status: 400 })
-    const { data: invoice, error } = await db
+    const { data: row, error } = await db
       .from('invoices')
-      .select('id, vendor, status, invoice_number, invoice_date, photo_paths, created_by, created_at')
+      .select('id, vendor, status, invoice_number, invoice_date, photo_paths, created_by, created_at, raw_extraction')
       .eq('id', id)
       .maybeSingle()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    if (!invoice) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+    if (!row) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+    // Patch 68: which pages have a reader result and how many reads each
+    // page has used (busy attempts don't count), so the Scan Invoice screen
+    // can resume reading. raw_extraction itself is never returned here.
+    const { raw_extraction, ...invoice } = row
+    const raw = (raw_extraction ?? {}) as { pages?: Record<string, unknown>; attempts?: { page: number; outcome: string }[] }
+    const pages_read = Object.keys(raw.pages ?? {}).map(Number).filter(Number.isInteger).sort((a, b) => a - b)
+    const reads_used: Record<string, number> = {}
+    for (const a of raw.attempts ?? []) if (a.outcome !== 'busy') reads_used[String(a.page)] = (reads_used[String(a.page)] ?? 0) + 1
 
     const paths: string[] = invoice.photo_paths ?? []
     let pages: { page: number; url: string | null }[] = []
@@ -55,7 +63,7 @@ export async function GET(request: NextRequest) {
       if (signError) return NextResponse.json({ error: signError.message }, { status: 500 })
       pages = paths.map((p, i) => ({ page: i + 1, url: signed?.[i]?.signedUrl ?? null }))
     }
-    return NextResponse.json({ ...invoice, pages, expires_in: INVOICE_SIGNED_URL_SECONDS })
+    return NextResponse.json({ ...invoice, pages, pages_read, reads_used, expires_in: INVOICE_SIGNED_URL_SECONDS })
   }
 
   const { data, error } = await db
