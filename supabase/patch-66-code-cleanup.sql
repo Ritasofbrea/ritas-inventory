@@ -104,3 +104,37 @@ SELECT id, name FROM items WHERE vendor_item_code = '10060200';
 SELECT count(*) AS items_with_code FROM items WHERE vendor_item_code IS NOT NULL;
 
 -- COMMIT;   -- uncomment and run after the "after" results look right (or ROLLBACK;)
+
+-- ===========================================================================
+-- RUN AFTER (follow-up, 2026-11-11): two more Balford codes from the patch 65
+-- experiment's reverse check. Both models read them on Balford invoice
+-- 24110078, and each matches the "last 4 digits = item_number" pattern.
+--   Cold Brew Concentrate (7260)  NULL -> 307260
+--   Brownie Bites (7053)          NULL -> 307053
+-- Same guards as above. Dry run, then COMMIT; (or ROLLBACK;).
+-- ===========================================================================
+BEGIN;
+
+-- BEFORE: expect 2 rows, both with an empty code
+SELECT id, name, item_number, distributor, vendor_item_code FROM items
+WHERE id IN ('e43be1e9-b318-40e9-9068-60811ea7e176', 'a0f73560-4eac-4d06-8163-e4ed20048002');
+-- BEFORE: collision check, expect 0 rows
+SELECT id, name, vendor_item_code FROM items WHERE vendor_item_code IN ('307260', '307053');
+
+UPDATE items SET vendor_item_code = '307260'
+WHERE id = 'e43be1e9-b318-40e9-9068-60811ea7e176' AND name = 'Cold Brew Concentrate' AND item_number = '7260'
+  AND distributor = 'balford' AND vendor_item_code IS NULL
+  AND NOT EXISTS (SELECT 1 FROM items o WHERE o.vendor_item_code = '307260' AND o.id <> 'e43be1e9-b318-40e9-9068-60811ea7e176');
+
+UPDATE items SET vendor_item_code = '307053'
+WHERE id = 'a0f73560-4eac-4d06-8163-e4ed20048002' AND name = 'Brownie Bites' AND item_number = '7053'
+  AND distributor = 'balford' AND vendor_item_code IS NULL
+  AND NOT EXISTS (SELECT 1 FROM items o WHERE o.vendor_item_code = '307053' AND o.id <> 'a0f73560-4eac-4d06-8163-e4ed20048002');
+
+-- AFTER: expect 2 rows with the new codes
+SELECT id, name, item_number, vendor_item_code FROM items
+WHERE id IN ('e43be1e9-b318-40e9-9068-60811ea7e176', 'a0f73560-4eac-4d06-8163-e4ed20048002');
+-- AFTER: total items with a code, expect 125 (was 123)
+SELECT count(*) AS items_with_code FROM items WHERE vendor_item_code IS NOT NULL;
+
+-- COMMIT;   -- uncomment and run after the "after" results look right (or ROLLBACK;)
