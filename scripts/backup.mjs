@@ -90,9 +90,17 @@ const TABLES = {
   clover_item_mappings: ['id'],
   // misc
   count_draft: ['id'],
+  // invoice scanning (patch 63)
+  invoices: ['id'],
+  invoice_lines: ['id'],
 }
 
-const BUCKETS = ['note-photos', 'task-photos']
+const BUCKETS = ['note-photos', 'task-photos', 'invoice-photos']
+// Buckets whose files are COPIED into the backup (under files/<bucket>/),
+// not just listed. invoice-photos is the private proof of what a vendor
+// delivered, so the photos themselves are kept. The other buckets stay
+// list-only, unchanged.
+const DOWNLOAD_BUCKETS = ['invoice-photos']
 
 // ---- env -------------------------------------------------------------
 // Minimal, dependency-free .env parser -- loaded at runtime only, never
@@ -243,13 +251,40 @@ async function listBucketFilesRecursive(db, bucket, prefix = '') {
   return files
 }
 
+// Downloads every listed file of a DOWNLOAD_BUCKETS bucket into
+// <outDir>/files/<bucket>/<path>, and checks each written file's size
+// against the size Storage reported. Any failure throws, which fails the
+// whole backup (same as a table failing) rather than saving a backup
+// that silently lacks photos.
+async function downloadBucketFiles(db, bucket, files, outDir) {
+  const root = path.join(outDir, 'files', bucket)
+  let bytes = 0
+  for (const f of files) {
+    if (f.path.split('/').some((part) => part === '..' || part === '')) throw new Error(`bucket "${bucket}": refusing odd path "${f.path}"`)
+    const { data, error } = await db.storage.from(bucket).download(f.path)
+    if (error || !data) throw new Error(`bucket "${bucket}" download failed for "${f.path}": ${error?.message ?? 'no data'}`)
+    const buf = Buffer.from(await data.arrayBuffer())
+    if (f.size !== null && buf.length !== f.size) throw new Error(`bucket "${bucket}": "${f.path}" downloaded ${buf.length} bytes, expected ${f.size}`)
+    const dest = path.join(root, f.path)
+    await fs.mkdir(path.dirname(dest), { recursive: true })
+    await fs.writeFile(dest, buf)
+    bytes += buf.length
+  }
+  return { downloaded: files.length, bytes }
+}
+
 async function backupBuckets(db, outDir) {
   const result = {}
+  const downloads = {}
   for (const bucket of BUCKETS) {
     result[bucket] = await listBucketFilesRecursive(db, bucket)
+    if (DOWNLOAD_BUCKETS.includes(bucket)) downloads[bucket] = await downloadBucketFiles(db, bucket, result[bucket], outDir)
   }
   await fs.writeFile(path.join(outDir, 'storage-file-lists.json'), JSON.stringify(result, null, 2))
-  return Object.fromEntries(Object.entries(result).map(([b, files]) => [b, files.length]))
+  return {
+    counts: Object.fromEntries(Object.entries(result).map(([b, files]) => [b, files.length])),
+    downloads,
+  }
 }
 
 // ---- retention ----------------------------------------------------------
@@ -345,8 +380,11 @@ async function main() {
   }
 
   let bucketCounts = {}
+  let bucketDownloads = {}
   try {
-    bucketCounts = await backupBuckets(db, tempDir)
+    const buckets = await backupBuckets(db, tempDir)
+    bucketCounts = buckets.counts
+    bucketDownloads = buckets.downloads
   } catch (e) {
     results.push({ table: '(storage buckets)', written: 0, exactCount: null, ok: false, error: e instanceof Error ? e.message : String(e) })
     console.error(`FAILED: storage buckets -- ${e instanceof Error ? e.message : String(e)}`)
@@ -362,6 +400,7 @@ async function main() {
     ok: allOk,
     tables: results,
     buckets: bucketCounts,
+    bucketDownloads,
   }
   await fs.writeFile(path.join(tempDir, 'manifest.json'), JSON.stringify(manifest, null, 2))
 
@@ -396,6 +435,7 @@ async function main() {
   console.log(`Tables backed up: ${results.length} (${totalRows} total rows)`)
   for (const r of results) console.log(`  ${r.table}: ${r.written} rows`)
   console.log(`Storage files listed: ${totalFiles} (${Object.entries(bucketCounts).map(([b, n]) => `${b}: ${n}`).join(', ')})`)
+  for (const [b, d] of Object.entries(bucketDownloads)) console.log(`Storage files copied: ${b}: ${d.downloaded} (${formatBytes(d.bytes)})`)
   console.log(`Total backup size: ${formatBytes(totalSize)}`)
   console.log(`Retention: kept ${retention.kept} folder(s), removed ${retention.removed} old one(s)`)
 

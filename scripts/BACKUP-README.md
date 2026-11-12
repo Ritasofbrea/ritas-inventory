@@ -18,8 +18,10 @@ dated folder, e.g. `2026-11-09_2200/`, containing:
 - one `.json` file per table (e.g. `items.json`, `notes.json`) — the raw
   rows, exactly as they are in the database
 - `storage-file-lists.json` — file names, sizes, and dates for every file
-  in the `note-photos` and `task-photos` buckets (not the photos
-  themselves — this is a list, not a copy)
+  in the `note-photos`, `task-photos` and `invoice-photos` buckets
+- `files/invoice-photos/` — the invoice photos themselves (patch 63), copied
+  because they're the proof of what a vendor delivered. Note and task
+  photos are still list-only, not copied.
 - `manifest.json` — table names, row counts, start/finish time, and
   whether each table's count matched
 
