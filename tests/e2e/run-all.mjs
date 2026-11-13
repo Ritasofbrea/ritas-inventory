@@ -30,6 +30,8 @@ const suites = [
   'vendor-code-checks.mjs',
   'invoice-lines-checks.mjs',
   'invoice-checkoff-ui-checks.mjs',
+  'invoice-confirm-checks.mjs',
+  'invoice-confirm-ui-checks.mjs',
 ]
 
 // vendor-schedule-checks.mjs, order-list-other-merge-checks.mjs, and
@@ -68,6 +70,8 @@ const TSX_SUITES = new Set([
   'vendor-code-checks.mjs',
   'invoice-lines-checks.mjs',
   'invoice-checkoff-ui-checks.mjs',
+  'invoice-confirm-checks.mjs',
+  'invoice-confirm-ui-checks.mjs',
 ])
 
 function runOne(file) {

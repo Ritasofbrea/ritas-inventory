@@ -189,9 +189,10 @@ export default function ScanInvoicePage() {
     }
   }
 
-  // A read invoice goes to the check-off screen; anything else opens here.
+  // A read invoice goes to the check-off screen, and a received one to the
+  // same screen's read-only summary (patch 69); anything else opens here.
   const openRecent = (inv: InvoiceSummary) => {
-    if (inv.status === 'read') router.push(`/scan-invoice/check?id=${encodeURIComponent(inv.id)}`)
+    if (inv.status === 'read' || inv.status === 'received') router.push(`/scan-invoice/check?id=${encodeURIComponent(inv.id)}`)
     else openInvoice(inv.id)
   }
 
@@ -452,7 +453,7 @@ export default function ScanInvoicePage() {
                     {inv.created_by ? ` · ${inv.created_by}` : ''}
                   </p>
                 </div>
-                <span className="text-sm text-gray-400 flex-shrink-0">{viewLoadingId === inv.id ? 'Opening…' : inv.status === 'read' ? 'Check off →' : 'Open →'}</span>
+                <span className="text-sm text-gray-400 flex-shrink-0">{viewLoadingId === inv.id ? 'Opening…' : inv.status === 'read' ? 'Check off →' : inv.status === 'received' ? 'Summary →' : 'Open →'}</span>
               </button>
             ))
           )}

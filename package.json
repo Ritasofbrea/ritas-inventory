@@ -33,6 +33,8 @@
     "test:e2e:vendor-code": "tsx --env-file=.env.local tests/e2e/vendor-code-checks.mjs",
     "test:e2e:invoice-lines": "tsx --env-file=.env.local tests/e2e/invoice-lines-checks.mjs",
     "test:e2e:invoice-checkoff-ui": "tsx --env-file=.env.local tests/e2e/invoice-checkoff-ui-checks.mjs",
+    "test:e2e:invoice-confirm": "tsx --env-file=.env.local tests/e2e/invoice-confirm-checks.mjs",
+    "test:e2e:invoice-confirm-ui": "tsx --env-file=.env.local tests/e2e/invoice-confirm-ui-checks.mjs",
     "test:e2e:invoice-checkoff-live": "INVOICE_CHECKOFF_LIVE=1 tsx --env-file=.env.local tests/e2e/invoice-checkoff-live.mjs",
     "test:e2e:cleanup": "node --env-file=.env.local tests/e2e/cleanup.mjs",
     "backup": "node scripts/backup.mjs",

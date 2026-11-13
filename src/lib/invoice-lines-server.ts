@@ -1,7 +1,7 @@
 // Patch 68: invoice_lines -- built from the reader's per-page results in
 // invoices.raw_extraction (patch 65), matched to our items
 // (src/lib/invoice-matching.ts), then checked off by the crew.
-// NO stock and NO saveReceipt here: that's patch 69 (confirm).
+// NO stock and NO saveReceipt here: confirming is src/lib/invoice-confirm-server.ts (patch 69).
 //
 // Crew entries are never silently lost: rebuilding a page that already
 // has crew entries (received qty, checked, a match choice, a skip, or a
@@ -44,10 +44,14 @@ export type InvoiceLineRow = {
   checked: boolean
   updated_by: string | null
   updated_at: string | null
+  // Patch 69: filled when the delivery is confirmed.
+  stock_qty_added: number | null
+  code_learned: boolean
+  confirmed_by: string | null
 }
 
-const LINE_COLS =
-  'id, invoice_id, page, line_no, vendor_code, printed_item_number, description, invoice_unit, qty_ordered, qty_shipped, qty_received, units_per_invoice_unit, item_id, match_method, review_reason, ai_note, ai_unsure, checked, updated_by, updated_at'
+export const LINE_COLS =
+  'id, invoice_id, page, line_no, vendor_code, printed_item_number, description, invoice_unit, qty_ordered, qty_shipped, qty_received, units_per_invoice_unit, item_id, match_method, review_reason, ai_note, ai_unsure, checked, updated_by, updated_at, stock_qty_added, code_learned, confirmed_by'
 
 const ITEM_COLS = 'id, name, distributor, item_number, vendor_item_code, distributor_item_name, unit, invoice_units_per_case, is_off, category'
 
@@ -88,12 +92,15 @@ export function parseInvoiceDate(s: string | null | undefined): string | null {
   return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
 }
 
-type InvoiceForLines = { id: string; vendor: string; status: string; raw_extraction: unknown; photo_paths: string[] | null; invoice_number: string | null; invoice_date: string | null }
+type InvoiceForLines = {
+  id: string; vendor: string; status: string; raw_extraction: unknown; photo_paths: string[] | null; invoice_number: string | null; invoice_date: string | null
+  record_only: boolean; receipt_id: string | null; received_by: string | null; received_at: string | null
+}
 
 async function loadInvoice(db: SupabaseClient, id: string): Promise<InvoiceForLines | null> {
   const { data } = await db
     .from('invoices')
-    .select('id, vendor, status, raw_extraction, photo_paths, invoice_number, invoice_date')
+    .select('id, vendor, status, raw_extraction, photo_paths, invoice_number, invoice_date, record_only, receipt_id, received_by, received_at')
     .eq('id', id)
     .maybeSingle()
   return (data as InvoiceForLines | null) ?? null
@@ -204,6 +211,11 @@ export type LinesView = {
     page_count: number
     pages_read: number[]
     no_item_pages: number[]
+    // Patch 69: how it was finished (status 'received').
+    record_only: boolean
+    receipt_id: string | null
+    received_by: string | null
+    received_at: string | null
   }
   totals_check: TotalsCheck
   lines: EnrichedLine[]
@@ -232,6 +244,7 @@ export async function listInvoiceLines(db: SupabaseClient, invoiceId: string): P
       qty_shipped: l.qty_shipped == null ? null : Number(l.qty_shipped),
       qty_received: l.qty_received == null ? null : Number(l.qty_received),
       units_per_invoice_unit: l.units_per_invoice_unit == null ? null : Number(l.units_per_invoice_unit),
+      stock_qty_added: l.stock_qty_added == null ? null : Number(l.stock_qty_added),
       item: item ? summary(item) : null,
       case_size: caseSizeFor(l.units_per_invoice_unit == null ? null : Number(l.units_per_invoice_unit), item),
       candidates: unmatched ? reviewCandidates(l, invoice.vendor, items).map(summary) : [],
@@ -256,6 +269,10 @@ export async function listInvoiceLines(db: SupabaseClient, invoiceId: string): P
         page_count: (invoice.photo_paths ?? []).length,
         pages_read: pagesRead,
         no_item_pages: pagesRead.filter((p) => (results[String(p)].result as InvoicePageResult).has_no_items),
+        record_only: !!invoice.record_only,
+        receipt_id: invoice.receipt_id,
+        received_by: invoice.received_by,
+        received_at: invoice.received_at,
       },
       totals_check: totalsCheck(results, (invoice.photo_paths ?? []).length),
       lines,

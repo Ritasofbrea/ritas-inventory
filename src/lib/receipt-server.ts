@@ -1,6 +1,6 @@
 // Patch 64: the shared "save an order_history row and, for a receipt, add
 // the stock" logic, moved verbatim out of POST /api/order-history so the
-// invoice confirm step (patch 67) can save a receipt exactly the way
+// invoice confirm step (patch 69) can save a receipt exactly the way
 // Receive Order does instead of copying this. NO behavior change: the
 // route still validates the request and shapes the response; everything
 // that writes to the database lives here.
@@ -39,9 +39,30 @@ export interface SaveReceiptInput {
   vendor?: string | null // already validated + trimmed by the caller; omitted from the insert when empty
 }
 
+// One stock write a receipt made, so it can be reversed.
+export type AppliedStock = { itemId: string; column: 'current_count' | 'storage_count'; amount: number }
+
 export type SaveReceiptResult =
-  | { ok: true; order: Record<string, unknown>; lines: { order_id: string; item_id: string; item_name: string; quantity: number; unit: string }[] }
+  // Patch 69: `applied` (what was added to stock, in order) is returned so
+  // the invoice confirm step can reverse a receipt that saved fine when a
+  // LATER step of the confirm fails. Receive Order ignores it.
+  | { ok: true; order: Record<string, unknown>; lines: { order_id: string; item_id: string; item_name: string; quantity: number; unit: string }[]; applied: AppliedStock[] }
   | { ok: false; status: number; error: string }
+
+// The compensating rollback saveReceipt has always done when a stock write
+// fails partway: take back every stock change already applied, then delete
+// the order_history_items and order_history rows. Patch 69 only moved it
+// into this function (same three steps, same order) so the invoice confirm
+// step can run the SAME rollback on a receipt that saved, instead of
+// writing a second copy. Known, unchanged: a `receive_to_storage`
+// storage_moves row is left behind (stock itself is restored).
+export async function undoReceipt(db: SupabaseClient, orderId: string, applied: AppliedStock[]): Promise<void> {
+  for (const a of applied) {
+    await applyRawCountDelta(db, { itemId: a.itemId, column: a.column, delta: -a.amount })
+  }
+  await db.from('order_history_items').delete().eq('order_id', orderId)
+  await db.from('order_history').delete().eq('id', orderId)
+}
 
 export async function saveReceipt(db: SupabaseClient, session: SessionPayload, input: SaveReceiptInput): Promise<SaveReceiptResult> {
   const { type, notes, items, related_order_id, resolved, received_by, vendor } = input
@@ -115,9 +136,9 @@ export async function saveReceipt(db: SupabaseClient, session: SessionPayload, i
   // and order_history rows just inserted above -- so a failed receipt never
   // leaves a "received" record with stock that doesn't match it, and
   // nothing is left half-written.
+  const applied: AppliedStock[] = []
   if (type === 'received' || type === 'will_call') {
     const isOwner = session.role === 'owner'
-    const applied: { itemId: string; column: 'current_count' | 'storage_count'; amount: number }[] = []
     let failure: { error: string; status: number } | null = null
 
     for (const i of items) {
@@ -153,11 +174,7 @@ export async function saveReceipt(db: SupabaseClient, session: SessionPayload, i
     }
 
     if (failure) {
-      for (const a of applied) {
-        await applyRawCountDelta(db, { itemId: a.itemId, column: a.column, delta: -a.amount })
-      }
-      await db.from('order_history_items').delete().eq('order_id', order.id)
-      await db.from('order_history').delete().eq('id', order.id)
+      await undoReceipt(db, order.id, applied)
       return {
         ok: false,
         status: failure.status === 404 || failure.status === 400 ? 400 : 500,
@@ -166,5 +183,5 @@ export async function saveReceipt(db: SupabaseClient, session: SessionPayload, i
     }
   }
 
-  return { ok: true, order, lines: rows }
+  return { ok: true, order, lines: rows, applied }
 }
