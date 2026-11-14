@@ -390,7 +390,7 @@ export default function ScanInvoicePage() {
         )}
 
         <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-2xl px-4 py-3 mb-5 text-sm">
-          Save the photos, then tap Read Invoice to check off what arrived. No stock is changed yet.
+          Save the photos, then tap Read Invoice to check off what arrived. Confirming the delivery adds the stock. Filing as record only does not.
         </div>
 
         {/* Vendor */}

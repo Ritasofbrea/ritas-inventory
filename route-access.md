@@ -18,7 +18,7 @@ Tiers, most to least permissive:
 | Route | Method | Tier | Why |
 |---|---|---|---|
 | `/api/cron/generate-tasks` | GET | PUBLIC (CRON_SECRET) | unchanged |
-| `/api/cron/cleanup-photos` | GET | PUBLIC (CRON_SECRET) | unchanged |
+| `/api/cron/cleanup-photos` | GET | PUBLIC (CRON_SECRET) | patch 70 — also runs the invoice draft cleanup (dry run unless `INVOICE_DRAFT_CLEANUP_ENABLE_DELETE=1`; never touches received invoices) |
 | `/api/pins/verify` | POST | PUBLIC | this *is* login (owner/shift_lead); also what the todo page's inline "+Add Task" PinModal calls, which now also grants a real owner session as a side effect |
 | `/api/session` | GET | PUBLIC | tells a device what session (if any) it has, for routing |
 | `/api/session` | POST | PUBLIC | issues a staff session with no name, open to anyone — the To-Do List button is intentionally open on main too; not a security boundary, just gives the server a role to check |
@@ -35,6 +35,12 @@ Tiers, most to least permissive:
 | `/api/flavors` | POST/PATCH/DELETE | OWNER | Flavors Catalog management, owner-only in UI |
 | `/api/flavors/week` | GET | ANY | same visibility as flavors GET |
 | `/api/flavors/week` | PATCH | SL+ | "same tier as + Add Task" per its own comment, and Flavors page's `canManage` has no staff PIN-unlock escape hatch (unlike the todo page) |
+| `/api/invoices` | GET/POST/PATCH/DELETE | SL+ | patch 63 — recent invoices / one invoice with signed photo links, new draft, save uploaded photo paths, discard a draft or read invoice. DELETE returns 409 for a received invoice (never deleted). |
+| `/api/invoices/photo-upload` | POST | SL+ | patch 63 — signed upload URL for one page into the private `invoice-photos` bucket |
+| `/api/invoices/read` | POST | SL+ | patch 65 — reads one page with the Anthropic API, server side only; per-page and app-wide read caps |
+| `/api/invoices/lines` | GET/POST/PATCH | SL+ | patch 68 — check-off lines: view, (re)build from reader results, match/skip/check off. No stock changes. |
+| `/api/invoices/confirm` | GET/POST/PATCH | SL+ | patch 69 — GET is the plan (writes nothing); POST `mode: 'confirm'` adds stock once, `mode: 'record_only'` adds none; PATCH types a missing invoice number |
+| `/api/invoices/history` | GET | SL+ | patch 70 — read-only invoice history (received only), detail, receipt→invoice lookup, unconfirmed nudge. Other methods 405. |
 | `/api/items` | GET | SL+ | Count/Adjust/Receive-Order/Dashboard/Manage Items all need it |
 | `/api/items` | POST | OWNER | only Manage Items creates items |
 | `/api/items` | PATCH | SL+ | Count/Adjust/Receive-Order bump `current_count` through this same endpoint as Manage Items' full-record edits — **more permissive than ideal**: a shift_lead session can technically also rename an item or change its par level through this route today, since it's not split by field. Flagged, not fixed this patch. Patch 37: `is_off` is explicitly NOT in this route's field whitelist — a shift_lead sending it in the body is silently ignored, never applied. Patch 38: same for `has_storage`/`storage_count`/`storage_updated_at`. |
