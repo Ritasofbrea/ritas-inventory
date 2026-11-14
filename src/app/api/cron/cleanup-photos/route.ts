@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase'
 import { cleanupOldTaskPhotos } from '@/lib/task-server'
 import { cleanupOldLoginAttempts } from '@/lib/rate-limit'
 import { cleanupOrphanedNotePhotos } from '@/lib/note-photo-cleanup-server'
+import { cleanupInvoiceDrafts, describeInvoiceCleanup } from '@/lib/invoice-cleanup-server'
 
 // Hit nightly by Vercel Cron (see vercel.json) — same auth pattern as
 // generate-tasks: Vercel sends `Authorization: Bearer $CRON_SECRET`
@@ -21,6 +22,13 @@ import { cleanupOrphanedNotePhotos } from '@/lib/note-photo-cleanup-server'
 // note-photo-cleanup-server.ts). A failure here is logged and reported in
 // the response, but never fails the whole cron run — the other two
 // cleanups still complete either way.
+//
+// Patch 70: also cleans up old unread invoice drafts (over 7 days) and
+// orphan invoice-photos files (no invoice row, over 1 day) -- dry-run only
+// until INVOICE_DRAFT_CLEANUP_ENABLE_DELETE=1 is set (see
+// invoice-cleanup-server.ts). Received invoices, read-but-not-confirmed
+// invoices and discarded rows are never deleted. Same rule as above: a
+// failure is logged and reported, never fails the run.
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
@@ -43,7 +51,15 @@ export async function GET(request: NextRequest) {
       console.error('cleanup-photos: note photo orphan sweep failed:', e instanceof Error ? e.message : String(e))
     }
 
-    return NextResponse.json({ cleaned, loginAttemptsCleaned, notePhotoOrphans })
+    let invoiceDrafts = null
+    try {
+      invoiceDrafts = await cleanupInvoiceDrafts(db)
+      console.log(`cleanup-photos: ${describeInvoiceCleanup(invoiceDrafts)}`)
+    } catch (e) {
+      console.error('cleanup-photos: invoice draft cleanup failed:', e instanceof Error ? e.message : String(e))
+    }
+
+    return NextResponse.json({ cleaned, loginAttemptsCleaned, notePhotoOrphans, invoiceDrafts })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Cleanup failed' }, { status: 500 })
   }

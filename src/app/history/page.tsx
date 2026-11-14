@@ -8,6 +8,7 @@ import { getRole } from '@/lib/auth'
 import { InventoryCount, CATEGORIES } from '@/lib/types'
 import { todayInTZ, addDays } from '@/lib/tasks'
 import { unitLabel } from '@/lib/units'
+import InvoiceHistoryList from '@/components/InvoiceHistoryList'
 
 interface VelocityRow {
   item_id: string
@@ -23,12 +24,16 @@ interface VelocityRow {
 }
 
 type RangePreset = 30 | 60 | 90 | 'custom'
+type HistoryTab = 'recent' | 'byCategory' | 'invoices'
 
 export default function HistoryPage() {
   const router = useRouter()
   const [history, setHistory] = useState<InventoryCount[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'recent' | 'byCategory'>('recent')
+  const [view, setView] = useState<HistoryTab>('recent')
+  // Patch 70: shift leads may open History, but only see the Invoices tab
+  // (counts and velocity stay owner-only, server-enforced on those routes).
+  const [isOwner, setIsOwner] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   const [velocityRows, setVelocityRows] = useState<VelocityRow[]>([])
@@ -74,13 +79,21 @@ export default function HistoryPage() {
   useEffect(() => {
     const role = getRole()
     if (!role) { router.replace('/login'); return }
+    const wantsInvoices = new URLSearchParams(window.location.search).get('tab') === 'invoices'
+    if (role === 'shift_lead') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: resolve role once on mount, this app's standard page-load pattern
+      setView('invoices')
+      setLoading(false)
+      return
+    }
     if (role !== 'owner') { router.replace('/count'); return }
+    setIsOwner(true)
+    if (wantsInvoices) setView('invoices')
     fetchHistory()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: fetches on mount, this app's standard load-on-mount pattern
     fetchVelocity(90)
   }, [router])
 
-  const handleViewChange = (v: 'recent' | 'byCategory') => {
+  const handleViewChange = (v: HistoryTab) => {
     setView(v)
   }
 
@@ -187,14 +200,16 @@ export default function HistoryPage() {
 
       <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Usage History</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{view === 'invoices' ? 'Invoice History' : 'Usage History'}</h1>
           <p className="text-gray-500 mt-1">
-            Showing latest {history.length} count entries
+            {view === 'invoices' ? 'Received invoices, newest first' : `Showing latest ${history.length} count entries`}
           </p>
         </div>
 
         {/* View toggle */}
-        <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl w-fit">
+        <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-xl w-fit max-w-full overflow-x-auto">
+          {isOwner && (
+          <>
           <button
             onClick={() => handleViewChange('recent')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
@@ -211,6 +226,17 @@ export default function HistoryPage() {
           >
             Fastest by Category
           </button>
+          </>
+          )}
+          <button
+            onClick={() => handleViewChange('invoices')}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              view === 'invoices' ? 'bg-white shadow text-gray-900' : 'text-gray-500'
+            }`}
+            data-testid="tab-invoices"
+          >
+            Invoices
+          </button>
         </div>
 
         {view === 'recent' && history.length > 0 && (
@@ -225,7 +251,9 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {view === 'recent' ? (
+        {view === 'invoices' ? (
+          <InvoiceHistoryList />
+        ) : view === 'recent' ? (
           history.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-12 text-center">
               <p className="text-gray-400 text-lg">No history yet.</p>

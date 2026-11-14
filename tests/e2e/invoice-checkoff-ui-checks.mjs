@@ -237,7 +237,9 @@ async function main() {
     await page.getByTestId('checkoff-bar').getByRole('button', { name: 'Save Progress' }).click()
     await page.getByText('Progress saved').waitFor()
     await page.goto(`${BASE_URL}/scan-invoice`, { waitUntil: 'networkidle' })
-    const readRow = page.locator('button').filter({ hasText: '#ZZ70273381' })
+    // Patch 70: the read invoice is also in the "read but not confirmed"
+    // nudge at the top; this check is about the Recent invoices row.
+    const readRow = page.locator('button:not([data-testid="unconfirmed-open"])').filter({ hasText: '#ZZ70273381' })
     const readRowText = (await readRow.innerText()).toLowerCase()
     check('recent list: read invoice shows status + "Check off →"', readRowText.includes('read') && readRowText.includes('check off'), readRowText)
     await readRow.click()

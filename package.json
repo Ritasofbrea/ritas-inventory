@@ -35,6 +35,8 @@
     "test:e2e:invoice-checkoff-ui": "tsx --env-file=.env.local tests/e2e/invoice-checkoff-ui-checks.mjs",
     "test:e2e:invoice-confirm": "tsx --env-file=.env.local tests/e2e/invoice-confirm-checks.mjs",
     "test:e2e:invoice-confirm-ui": "tsx --env-file=.env.local tests/e2e/invoice-confirm-ui-checks.mjs",
+    "test:e2e:invoice-history": "tsx --env-file=.env.local tests/e2e/invoice-history-checks.mjs",
+    "test:e2e:invoice-history-ui": "tsx --env-file=.env.local tests/e2e/invoice-history-ui-checks.mjs",
     "test:e2e:invoice-checkoff-live": "INVOICE_CHECKOFF_LIVE=1 tsx --env-file=.env.local tests/e2e/invoice-checkoff-live.mjs",
     "test:e2e:cleanup": "node --env-file=.env.local tests/e2e/cleanup.mjs",
     "backup": "node scripts/backup.mjs",

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole } from '@/lib/auth'
@@ -83,6 +84,9 @@ export default function DashboardPage() {
   const [vendorInfos, setVendorInfos] = useState<VendorInfo[]>([])
   const [noteReviews, setNoteReviews] = useState<NoteReviewRecord[]>([])
   const [reviewingNoteId, setReviewingNoteId] = useState<string | null>(null)
+  // Patch 70: receipt id -> invoice id. A short made by an invoice confirm
+  // points at its receipt (related_order_id); the invoice points at the same receipt.
+  const [invoiceLinks, setInvoiceLinks] = useState<Record<string, string>>({})
 
   const fetchItems = async () => {
     try {
@@ -99,7 +103,15 @@ export default function DashboardPage() {
     if (!res.ok) return
     type HistoryRecord = { id: string; type: string; resolved: boolean; related_order_id: string | null; canceled_at?: string | null; received_by?: string | null; notes: string; created_at: string; note_review_needed?: boolean; order_history_items: { item_id?: string; item_name: string; quantity: number; unit: string }[] }
     const all = (await res.json()) as HistoryRecord[]
-    setShorts(all.filter((r) => r.type === 'short' && r.resolved === false) as ShortRecord[])
+    const openShorts = all.filter((r) => r.type === 'short' && r.resolved === false)
+    setShorts(openShorts as ShortRecord[])
+    const receiptIds = [...new Set(openShorts.map((r) => r.related_order_id).filter((x): x is string => !!x))]
+    if (receiptIds.length > 0) {
+      fetch(`/api/invoices/history?receipt_ids=${receiptIds.join(',')}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d?.links) setInvoiceLinks(d.links) })
+        .catch(() => {})
+    }
     setNoteReviews(
       all.filter((r) => (r.type === 'received' || r.type === 'will_call') && r.note_review_needed) as unknown as NoteReviewRecord[]
     )
@@ -393,6 +405,15 @@ export default function DashboardPage() {
                       <p className="text-red-200 text-xs mt-1">Received by {receiptReceivedBy[short.related_order_id]}</p>
                     )}
                     {short.notes && <p className="text-red-200 text-xs mt-2 italic">{short.notes}</p>}
+                    {short.related_order_id && invoiceLinks[short.related_order_id] && (
+                      <Link
+                        href={`/history/invoice?id=${encodeURIComponent(invoiceLinks[short.related_order_id])}`}
+                        className="inline-flex items-center min-h-[44px] mt-1 text-sm font-bold text-white underline"
+                        data-testid="short-view-invoice"
+                      >
+                        View invoice
+                      </Link>
+                    )}
                   </div>
                   {pendingResolveId !== short.id && (
                     <button

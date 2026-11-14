@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Navigation from '@/components/Navigation'
 import BackToTop from '@/components/BackToTop'
 import { getRole, getOwnerName } from '@/lib/auth'
@@ -91,6 +92,8 @@ export default function OrderListPage() {
   // Order history tab
   const [orderHistory, setOrderHistory] = useState<OrderRecord[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  // Patch 70: receipt id -> invoice id, for "View invoice" on receipts that came from an invoice.
+  const [invoiceLinks, setInvoiceLinks] = useState<Record<string, string>>({})
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set())
   const [reviewingNoteId, setReviewingNoteId] = useState<string | null>(null)
 
@@ -178,7 +181,16 @@ export default function OrderListPage() {
     setHistoryLoading(true)
     try {
       const res = await fetch('/api/order-history')
-      setOrderHistory(await res.json())
+      const rows = (await res.json()) as OrderRecord[]
+      setOrderHistory(rows)
+      // Patch 70: best-effort; with no answer the links just don't show.
+      const receiptIds = Array.isArray(rows) ? rows.filter((o) => o.type === 'received' || o.type === 'will_call').map((o) => o.id) : []
+      if (receiptIds.length > 0) {
+        fetch(`/api/invoices/history?receipt_ids=${receiptIds.join(',')}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => { if (d?.links) setInvoiceLinks(d.links) })
+          .catch(() => {})
+      }
     } finally {
       setHistoryLoading(false)
     }
@@ -958,6 +970,17 @@ export default function OrderListPage() {
                                     {reviewingNoteId === order.id ? '…' : 'Reviewed ✓'}
                                   </button>
                                 )}
+                              </div>
+                            )}
+                            {invoiceLinks[order.id] && (
+                              <div className="px-5 py-2 bg-gray-50 border-t border-gray-100">
+                                <Link
+                                  href={`/history/invoice?id=${encodeURIComponent(invoiceLinks[order.id])}`}
+                                  className="inline-flex items-center min-h-[44px] text-sm font-semibold text-gray-700 underline"
+                                  data-testid="view-invoice-link"
+                                >
+                                  View invoice
+                                </Link>
                               </div>
                             )}
                             {order.type === 'short' && order.resolved_at && (

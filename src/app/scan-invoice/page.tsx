@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Navigation from '@/components/Navigation'
 import { getRole } from '@/lib/auth'
 import { uploadInvoicePage } from '@/lib/photo'
@@ -44,6 +45,15 @@ interface InvoiceDetail extends InvoiceSummary {
 
 const MAX_READS_PER_PAGE = 2
 
+// Patch 70: read but not confirmed (any age; the recent list stops at 20).
+interface UnconfirmedInvoice {
+  id: string
+  vendor: string
+  invoice_number: string | null
+  created_at: string
+  created_by: string | null
+}
+
 const VENDOR_LABELS: Record<InvoiceVendor, string> = { bunzl: 'Bunzl', balford: 'Balford', other: 'Other' }
 
 function vendorLabel(v: string): string {
@@ -65,6 +75,7 @@ export default function ScanInvoicePage() {
   const [savedMessage, setSavedMessage] = useState('')
   const [recent, setRecent] = useState<InvoiceSummary[]>([])
   const [recentLoading, setRecentLoading] = useState(true)
+  const [unconfirmed, setUnconfirmed] = useState<UnconfirmedInvoice[]>([])
   const [viewing, setViewing] = useState<InvoiceDetail | null>(null)
   const [viewLoadingId, setViewLoadingId] = useState<string | null>(null)
   const [reading, setReading] = useState(false)
@@ -81,6 +92,14 @@ export default function ScanInvoicePage() {
       if (res.ok) setRecent(await res.json())
     } finally {
       setRecentLoading(false)
+    }
+    // Patch 70: the "read but not confirmed" nudge. Best-effort: if it
+    // fails the screen just shows no nudge.
+    try {
+      const res = await fetch('/api/invoices/history?unconfirmed=1')
+      if (res.ok) setUnconfirmed(((await res.json()).invoices ?? []) as UnconfirmedInvoice[])
+    } catch {
+      // ignore
     }
   }
 
@@ -338,6 +357,38 @@ export default function ScanInvoicePage() {
           <p className="text-gray-500 mt-1">Take one photo per invoice page and save it as a draft.</p>
         </div>
 
+        {/* Patch 70: nobody forgets an invoice that was read but never
+            confirmed (these are never auto-deleted: they hold the check-off).
+            Neutral gray outline, a new meaning, so no existing color. */}
+        {unconfirmed.length > 0 && (
+          <div className="bg-white border-2 border-gray-700 rounded-2xl p-4 mb-5" role="status" data-testid="unconfirmed-nudge">
+            <p className="font-bold text-gray-900">
+              {unconfirmed.length} invoice{unconfirmed.length === 1 ? '' : 's'} read but not confirmed
+            </p>
+            <div className="flex flex-col gap-2 mt-3">
+              {unconfirmed.slice(0, 5).map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => router.push(`/scan-invoice/check?id=${encodeURIComponent(u.id)}`)}
+                  className="w-full min-h-[52px] px-4 flex items-center justify-between gap-3 border border-gray-300 rounded-xl text-left"
+                  data-testid="unconfirmed-open"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-gray-900 truncate">
+                      {vendorLabel(u.vendor)}{u.invoice_number ? ` #${u.invoice_number}` : ''}
+                    </span>
+                    <span className="block text-xs text-gray-500">
+                      Scanned {formatWhen(u.created_at)}{u.created_by ? ` · ${u.created_by}` : ''}
+                    </span>
+                  </span>
+                  <span className="text-sm font-semibold text-gray-700 flex-shrink-0">Open →</span>
+                </button>
+              ))}
+              {unconfirmed.length > 5 && <p className="text-xs text-gray-500">and {unconfirmed.length - 5} more in Recent invoices below.</p>}
+            </div>
+          </div>
+        )}
+
         <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-2xl px-4 py-3 mb-5 text-sm">
           Save the photos, then tap Read Invoice to check off what arrived. No stock is changed yet.
         </div>
@@ -429,7 +480,12 @@ export default function ScanInvoicePage() {
         {!vendor && pages.length > 0 && <p className="text-xs text-gray-500 text-center mb-2">Pick a vendor first.</p>}
 
         {/* Recent drafts */}
-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mt-6 mb-3">Recent invoices</h2>
+        <div className="flex items-center justify-between mt-6 mb-3">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">Recent invoices</h2>
+          <Link href="/history?tab=invoices" className="min-h-[44px] inline-flex items-center text-sm font-semibold text-gray-700" data-testid="invoice-history-link">
+            Invoice history →
+          </Link>
+        </div>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           {recentLoading ? (
             <p className="px-5 py-4 text-sm text-gray-400">Loading…</p>
